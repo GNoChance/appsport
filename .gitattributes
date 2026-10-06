@@ -1,0 +1,2 @@
+# Fins de ligne LF dans le dépôt et à l'extraction, quel que soit le poste (Windows, Linux, macOS)
+* text=auto eol=lf
