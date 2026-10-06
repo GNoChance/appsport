@@ -20,7 +20,7 @@ Public visé : un cercle privé (inscription sur invitation).
 |---|--------|---------|
 | 0 | Vision et architecture | Choix techniques, hébergement, modèle de données |
 | 1 | Socle | Comptes sur invitation, onboarding, PWA, déploiement |
-| 2 | Exercices | Import et traduction en français de la base d'exercices, recherche, fiches |
+| 2 | Exercices | Fiches débutant rédigées en français (brouillon IA, relecture humaine), illustrations, recherche par matériel |
 | 3 | Programmes et suivi | Modèles de programmes, séance en cours, historique, progression |
 | 4 | Coach IA | Conseils personnalisés, ajustement des programmes |
 | 5 | Nutrition | Objectifs caloriques et macros, conseils |
@@ -33,4 +33,4 @@ Serveur personnel (16 Go de RAM, 3 To de stockage). Le déploiement (conteneurs,
 
 ## Crédits
 
-Données d'exercices : [yuhonas/free-exercise-db](https://github.com/yuhonas/free-exercise-db) (domaine public, Unlicense).
+Les fiches d'exercices sont rédigées pour appsport. Illustrations prévues : [everkinetic/data](https://github.com/everkinetic/data) et [bryllim/workout-guide](https://github.com/bryllim/workout-guide) (CC BY-SA 4.0). Le détail des attributions sera tenu à jour dans l'app (page Crédits).
