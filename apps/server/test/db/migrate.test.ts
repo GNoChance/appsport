@@ -1,10 +1,9 @@
 import { type Kysely, sql } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrate } from '../../src/db/migrate';
-import type { Migration } from '../../src/db/migrations/index';
+import { MIGRATIONS, type Migration } from '../../src/db/migrations/index';
 import { openDatabase } from '../../src/db/open';
 import { FakeClock } from '../support';
-import { m1 } from './m1';
 
 describe('migrate', () => {
   let close: () => void;
@@ -26,10 +25,10 @@ describe('migrate', () => {
   afterEach(() => close());
 
   it('applique une fois, puis ne fait plus rien', async () => {
-    expect(await migrate(db, [m1], clock)).toEqual({ applied: ['0001_t'], unknownNonBreaking: [] });
-    expect(await migrate(db, [m1], clock)).toEqual({ applied: [], unknownNonBreaking: [] });
+    expect(await migrate(db, MIGRATIONS, clock)).toEqual({ applied: ['0001_socle'], unknownNonBreaking: [] });
+    expect(await migrate(db, MIGRATIONS, clock)).toEqual({ applied: [], unknownNonBreaking: [] });
     expect(await db.selectFrom('schemaMigrations').selectAll().execute()).toEqual([
-      { id: '0001_t', breaking: 0, appliedAt: '2026-10-06T10:00:00.000Z' },
+      { id: '0001_socle', breaking: 0, appliedAt: '2026-10-06T10:00:00.000Z' },
     ]);
   });
 
@@ -42,7 +41,7 @@ describe('migrate', () => {
         throw new Error('boum');
       },
     };
-    await expect(migrate(db, [m1, fail], clock)).rejects.toMatchObject({
+    await expect(migrate(db, [...MIGRATIONS, fail], clock)).rejects.toMatchObject({
       name: 'MigrationError',
       code: 'migration_failed',
     });
@@ -55,7 +54,7 @@ describe('migrate', () => {
     await sql`INSERT INTO schema_migrations (id, breaking, applied_at) VALUES ('0099_future', 1, 'x')`.execute(
       db,
     );
-    await expect(migrate(db, [m1], clock)).rejects.toMatchObject({
+    await expect(migrate(db, MIGRATIONS, clock)).rejects.toMatchObject({
       name: 'MigrationError',
       code: 'unknown_breaking_migration',
     });

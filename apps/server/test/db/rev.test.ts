@@ -2,12 +2,12 @@ import { isUuidV7 } from '@appsport/domain';
 import type { Kysely } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrate } from '../../src/db/migrate';
+import { MIGRATIONS } from '../../src/db/migrations/index';
 import { openDatabase } from '../../src/db/open';
 import { nextRev, writeStamp } from '../../src/db/rev';
 import { type Database, tableKey } from '../../src/db/schema';
 import { getServerMeta, initServerMeta } from '../../src/db/server-meta';
 import { FakeClock, seqIds } from '../support';
-import { m1 } from './m1';
 
 describe('server_meta et révisions', () => {
   let close: () => void;
@@ -16,7 +16,7 @@ describe('server_meta et révisions', () => {
     const h = openDatabase(':memory:');
     db = h.db;
     close = () => h.sqlite.close();
-    await migrate(db, [m1], new FakeClock());
+    await migrate(db, MIGRATIONS, new FakeClock());
   });
   afterEach(() => close());
 
