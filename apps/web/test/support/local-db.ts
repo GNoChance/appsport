@@ -1,4 +1,3 @@
-import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import {
   type AppDb,
@@ -8,10 +7,6 @@ import {
   type OutboxOp,
 } from '../../src/local-db/db';
 import dumpV1 from '../fixtures/local-db/v1/dump.json';
-
-// Dexie lit indexedDB au chargement du module : un import antérieur à fake-indexeddb le laisserait vide.
-Dexie.dependencies.indexedDB = indexedDB;
-Dexie.dependencies.IDBKeyRange = IDBKeyRange;
 
 /** Miroirs des tables J de test (`SYNC_FIXTURE_RULES`). */
 export const FIXTURE_MIRRORS: Record<string, string> = {

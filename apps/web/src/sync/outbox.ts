@@ -1,6 +1,6 @@
 import { camelToSnake, type EntityRulesMap, entityRules, SYNC_PROTOCOL, SyncOp } from '@appsport/contracts';
+import { stripC2Fields } from '../local-db/c2';
 import type { AppDb, MirrorRow, OutboxOp } from '../local-db/db';
-import { stripC2Fields } from '../local-db/wipe';
 
 export interface LocalChange {
   entity: string;
@@ -18,7 +18,8 @@ export class HealthConsentRequiredError extends Error {
 
 /**
  * Écriture locale d'une table J : ligne miroir et op d'outbox dans une seule transaction
- * (R-SYN-11 à R-SYN-14). Sans accord santé, une table C2 est refusée et les valeurs C2 retirées.
+ * (R-SYN-11 à R-SYN-14). Sans accord santé, une table C2 est refusée (sauf suppression) et les
+ * valeurs C2 retirées ; un patch ainsi vidé est rendu sans être écrit ni mis en file.
  */
 export async function writeLocal(
   db: AppDb,
@@ -37,8 +38,13 @@ export async function writeLocal(
   for (const key of Object.keys(change.fields)) {
     if (!rule.clientWritable.includes(camelToSnake(key))) throw new Error(`field_not_writable:${key}`);
   }
-  if (!ctx.healthConsentActive && rule.category === 'C2') throw new HealthConsentRequiredError();
-  const fields = ctx.healthConsentActive ? { ...change.fields } : stripC2Fields(rule, change.fields).fields;
+  // P-CST-2 : sans accord, création et modification C2 écartées ; une suppression reste admise.
+  if (!ctx.healthConsentActive && rule.category === 'C2' && change.kind !== 'delete') {
+    throw new HealthConsentRequiredError();
+  }
+  const { fields, stripped } = ctx.healthConsentActive
+    ? { fields: { ...change.fields }, stripped: false }
+    : stripC2Fields(rule, change.fields);
 
   const now = ctx.now();
   const op = SyncOp.parse({
@@ -52,6 +58,9 @@ export async function writeLocal(
     protocol: SYNC_PROTOCOL,
     attempts: 0,
   });
+
+  // Patch vidé par le retrait des valeurs C2 : rien à écrire (comme purgeHealthData), op non mise en file.
+  if (change.kind === 'patch' && stripped && Object.keys(fields).length === 0) return op;
 
   const mirror = db.mirror(change.entity);
   await db.transaction('rw', db.outbox, mirror, async () => {

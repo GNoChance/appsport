@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { type AppDb, createAppDb, LOCAL_DB_VERSION } from '../../src/local-db/db';
+import { type AppDb, createAppDb, LOCAL_DB_VERSION, STORE_SCHEMAS } from '../../src/local-db/db';
 import { getMeta } from '../../src/local-db/meta';
 import { convertOutboxOp } from '../../src/sync/protocol-converters';
 import { loadFrozenLocalDb, readFrozenDump } from '../support/local-db';
@@ -7,6 +7,11 @@ import { loadFrozenLocalDb, readFrozenDump } from '../support/local-db';
 let db: AppDb | undefined;
 afterEach(async () => {
   await db?.delete();
+});
+
+// Même version ⇒ même schéma : tant que LOCAL_DB_VERSION vaut 1, STORE_SCHEMAS ne bouge pas.
+it.runIf(LOCAL_DB_VERSION === 1)('STORE_SCHEMAS est celui du jeu figé v1', async () => {
+  expect((await readFrozenDump(1)).stores).toEqual(STORE_SCHEMAS);
 });
 
 // R-VER-5 : une base locale v1 figée s'ouvre avec la version courante, sans perte.

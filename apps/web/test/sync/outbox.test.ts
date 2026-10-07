@@ -133,6 +133,44 @@ describe('writeLocal', () => {
     expect(await db.outbox.count()).toBe(2);
   });
 
+  it('sans consentement : suppression d’une ligne C2 admise (P-CST-2)', async () => {
+    await writeLocal(db, { entity: 'fixture_c2_log', id: 'c1', kind: 'create', fields: { value: 3 } }, ctx);
+    const later = { ...ctx, healthConsentActive: false, now: () => LATER };
+    const del = await writeLocal(
+      db,
+      { entity: 'fixture_c2_log', id: 'c1', kind: 'delete', fields: {} },
+      later,
+    );
+    expect(await db.outbox.get(del.opId)).toMatchObject({ kind: 'delete', entity: 'fixture_c2_log' });
+    expect(await db.mirror('fixture_c2_log').get('c1')).toMatchObject({ deletedAt: LATER, updatedAt: LATER });
+  });
+
+  it('sans consentement : un patch vidé de ses champs C2 n’est pas mis en file', async () => {
+    await writeLocal(
+      db,
+      { entity: 'fixture_note_item', id: 'i1', kind: 'create', fields: { noteId: 'n1', label: 'x' } },
+      ctx,
+    );
+    const later = { ...ctx, healthConsentActive: false, now: () => LATER };
+    const op = await writeLocal(
+      db,
+      { entity: 'fixture_note_item', id: 'i1', kind: 'patch', fields: { painNote: 'TEMOIN' } },
+      later,
+    );
+    expect(op.fields).toEqual({});
+    expect(await db.outbox.get(op.opId)).toBeUndefined();
+    expect(await db.outbox.count()).toBe(1);
+    expect(await db.mirror('fixture_note_item').get('i1')).toEqual({
+      id: 'i1',
+      ownerId: 'u1',
+      noteId: 'n1',
+      label: 'x',
+      serverRevSeen: null,
+      deletedAt: null,
+      updatedAt: NOW,
+    });
+  });
+
   it('avec consentement : champs C2 gardés', async () => {
     const op = await writeLocal(
       db,
