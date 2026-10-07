@@ -17,3 +17,9 @@ coverage/
 # Système
 .DS_Store
 Thumbs.db
+
+# Tests et E2E
+.e2e-data/
+apps/*/dist/
+test-results/
+playwright-report/
