@@ -2,5 +2,7 @@ packages:
   - 'packages/*'
   - 'apps/*'
 onlyBuiltDependencies:
-  - better-sqlite3
   - esbuild
+# better-sqlite3 >= 13 embarque ses binaires N-API (prebuilds/) : son node-gyp implicite exigerait Python pour rien.
+ignoredBuiltDependencies:
+  - better-sqlite3
