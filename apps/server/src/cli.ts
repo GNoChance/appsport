@@ -1,16 +1,27 @@
-import { existsSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { CivilDate } from '@appsport/contracts';
 import { usernameKey } from '@appsport/domain';
+import { CamelCasePlugin, Kysely } from 'kysely';
+import { z } from 'zod';
 import { bootstrapAdminInvitation } from './auth/bootstrap';
 import { createPasswordReset } from './auth/password-reset';
 import { type AppConfig, loadConfig } from './config';
 import { migrate } from './db/migrate';
 import { MIGRATIONS, type Migration } from './db/migrations/index';
 import { openDatabase } from './db/open';
+import type { Database } from './db/schema';
 import { initServerMeta } from './db/server-meta';
+import { NodeSqliteDialect } from './db/sqlite-dialect';
 import { type AppDeps, createAppDeps, cryptoIds, systemClock } from './deps';
 import { HttpError } from './http/errors';
 import { createLogger } from './logger';
+import {
+  collectPrivacyEvents,
+  hasActiveAdmin,
+  PrivacyEventList,
+  reapplyPrivacyEvents,
+} from './privacy/reapply';
 import { openMigrated } from './startup';
 import { assertStartupPreconditions } from './startup-guard';
 
@@ -142,6 +153,72 @@ async function runAdminReset(args: string[], ctx: CliContext): Promise<number> {
   return 0;
 }
 
+/**
+ * Lecture seule, sans garde, pragma ni migration : la source peut être un instantané ou une base
+ * portant une migration inconnue ; elle n'est jamais modifiée (ni date, ni passage en WAL).
+ */
+async function runPrivacyCollect(args: string[], ctx: CliContext): Promise<number> {
+  const { flags } = parseFlags(args);
+  const since = z.iso.datetime().safeParse(flags.since);
+  if (!since.success) {
+    ctx.err('Date --since invalide (format ISO 8601 attendu)');
+    return 1;
+  }
+  const out = flags.out;
+  if (!out) {
+    ctx.err('Option --out obligatoire');
+    return 1;
+  }
+  const source = flags.source || loadConfig(ctx.env).dbPath;
+  const sqlite = new DatabaseSync(source, { readOnly: true });
+  let events: PrivacyEventList['events'];
+  try {
+    const db = new Kysely<Database>({
+      dialect: new NodeSqliteDialect({ database: sqlite }),
+      plugins: [new CamelCasePlugin()],
+    });
+    events = await collectPrivacyEvents(db, since.data);
+  } finally {
+    sqlite.close();
+  }
+  const list: PrivacyEventList = {
+    since: since.data,
+    collectedAt: systemClock.now().toISOString(),
+    source,
+    events,
+  };
+  writeFileSync(out, JSON.stringify(list, null, 2));
+  ctx.out(`${events.length} événement(s) écrit(s) dans ${out}`);
+  return 0;
+}
+
+function readPrivacyList(path: string | undefined): PrivacyEventList | null {
+  if (!path) return null;
+  try {
+    const parsed = PrivacyEventList.safeParse(JSON.parse(readFileSync(path, 'utf8')));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function runPrivacyReapply(args: string[], ctx: CliContext): Promise<number> {
+  const list = readPrivacyList(parseFlags(args).positional[0]);
+  if (!list) {
+    ctx.err('Fichier de réapplication invalide');
+    return 1;
+  }
+  const { result, adminActive } = await withAppDeps(ctx, async (deps) => ({
+    result: await reapplyPrivacyEvents(deps, list),
+    adminActive: await hasActiveAdmin(deps.db),
+  }));
+  ctx.out(
+    `Réapplication terminée : ${result.accountsDeleted} compte(s) supprimé(s), ${result.consentsWithdrawn} accord(s) santé retiré(s).`,
+  );
+  if (!adminActive) ctx.out('Aucun administrateur actif : lancer admin:bootstrap');
+  return 0;
+}
+
 export const COMMANDS: Record<string, CliCommand> = {
   'admin:bootstrap': {
     usage:
@@ -151,6 +228,16 @@ export const COMMANDS: Record<string, CliCommand> = {
   'admin:reset': {
     usage: 'admin:reset <pseudo> : crée un lien de réinitialisation du mot de passe (valable 24 h)',
     run: runAdminReset,
+  },
+  'privacy:collect': {
+    usage:
+      "privacy:collect --since <ISO> [--source <fichier.db>] --out <fichier.json> : liste les suppressions de compte et retraits d'accord postérieurs à --since",
+    run: runPrivacyCollect,
+  },
+  'privacy:reapply': {
+    usage:
+      'privacy:reapply <fichier.json> : réapplique après une restauration la liste écrite par privacy:collect',
+    run: runPrivacyReapply,
   },
   init: {
     usage: "init : crée la base d'un volume neuf (sentinelle requise) et fixe l'époque du serveur",

@@ -1,4 +1,4 @@
-import type { DatabaseSync } from 'node:sqlite';
+import { backup, type DatabaseSync } from 'node:sqlite';
 import {
   type EntityRule,
   type EntityRulesMap,
@@ -10,6 +10,7 @@ import {
 } from '@appsport/contracts';
 import { sql } from 'kysely';
 import type { Migration } from '../../src/db/migrations/index';
+import { rotateServerEpoch } from '../../src/sync/epoch';
 import { createTestContext, type TestContext } from './context';
 import { seqIds } from './ids';
 
@@ -147,4 +148,42 @@ export function dumpDatabase(sqlite: DatabaseSync): string {
   const dump: Record<string, unknown[]> = {};
   for (const { name } of tables) dump[name] = sqlite.prepare(`SELECT * FROM "${name}"`).all();
   return JSON.stringify(dump);
+}
+
+/** Instantané de la base du contexte par l'API `backup` de `node:sqlite`. */
+export async function snapshotDb(ctx: TestContext, path: string): Promise<void> {
+  await backup(ctx.deps.sqlite, path);
+}
+
+/**
+ * Restauration sur place (la connexion du contexte reste ouverte) : chaque table est recopiée
+ * depuis l'instantané, puis l'époque du serveur est renouvelée comme après une vraie restauration.
+ */
+export async function restoreInPlace(
+  ctx: TestContext,
+  snapshotPath: string,
+): Promise<{ epoch: string; baseRev: number }> {
+  const { sqlite } = ctx.deps;
+  sqlite.exec('PRAGMA foreign_keys = OFF');
+  sqlite.prepare('ATTACH DATABASE ? AS snap').run(snapshotPath);
+  try {
+    const tables = sqlite
+      .prepare("SELECT name FROM main.sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      .all() as { name: string }[];
+    sqlite.exec('BEGIN');
+    try {
+      for (const { name } of tables) {
+        sqlite.exec(`DELETE FROM main."${name}"`);
+        sqlite.exec(`INSERT INTO main."${name}" SELECT * FROM snap."${name}"`);
+      }
+      sqlite.exec('COMMIT');
+    } catch (error) {
+      sqlite.exec('ROLLBACK');
+      throw error;
+    }
+  } finally {
+    sqlite.exec('DETACH DATABASE snap');
+    sqlite.exec('PRAGMA foreign_keys = ON');
+  }
+  return rotateServerEpoch(ctx.deps.db, ctx.deps);
 }

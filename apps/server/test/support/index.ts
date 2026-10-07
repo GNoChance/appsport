@@ -8,8 +8,10 @@ export {
   dumpDatabase,
   makeOp,
   PROTOCOL_HEADERS,
+  restoreInPlace,
   SYNC_FIXTURE_MIGRATION,
   SYNC_FIXTURE_RULES,
+  snapshotDb,
   syncPull,
   syncPush,
 } from './sync-fixtures';
