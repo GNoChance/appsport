@@ -26,6 +26,10 @@ describe('parseSecretCode', () => {
     expect(parseSecretCode(s)).toBe('ABCDEFGHJKMNPQRS');
   });
 
+  it('ignore les tirets Unicode', () => {
+    expect(parseSecretCode('abcd‑efgh–jkmn−pqrs')).toBe('ABCDEFGHJKMNPQRS');
+  });
+
   it('corrige I, L et O', () => {
     expect(parseSecretCode('O0OO-IiLl-0000-0000')).toBe('0000111100000000');
   });

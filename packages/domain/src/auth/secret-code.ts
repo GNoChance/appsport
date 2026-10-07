@@ -23,7 +23,11 @@ export function encodeCrockford(bytes: Uint8Array): string {
 /** Lien complet ou code saisi, vers la forme canonique, ou null. */
 export function parseSecretCode(input: string): string | null {
   const tail = input.slice(input.lastIndexOf('#') + 1);
-  const code = tail.toUpperCase().replace(/[\s-]/g, '').replace(/[IL]/g, '1').replace(/O/g, '0');
+  const code = tail
+    .toUpperCase()
+    .replace(/[\s\p{Pd}−]/gu, '')
+    .replace(/[IL]/g, '1')
+    .replace(/O/g, '0');
   if (code.length !== SECRET_CODE_LENGTH) return null;
   for (const ch of code) if (!CROCKFORD_ALPHABET.includes(ch)) return null;
   return code;

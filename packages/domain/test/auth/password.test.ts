@@ -42,5 +42,8 @@ describe('validatePassword', () => {
     expect(passwordLength('💪'.repeat(11))).toBe(11);
     expect(validatePassword(`${'💪'.repeat(11)}a`, member)).toEqual({ ok: true });
     expect(validatePassword(`${'é'.repeat(6)}abcde`, member)).toEqual({ ok: false, reason: 'too_short' });
+    expect(passwordLength('é'.repeat(6))).toBe(6);
+    expect(validatePassword(`${'é'.repeat(6)}abcde`, member)).toEqual({ ok: false, reason: 'too_short' });
+    expect(validatePassword(`${'é'.repeat(6)}abcdef`, member)).toEqual({ ok: true });
   });
 });

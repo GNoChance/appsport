@@ -20,6 +20,13 @@ describe('validateUsername', () => {
     }
   });
 
+  it('refuse les homoglyphes latins et les chiffres non ASCII', () => {
+    for (const u of ['ɑdmin', 'admın', 'ᴀdmin', 'admɨn', 'lea١', 'lea۱']) {
+      expect(validateUsername(u)).toEqual({ ok: false, reason: 'characters' });
+    }
+    for (const u of ['Léa', 'zoé.b']) expect(validateUsername(u)).toEqual({ ok: true });
+  });
+
   it('contrôle la forme NFC', () => {
     expect(validateUsername('Léa')).toEqual({ ok: true });
   });
