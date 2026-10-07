@@ -580,3 +580,195 @@ describe('file unique et déclencheurs', () => {
     expect(states).toHaveLength(n);
   });
 });
+
+/** Laisse passer `n` tours de la vraie boucle (fenêtre de recouvrement des cycles). */
+const turns = async (n: number) => {
+  for (let i = 0; i < n; i++) await new Promise<void>((r) => setImmediate(r));
+};
+const stalledBody = () =>
+  new Response(new ReadableStream<Uint8Array>({ start() {} }), {
+    status: 200,
+    headers: { 'X-Appsport-Epoch': server.epoch },
+  });
+
+describe('reprises et file (revue)', () => {
+  it('health OK puis push 500 → reprises à +2 s puis +4 s (failures remis à zéro seulement en fin de cycle)', async () => {
+    await createNote();
+    server.on('POST /api/sync/push', () => server.json(500, { error: 'internal' }));
+    makeEngine().start();
+    await idle();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(count('GET /api/health')).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(() => count('GET /api/health') === 2);
+    await idle();
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(count('GET /api/health')).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(() => count('GET /api/health') === 3);
+    await idle();
+  });
+
+  it('cycle réussi → failures remis à zéro : échec suivant repris à +2 s', async () => {
+    let fail = true;
+    server.on('POST /api/sync/push', (req) => {
+      server.sent.push(req.body.ops);
+      if (fail) return server.json(500, { error: 'internal' });
+      return server.json(200, { results: [] });
+    });
+    await createNote();
+    makeEngine().start();
+    await idle();
+    await vi.advanceTimersByTimeAsync(2000);
+    await until(() => count('GET /api/health') === 2);
+    await idle();
+    fail = false;
+    await vi.advanceTimersByTimeAsync(4000);
+    await until(() => count('GET /api/health') === 3);
+    await idle();
+    fail = true;
+    await engine.syncNow('manual');
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(count('GET /api/health')).toBe(4);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(() => count('GET /api/health') === 5);
+    await idle();
+  });
+
+  it('await syncNow puis syncNow pendant qu’un autre appelant a programmé un cycle → jamais deux en vol', async () => {
+    server.on('GET /api/health', async () => {
+      await turns(20);
+      return server.json(200, { epoch: 'E1' });
+    });
+    makeEngine();
+    const a = (async () => {
+      await engine.syncNow('manual');
+      await engine.syncNow('manual');
+    })();
+    await until(() => count('GET /api/health') === 1);
+    const b = engine.syncNow('mutation');
+    await Promise.all([a, b]);
+    expect(server.maxInFlight).toBe(1);
+    // 1er cycle, celui de b (lancé dès la fin du 1er), puis le second appel de a, venu après ce lancement.
+    expect(count('GET /api/health')).toBe(3);
+  });
+
+  it('corps de pull bloqué → cycle terminé hors ligne à l’échéance, syncNow suivant exécuté', async () => {
+    server.on('GET /api/sync/pull', () => stalledBody());
+    makeEngine();
+    const p = engine.syncNow('manual');
+    await until(() => count('GET /api/sync/pull') === 1);
+    await vi.advanceTimersByTimeAsync(4000);
+    await p;
+    expect(engine.getState().connection).toBe('offline');
+    server.on('GET /api/sync/pull', undefined);
+    await engine.syncNow('manual');
+    expect(count('GET /api/sync/pull')).toBe(2);
+    expect(engine.getState().connection).toBe('online');
+  });
+
+  it('corps de health bloqué → offline, la file n’est pas gelée', async () => {
+    server.on('GET /api/health', () => stalledBody());
+    makeEngine();
+    const p = engine.syncNow('manual');
+    await until(() => count('GET /api/health') === 1);
+    await vi.advanceTimersByTimeAsync(4000);
+    await p;
+    expect(engine.getState()).toMatchObject({ connection: 'offline', syncing: false });
+  });
+
+  it('stop() pendant un cycle en vol puis start() aussitôt → l’ancien cycle n’agit plus', async () => {
+    await createNote();
+    const gates: (() => void)[] = [];
+    server.on('GET /api/health', async () => {
+      await new Promise<void>((r) => gates.push(r));
+      return server.json(200, { epoch: 'E1' });
+    });
+    makeEngine();
+    engine.start();
+    await until(() => gates.length === 1);
+    engine.stop();
+    engine.start();
+    gates[0]?.();
+    await until(() => gates.length === 2);
+    gates[1]?.();
+    await idle();
+    expect(server.paths()).toEqual([
+      'GET /api/health',
+      'GET /api/health',
+      'POST /api/sync/push',
+      'GET /api/sync/pull',
+    ]);
+    expect(server.maxInFlight).toBe(1);
+  });
+
+  it('stop() pendant un cycle en vol → plus aucune requête', async () => {
+    await createNote();
+    const gates: (() => void)[] = [];
+    server.on('GET /api/health', async () => {
+      await new Promise<void>((r) => gates.push(r));
+      return server.json(200, { epoch: 'E1' });
+    });
+    makeEngine().start();
+    await until(() => gates.length === 1);
+    engine.stop();
+    gates[0]?.();
+    await idle();
+    expect(server.paths()).toEqual(['GET /api/health']);
+    expect(await db.outbox.count()).toBe(1);
+  });
+});
+
+describe('utilisateur changé pendant une requête (revue)', () => {
+  it('410 account_deleted → rien effacé, onAccountDeleted non appelé', async () => {
+    await createNote();
+    server.on('GET /api/health', async () => {
+      await setMeta(db, 'userId', 'u2');
+      return server.json(410, { error: 'account_deleted' });
+    });
+    const onAccountDeleted = vi.fn();
+    await makeEngine({ onAccountDeleted }).syncNow('manual');
+    expect(onAccountDeleted).not.toHaveBeenCalled();
+    expect(await getMeta(db, 'userId')).toBe('u2');
+    expect(await db.outbox.count()).toBe(1);
+    expect(engine.getState().connection).not.toBe('account_deleted');
+  });
+
+  it('401 unauthenticated → connection inchangée', async () => {
+    server.on('GET /api/health', async () => {
+      await setMeta(db, 'userId', 'u2');
+      return server.json(401, { error: 'unauthenticated' });
+    });
+    await makeEngine().syncNow('manual');
+    expect(engine.getState().connection).not.toBe('unauthenticated');
+  });
+
+  it('résultats de push non appliqués', async () => {
+    const { id, op } = await createNote();
+    server.on('POST /api/sync/push', async (req) => {
+      await setMeta(db, 'userId', 'u2');
+      const ops = req.body.ops as SyncOp[];
+      return server.json(200, { results: ops.map((o) => ({ opId: o.opId, status: 'applied', rev: 50 })) });
+    });
+    await makeEngine().syncNow('manual');
+    expect(await db.outbox.get(op.opId)).toBeDefined();
+    expect((await db.mirror('fixture_note').get(id))?.serverRevSeen).toBeNull();
+  });
+});
+
+describe('rejet d’une op sur une ligne absente (revue)', () => {
+  it('pas de pull complet : watermark gardé', async () => {
+    const op = makeOp({
+      userId: 'u1',
+      entity: 'fixture_note',
+      id: newId(),
+      kind: 'patch',
+      fields: { title: 'x' },
+    });
+    await db.outbox.add(op);
+    pushWith(() => [{ opId: op.opId, status: 'rejected', code: 'validation' }]);
+    await makeEngine().syncNow('manual');
+    expect(pullSince()).toEqual(['E1:1']);
+    expect(await db.deadletter.get(op.opId)).toBeDefined();
+  });
+});

@@ -3,7 +3,10 @@ import { z } from 'zod';
 import type { AppDb } from '../local-db/db';
 import { getMeta, setMeta } from '../local-db/meta';
 import { postToSw } from '../sw/sw-client';
-import { fetchWithTimeout, type SyncTransport } from './transport';
+import { fetchJsonWithTimeout, type SyncTransport } from './transport';
+
+/** Budget du catalogue, corps compris : plus long que celui des appels de synchro. */
+export const CATALOG_TIMEOUT_MS = 30_000;
 
 const Item = z.looseObject({ id: z.string() });
 const LocalCatalog = z.object({
@@ -21,10 +24,15 @@ const LocalCatalog = z.object({
 export async function refreshCatalog(db: AppDb, t: SyncTransport): Promise<'unchanged' | 'updated'> {
   const current = await getMeta(db, 'catalogVersion');
   const headers: Record<string, string> = current === undefined ? {} : { 'If-None-Match': `"${current}"` };
-  const res = await fetchWithTimeout(t, '/api/catalog', { method: 'GET', headers });
+  const { res, body } = await fetchJsonWithTimeout(
+    t,
+    '/api/catalog',
+    { method: 'GET', headers },
+    CATALOG_TIMEOUT_MS,
+  );
   if (res.status === 304) return 'unchanged';
   if (res.status !== 200) throw new Error(`catalog_http_${res.status}`);
-  const bundle = LocalCatalog.parse(await res.json());
+  const bundle = LocalCatalog.parse(body);
 
   await db.transaction(
     'rw',
