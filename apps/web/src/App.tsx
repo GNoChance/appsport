@@ -2,6 +2,9 @@ import type { MeResponse } from '@appsport/contracts';
 import { useEffect, useRef } from 'react';
 import { Redirect, Route, Switch, useLocation } from 'wouter';
 import { useMeState, useSyncState } from './app-services';
+import { InvitePage } from './features/auth/InvitePage';
+import { LoginPage } from './features/auth/LoginPage';
+import { ResetPage } from './features/auth/ResetPage';
 import { HomePage } from './features/home/HomePage';
 import { CreditsPage } from './features/public/CreditsPage';
 import { HelpPage } from './features/public/HelpPage';
@@ -64,6 +67,9 @@ export function resolveGuard(i: {
 function PublicRoutes() {
   return (
     <Switch>
+      <Route path="/login" component={LoginPage} />
+      <Route path="/invite" component={InvitePage} />
+      <Route path="/reset" component={ResetPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/credits" component={CreditsPage} />
       <Route path="/help" component={HelpPage} />
