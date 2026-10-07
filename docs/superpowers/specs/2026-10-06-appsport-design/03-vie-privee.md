@@ -22,11 +22,13 @@ Chaque table, et chaque champ sensible placé dans une table d'une autre catégo
 | Cat. | Nom | Contenu | Qui y accède dans l'appli | Règles |
 |---|---|---|---|---|
 | **C0** | Interne | **Pour tout le cercle :** référentiels (fiches d'exercices publiées, illustrations, matériel, modèles de programmes), salles partagées et leur historique, pseudos rendus visibles.<br>**Pour l'admin seulement :** métadonnées de compte (pseudo, rôle, statut, date de naissance, mineur oui/non, création, dernière connexion, état des consentements, nombre de sessions actives, coût IA du mois), invitations, liens de réinitialisation, journal de sécurité. | le cercle ou l'admin, selon la ligne | C0 ne veut pas dire « non personnel » : C0 regroupe ce que le cercle ou l'admin voit par conception |
-| **C1** | Personnel | Profil d'entraînement, lieux de type maison, visibilité par lieu, mode prudent manuel, programmes et `instance_change`, séances, séries, records, réglages, rejets de synchro, détail des sessions, historique des consentements. | le propriétaire seul | exporté ; supprimé avec le compte ; envoyé au coach seulement avec l'accord coach |
+| **C1** | Personnel | Profil d'entraînement, lieux de type maison, visibilité par lieu, mode prudent manuel, programmes et `instance_change`, séances, séries, records, réglages, rejets de synchro, détail des sessions, historique des consentements. | le propriétaire seul | exporté (sauf les sessions, voir ci-dessous) ; supprimé avec le compte ; envoyé au coach seulement avec l'accord coach |
 | **C2** | Santé | Indicateur de prudence issu du questionnaire, limitations et zones sensibles, douleur (`pain_level`, `swap_reason = pain`, `pain_streak`), motif d'une modification de programme (`instance_change.reason`), taille, pesées, sexe utilisé par les formules, profil, cibles et bilans nutritionnels. | le propriétaire seul | accord santé requis ; supprimé au retrait de l'accord ; jamais dans un journal ; envoyé au coach seulement si les accords santé **et** coach sont actifs |
 | **C3** | Sensible | Fils et messages du coach, signalements. | le propriétaire seul ; un échange signalé devient lisible par l'admin (P-COA-4) | accord coach requis ; supprimé au retrait de l'accord ; jamais dans un journal ; durée limitée (§7) |
 
 Les empreintes de mot de passe et de jetons (`*_hash`) sont hors catégorie, listées dans `secretColumns` : elles ne sont jamais exportées, synchronisées, journalisées ni renvoyées par l'API.
+
+Exception : les sessions sont C1 mais ne sont pas exportées (section Comptes, R-EXP-2, qui prime). Le registre les déclare non exportées et anonymisées à la suppression du compte (P-DRT-3), et le test de P-CAT-2 admet cette exception.
 
 - **P-CAT-1** Un registre unique `entityRules`, dans `packages/contracts`, associe chaque table à sa catégorie (`category`), et liste les champs C2 placés dans une table C1 (`c2Columns`, par exemple `performed_exercise.pain_level`) et les secrets (`secretColumns`).
 - **P-CAT-2** Un test parcourt le schéma : il échoue si une table n'est pas dans le registre, ou si une table liée à un `user_id` n'est pas couverte à la fois par l'export et par la suppression.
@@ -75,7 +77,7 @@ Les empreintes de mot de passe et de jetons (`*_hash`) sont hors catégorie, lis
 - **P-MIN-5 Nutrition.** Ni cible chiffrée ni déficit, et aucune donnée de santé nutritionnelle recueillie (ni pesée, ni taille, ni sexe pour le calcul). Le serveur refuse le calcul : masquer l'écran ne suffit pas.
 - **P-MIN-6 Salles.** Pour un mineur, la visibilité dans « qui va à cette salle » est désactivée par défaut, lieu par lieu.
 - **P-MIN-7 Coach.** Il est ouvert aux 16-17 ans avec les garde-fous du §12. Le mode mineur est décidé côté serveur à partir de `age_band`, jamais à partir d'une valeur envoyée par le client.
-- **P-MIN-8 À 18 ans.** Rien ne s'active tout seul. Un écran indique ce que l'utilisateur peut désormais activer lui-même.
+- **P-MIN-8 À 18 ans.** Rien ne s'active tout seul. Un message, affiché une seule fois par appareil, indique ce que l'utilisateur peut désormais activer lui-même (R-AGE-6 du socle).
 
 ### 5. Ce que l'admin voit et ne voit pas
 
@@ -96,7 +98,7 @@ Les empreintes de mot de passe et de jetons (`*_hash`) sont hors catégorie, lis
 ### 6. Droits : export, rectification, suppression
 
 - **P-DRT-1 Export.** « Télécharger mes données » produit un JSON au format versionné `appsport-export/1`.
-  - Il contient le compte (sans aucune empreinte), l'historique des consentements, ainsi que toutes les lignes C1, C2 et C3 de l'utilisateur, avec `ai_generated` et le modèle (`coach_message.effective_model`, `instance_change.ai_model`) sur les contenus produits par l'IA. Le CSV des séries relève de la brique 3.
+  - Il contient le compte (sans aucune empreinte), l'historique des consentements, ainsi que toutes les lignes C1, C2 et C3 de l'utilisateur, sauf les sessions (§2), avec `ai_generated` et le modèle (`coach_message.effective_model`, `instance_change.ai_model`) sur les contenus produits par l'IA. Le CSV des séries relève de la brique 3.
   - Si la file d'envoi locale n'est pas vide, l'appli avertit avant d'exporter.
   - L'export est journalisé, sans son contenu.
 - **P-DRT-2 Rectification.** Toute donnée saisie est modifiable par son auteur, sauf la date de naissance (P-MIN-2).
@@ -125,8 +127,8 @@ Les empreintes de mot de passe et de jetons (`*_hash`) sont hors catégorie, lis
 | Sessions `account_deleted` | jusqu'à leur expiration absolue | purge quotidienne |
 | Invitations, liens de réinitialisation | 7 jours ou 24 h, usage unique ; purgés 30 jours après | purge quotidienne |
 | Journal de sécurité | 12 mois | purge quotidienne |
-| Journaux techniques | 90 jours au plus | rotation |
-| Marques de suppression de la synchro (tombstones) | 90 jours (`TOMBSTONE_TTL`) | purge quotidienne |
+| Journaux techniques | 90 jours au plus | rotation bornée par l'âge (Exploitation, R-OPS-15) |
+| Marques de suppression de la synchro (tombstones) | 90 jours (`TOMBSTONE_TTL`) ; les salles et lieux supprimés restent, pour l'historique (R-SAL-7, R-LIEU-5 du socle) | purge quotidienne |
 | Sauvegardes | **30 jours au plus** | rotation (Exploitation) |
 | Données locales du téléphone | jusqu'à la déconnexion (si la file d'envoi est vide), au retrait d'un accord pour la catégorie concernée, ou jusqu'au `410 account_deleted` | effacement par le client |
 
@@ -157,6 +159,7 @@ Le détail est dans le socle. Exigences :
   - Expiration après 90 jours sans usage, et au plus tard 365 jours après la connexion.
 - **P-AUT-4 CSRF.** Toute requête qui modifie des données exige un `Origin` égal à l'origine de l'appli et un corps JSON.
 - **P-AUT-5 Actions sensibles.** Changer de mot de passe, retirer un accord, supprimer un compte, changer un rôle : le mot de passe est ressaisi au moment de l'action. Il n'y a pas de fenêtre de réauthentification.
+  - Exception explicite : après une restauration, le téléphone renvoie seul, sans mot de passe, un retrait de l'accord santé que le serveur restauré a perdu, aux conditions de R-SYN-28 (section Architecture).
 - **P-AUT-6 File d'envoi.** Elle est étiquetée par `user_id` et ne part jamais sous la session d'un autre utilisateur. Si un autre pseudo se connecte sur l'appareil, il est averti, puis la file est effacée.
 - **P-AUT-7 Identité Tailscale.** L'appli ne se sert jamais de l'identité Tailscale : les en-têtes `Tailscale-User-*` sont ignorés.
 - **P-AUT-8 Récupération sans e-mail.**

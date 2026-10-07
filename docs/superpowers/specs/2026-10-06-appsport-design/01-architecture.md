@@ -161,12 +161,12 @@ Règles propres à certains types :
 
   Aucune ligne d'un autre membre n'est synchronisée : la liste des pseudos visibles d'une salle (`visible_at_gym = 1`) est servie par l'API en ligne. Un test de fuite vérifie qu'aucune ligne C1 à C3 d'un autre utilisateur ne sort, y compris pour une session admin.
 - **R-SYN-22** Une ligne reçue alors qu'elle a encore des patchs en attente est rebasée : la ligne serveur est appliquée, puis les patchs locaux sont rejoués par-dessus.
-- **R-SYN-23** Les suppressions logiques sont purgées au bout de `TOMBSTONE_TTL` = 90 jours, et `applied_op` au bout de 12 mois. Un watermark plus ancien que la dernière purge reçoit `410 {code: "watermark_expired"}`. Le client garde alors son outbox, vide son miroir et refait un pull complet.
-- **R-SYN-24** Un compte supprimé reçoit `410 {code: "account_deleted"}` : le client efface toutes les données locales de cet utilisateur.
+- **R-SYN-23** Les suppressions logiques sont purgées au bout de `TOMBSTONE_TTL` = 90 jours, et `applied_op` au bout de 12 mois. Exception : les salles (`gym`) et les lieux (`place`) supprimés ne sont jamais purgés, car l'historique et les séances passées y restent rattachés (section Comptes, R-SAL-7, R-LIEU-5). Un watermark plus ancien que la dernière purge reçoit `410 {"error":"watermark_expired"}`. Le client garde alors son outbox, vide son miroir et refait un pull complet.
+- **R-SYN-24** Un compte supprimé reçoit `410 {"error":"account_deleted"}` : le client efface toutes les données locales de cet utilisateur.
 
 #### 5.6 Époque du serveur et restauration
 
-- **R-SYN-25** `server_meta.server_epoch` (UUID) est généré par `init` et **par chaque restauration**, y compris lors d'un retour arrière avec restauration. Au même moment, `epoch_base_rev` reçoit la valeur du compteur restauré. Chaque réponse de l'API porte l'en-tête `X-Appsport-Epoch`.
+- **R-SYN-25** `server_meta.server_epoch` (UUID) est généré par `init` et **par chaque restauration**, y compris lors d'un retour arrière avec restauration. Au même moment, `epoch_base_rev` reçoit la valeur du compteur restauré, et `epoch_started_at` l'heure du serveur. Chaque réponse de l'API porte l'en-tête `X-Appsport-Epoch`.
 - **R-SYN-26** Quand un client voit une nouvelle époque, il procède ainsi :
   1. il met l'outbox en pause ;
   2. il renvoie, par opérations `restore_upsert`, ses lignes de classe J (hors `sync_rejection`, créée par le serveur) dont le `updated_at` local date de moins de `EPOCH_RESEND_DAYS` = 60 jours, suppressions logiques comprises ;
@@ -174,11 +174,17 @@ Règles propres à certains types :
   4. il refait un pull complet.
 - **R-SYN-27** Traitement d'un `restore_upsert` par le serveur :
   - si la ligne est absente, il l'insère ;
-  - si la ligne est présente, il la remplace seulement si son `rev` est ≤ `epoch_base_rev` (pas modifiée depuis la restauration) **et** si `serverRevSeen` du client est strictement supérieur à ce `rev` (le client avait vu une version plus récente que la sauvegarde) ;
+  - si la ligne est présente et non supprimée, et que le `restore_upsert` porte une suppression (`deleted_at` renseigné), il pose la suppression, même si la ligne a été modifiée depuis la restauration : la suppression l'emporte (§5.2, classe J) ;
+  - sinon, si la ligne est présente, il la remplace seulement si son `rev` est ≤ `epoch_base_rev` (pas modifiée depuis la restauration) **et** si `serverRevSeen` du client est strictement supérieur à ce `rev` (le client avait vu une version plus récente que la sauvegarde) ;
   - sinon, il la laisse telle quelle.
 
   Ainsi, un appareil resté longtemps hors ligne ne fait pas régresser les données.
-- **R-SYN-28** Les données de classe E modifiées après la sauvegarde sont perdues, à une exception près : si le cache du client montre un consentement **retiré** qui est actif sur le serveur restauré, le client renvoie automatiquement le retrait. Un consentement donné n'est jamais renvoyé automatiquement.
+- **R-SYN-28** Les données de classe E modifiées après la sauvegarde sont perdues, à une exception près : si le cache du client montre un consentement **retiré** qui est actif sur le serveur restauré, le client renvoie automatiquement le retrait. Un consentement donné n'est jamais renvoyé automatiquement. Pour l'accord santé, seul consentement du socle :
+  - au changement d'époque, avant le pull complet, le client lit dans son cache le dernier événement de consentement santé. Si c'est un retrait et que le serveur restauré dit l'accord actif, le client renvoie le retrait, une seule fois ;
+  - ce renvoi se fait **sans mot de passe** : c'est une exception explicite à P-AUT-5 (section Vie privée) ;
+  - le serveur ne l'accepte que si trois conditions sont réunies : l'accord santé est actif chez lui ; l'instant du retrait est postérieur à son dernier accord santé (`consent_event` `grant`) ; il est antérieur au début de l'époque courante (`server_meta.epoch_started_at`). Sinon, il répond `409 {"error":"conflict"}` ;
+  - l'effet est celui d'un retrait ordinaire (R-SYN-9, Vie privée P-CST-3). Le journal de sécurité note `consent_revoked`, avec `{replay: true}` dans ses détails ;
+  - les renvois sont limités comme la vérification des codes : 20 par heure et par adresse IP (section Comptes, R-INV-8).
 
 #### 5.7 Déclencheurs, état de connexion et stockage
 
@@ -236,6 +242,8 @@ Règles propres à certains types :
 
    Il est livré et testé dès la première version du socle.
 7. **R-PWA-7** L'origine `https://appsport.<tailnet>.ts.net` ne doit jamais changer : la changer effacerait les données locales. Un futur changement exigerait de vider toutes les outbox d'abord (ADR à écrire le cas échéant).
+8. **R-PWA-8** La navigation est servie **cache d'abord** : le SW renvoie l'`index.html` de la coquille du build courant (`shell-<buildHash>` du SW actif). Il ne passe par le réseau que si ce fichier manque. Une nouvelle version ne tourne donc qu'après le clic sur « Mettre à jour » (R-PWA-2, R-PWA-4).
+9. **R-PWA-9** Le manifeste de précache porte la version du schéma Dexie du build. La page ne propose jamais d'activer une coquille dont cette version est inférieure à la sienne, par exemple après un retour arrière « image seule » (R-DEP-4).
 
 ### 8. Pipeline de déploiement
 
@@ -269,7 +277,7 @@ Règles propres à certains types :
    - l'appli refuse de démarrer sans le fichier sentinelle ou sans base, sauf pendant `init`. Elle ne crée jamais de base vide sur laquelle les téléphones se synchroniseraient.
 6. **R-DEP-6** Après un redémarrage, la synchro reste indisponible jusqu'au déverrouillage manuel (`appsport-unlock` via Tailscale SSH). Pendant ce temps, la saisie hors ligne continue normalement. Les redémarrages automatiques sont désactivés.
 7. **R-DEP-7** Sauvegardes, en résumé (détail dans la section Exploitation) :
-   - `sqlite.backup()` (`cli snapshot`) chaque jour à 03:30 et avant chaque déploiement (pas d'instantané horaire), 3 de chaque type conservés localement, puis restic (`appsport-backup`) ;
+   - `sqlite.backup()` (`cli snapshot`) chaque jour à 03:30 et avant chaque déploiement (pas d'instantané horaire), 3 de chaque type conservés localement, et aucun instantané de pré-déploiement au-delà de 30 jours (Exploitation, R-OPS-10), puis restic (`appsport-backup`) ;
    - restic vers le disque local et Backblaze B2, avec `forget --keep-daily 30 --prune` ;
    - **test de restauration mensuel** (`appsport-restore-test`) : restauration dans un dossier temporaire du volume chiffré, `PRAGMA integrity_check`, conteneur jetable, appel de `/api/health` ;
    - `cli restore` régénère toujours `server_epoch`.
@@ -324,7 +332,8 @@ Principe : un test rouge avant chaque comportement, des dépendances injectées 
   3. Tailscale coupé avec le Wi-Fi ou la 4G actifs : la saisie reste fluide et l'appli affiche « hors ligne » en 4 s au plus ;
   4. redémarrage du téléphone avec une file non vide ;
   5. mise à jour de la PWA avec une file non vide, hors séance ;
-  6. une fois à la recette du socle, puis à chaque changement du stockage : 7 jours sans réseau, puis synchro.
+  6. une fois à la recette du socle, puis à chaque changement du stockage : 7 jours sans réseau, puis synchro ;
+  7. onboarding complet en moins de 2 min, hors écran Santé (section Comptes, R-ONB-4).
 
 ### 10. Points à vérifier pendant la brique 1
 

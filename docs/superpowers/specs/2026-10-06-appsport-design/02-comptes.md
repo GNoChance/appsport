@@ -58,7 +58,7 @@ Un seul écran, réseau obligatoire.
 
 | Champ | Règle |
 |---|---|
-| Pseudo | 3 à 24 caractères : lettres (accents admis), chiffres, `.`, `_`, `-`. Unique sans tenir compte de la casse (comparaison après NFKC et minuscules). Réservés : `admin`, `appsport`, `systeme` |
+| Pseudo | 3 à 24 caractères : lettres de l'écriture latine seulement (accents admis), chiffres, `.`, `_`, `-`. Contrôlé sur la forme NFC, stocké sous cette forme. Unique sans tenir compte de la casse (comparaison après NFKC et minuscules). Réservés : `admin`, `appsport`, `systeme` |
 | Mot de passe et confirmation | §4 |
 | Date de naissance | affichée en lecture seule : « Renseignée par l'administrateur. Une erreur ? Préviens-le. » |
 | « J'ai lu la page Confidentialité et règles » | case obligatoire avec lien ; la version du texte acceptée est enregistrée |
@@ -123,7 +123,7 @@ Parcours : le membre prévient l'admin hors de l'appli → Admin › Membres ›
 | Nutrition | mode qualitatif obligatoire : ni taille, ni poids, ni cible chiffrée, ni déficit | Nutrition |
 | Coach IA | ouvert, avec les garde-fous Anthropic pour les mineurs (modération, bouton « Signaler », consignes dédiées) | Coach |
 
-- **R-AGE-6** À 18 ans, les restrictions tombent mais rien ne s'active tout seul : un message unique liste ce qu'on peut désormais activer (objectif « Perdre du gras », nutrition chiffrée). Les réglages de visibilité et le mode prudent manuel restent tels quels.
+- **R-AGE-6** À 18 ans, les restrictions tombent mais rien ne s'active tout seul : un message, affiché une seule fois par appareil, liste ce qu'on peut désormais activer (objectif « Perdre du gras », nutrition chiffrée). Les réglages de visibilité et le mode prudent manuel restent tels quels.
 
 ### 8. Onboarding
 
@@ -144,7 +144,7 @@ Parcours : le membre prévient l'admin hors de l'appli → Admin › Membres ›
 | E8 | C'est prêt | récapitulatif ; voyant « Prêt hors ligne » ; à partir de la brique 3, programme recommandé (§9) | — |
 
 **Règles par écran**
-- **E2.** Liste versionnée : course à pied, vélo, natation, football, rugby, basket, handball, tennis, padel, badminton, sports de combat, escalade, ski, danse, Autre (texte libre de 40 caractères au plus). Un seul sport en v1.
+- **E2.** Liste versionnée : course à pied, vélo, natation, football, rugby, basket, handball, tennis, padel, badminton, sports de combat, escalade, ski, danse, Autre (texte libre obligatoire, 40 caractères au plus). Un seul sport en v1.
 - **E3/E4.** L'onboarding crée un seul lieu, marqué principal. Les autres lieux s'ajoutent dans Profil › Lieux. Le contexte principal de l'utilisateur est le type de son lieu principal ; il n'est pas stocké ailleurs.
 - **E4 maison.** Nom « Maison » par défaut, modifiable.
 - **E8.** « Commencer » termine l'onboarding (`onboarding_completed_at`) une fois le voyant « Prêt hors ligne » au vert : coquille précachée par le service worker, données de l'utilisateur reçues (première synchro réussie), catalogue chargé et toutes les illustrations référencées en cache (section Exercices §11, R-SYN-33). Sinon, bouton « Réessayer ».
@@ -212,7 +212,7 @@ Champ `load_settings` (JSON validé par Zod, valeurs en grammes) sur la salle et
 - **R-SAL-4 Droits.** Modifient une salle : les membres qui l'ont parmi leurs lieux actifs, et les admins.
 - **R-SAL-5 Concurrence.** Nom, ville et réglages de charge : la dernière écriture gagne. Matériel : opérations « ajouter X » et « retirer X », idempotentes, sur une ligne par (salle, code) ; deux ajouts simultanés donnent l'union.
 - **R-SAL-6 Historique.** Chaque modification ajoute une ligne (qui, quand, quoi). La fiche affiche les 10 dernières, avec « modifié par <pseudo> » ; un compte supprimé apparaît comme « ancien membre ».
-- **R-SAL-7** Seul un admin supprime une salle, et seulement si aucun lieu actif n'y renvoie. La salle est marquée supprimée (`deleted_at`), pas effacée : les lieux supprimés et les séances passées y restent rattachés.
+- **R-SAL-7** Seul un admin supprime une salle, et seulement si aucun lieu actif n'y renvoie. La salle est marquée supprimée (`deleted_at`), pas effacée : les lieux supprimés et les séances passées y restent rattachés. Créer une salle de même nom et même ville (après normalisation, R-SAL-3) réactive la salle supprimée : `deleted_at` est remis à vide, son matériel est remplacé par la liste validée, et l'historique note une création.
 
 #### 10.5 Les lieux d'un utilisateur
 
@@ -263,7 +263,7 @@ Champ `load_settings` (JSON validé par Zod, valeurs en grammes) sur la salle et
 - **R-EXP-1** Profil › Confidentialité › « Télécharger mes données » : fichier JSON au format versionné `appsport-export/1`, produit immédiatement, réseau nécessaire. L'appli avertit si des éléments locaux ne sont pas encore envoyés.
 - **R-EXP-2** Contenu : compte (sans empreinte de mot de passe ni sessions), profil, lieux, salles concernées et modifications faites par l'utilisateur, historique des consentements, données C2, puis ce qu'ajoute chaque brique. L'export est journalisé, sans son contenu.
 - **R-SUP-1 Par l'utilisateur** : export proposé, liste de ce qui sera supprimé, saisie du mot de passe, confirmation « Supprimer définitivement ».
-- **R-SUP-2 Par un admin**, sur demande : saisie du pseudo pour confirmer.
+- **R-SUP-2 Par un admin**, sur demande : saisie du pseudo du membre pour confirmer, et du mot de passe de l'admin (section Vie privée, P-AUT-5).
 - **R-SUP-3** Suppression immédiate et définitive, en une transaction : toutes les lignes de l'utilisateur et ses liens de réinitialisation. Ses sessions sont révoquées et détachées du compte (`user_id` à NULL, `revoked_reason = account_deleted`), ce qui permet la réponse `410` de R-SUP-5. Les salles restent ; l'utilisateur y devient « ancien membre » (auteur à null). L'invitation utilisée perd son lien vers le compte.
 - **R-SUP-4** Le dernier admin ne peut pas supprimer son compte.
 - **R-SUP-5** L'appareil qui supprime efface ses données locales ; tout autre appareil du compte reçoit `410 account_deleted` à sa requête suivante et efface les siennes.
@@ -315,12 +315,12 @@ invitation (C0, H)
   used_at, used_by -> user (null si compte supprimé), revoked_at
   État calculé : pending | used | revoked | expired
 
-password_reset (C1, H)
+password_reset (C0 admin, H)
   id, user_id, code_hash UNIQUE (secret), created_by (null = commande serveur), created_at, expires_at, used_at, cancelled_at
 
 session (C1, H)
   id, token_hash UNIQUE (secret), user_id (NULL après suppression du compte : réponse 410 account_deleted),
-  created_at, last_seen_at, expires_at (+365 j), revoked_at,
+  created_at, last_seen_at, expires_at (+365 j), must_change_password (bool, R-MDP-1), revoked_at,
   revoked_reason {logout|logout_all|password_change|password_reset|admin|account_deleted}
 
 consent_event (C1, E, ajout seul)
@@ -331,7 +331,8 @@ training_profile (C1, E, 1-1 avec user : id = owner_id)
   +SYNC, goal {muscle|strength|fat_loss|fitness|sport_support},
   experience {none|lt_6_months|6_to_24_months|gt_24_months},
   days_per_week (2..4), session_minutes {30|45|60|75|90},
-  sport_code (nullable), sport_other_label (nullable, 40 car.), cautious_mode (bool)
+  sport_code (nullable), sport_other_label (40 car., obligatoire si sport_code = other, NULL sinon), cautious_mode (bool)
+  goal, experience, days_per_week, session_minutes : NULL tant que leur écran d'onboarding n'est pas validé
 
 health_screening (C2, E, 1-1 : id = owner_id)
   +SYNC, caution (bool), questionnaire_version, answered_at

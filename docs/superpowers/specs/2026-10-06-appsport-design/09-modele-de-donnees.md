@@ -22,7 +22,7 @@
    - `rev INTEGER NOT NULL` : valeur de `server_meta.sync_counter`, fixée par le serveur ;
    - `created_at`, `updated_at` : heure du serveur ;
    - `updated_by TEXT REFERENCES user(id) ON DELETE SET NULL` ;
-   - `deleted_at TEXT NULL` : tombstone, purgée après `TOMBSTONE_TTL` = 90 j.
+   - `deleted_at TEXT NULL` : tombstone, purgée après `TOMBSTONE_TTL` = 90 j. Exception : les salles (`gym`) et les lieux (`place`) supprimés ne sont jamais purgés, car l'historique et les séances passées y restent rattachés (Comptes R-SAL-7, R-LIEU-5).
    
    Index obligatoires : `(rev)` et `(owner_id, rev)`.
    
@@ -65,7 +65,9 @@
 **server_meta** — C0, H. Une seule ligne.
 - `id INTEGER PK CHECK (id = 1)`
 - `server_epoch TEXT NOT NULL` : régénéré à `init` et à chaque `restore`
+- `epoch_started_at TEXT` : heure du serveur à laquelle `server_epoch` a été généré (`init` ou `restore`) ; sert au renvoi d'un retrait d'accord santé (Architecture R-SYN-28)
 - `epoch_base_rev INTEGER NOT NULL`, `sync_counter INTEGER NOT NULL`
+- `tombstone_purge_rev INTEGER NOT NULL DEFAULT 0` : mémoire de la dernière purge des tombstones (plus grand `rev` purgé) ; sert à répondre `410 watermark_expired` (Architecture R-SYN-23)
 - `catalog_version TEXT`, `catalog_updated_at TEXT` : remplacent `catalog_meta`
 
 **schema_migrations** — C0, H.
@@ -91,13 +93,14 @@
 
 **user** — C0 admin, E (le propriétaire ne reçoit que sa propre ligne). `password_hash` est un secret.
 - `id TEXT PK`
-- `username TEXT NOT NULL`, `username_key TEXT NOT NULL UNIQUE` (NFKC puis minuscules)
+- `username TEXT NOT NULL` (forme NFC), `username_key TEXT NOT NULL UNIQUE` (NFKC puis minuscules)
 - `password_hash TEXT NOT NULL` : Argon2id au format PHC
 - `role TEXT CHECK (admin|member)`, `status TEXT CHECK (active|disabled)`
 - `birth_date TEXT NOT NULL` : date complète, recopiée depuis l'invitation, en lecture seule pour l'utilisateur
 - `terms_version TEXT`, `terms_accepted_at TEXT`
 - `last_login_at TEXT`, `password_changed_at TEXT`
-- `onboarding_step TEXT`, `onboarding_completed_at TEXT NULL`
+- `onboarding_step TEXT NULL CHECK (goal|sport|place_kind|place|experience|availability|health|ready)` : dernier écran validé (un code par écran E1 à E8, Comptes R-ONB-2), NULL avant le premier
+- `onboarding_completed_at TEXT NULL`
 - `invitation_id TEXT REFERENCES invitation ON DELETE SET NULL`
 - `rev`, `created_at`, `updated_at`, `updated_by`
 - Valeurs calculées, jamais stockées :
@@ -126,6 +129,7 @@
 - `id TEXT PK`, `token_hash TEXT UNIQUE`
 - `user_id TEXT NULL REFERENCES user ON DELETE SET NULL` : mis à NULL à la suppression du compte, ce qui produit une réponse `410 account_deleted`
 - `created_at`, `last_seen_at`, `expires_at` (+365 j) ; la session expire aussi après 90 j d'inactivité
+- `must_change_password INTEGER 0/1` : posé à la connexion d'un admin dont le mot de passe fait moins de 14 caractères, remis à 0 par le changement de mot de passe (Comptes R-MDP-1)
 - `revoked_at NULL`
 - `revoked_reason TEXT NULL CHECK (logout|logout_all|password_change|password_reset|admin|account_deleted)`
 
@@ -153,12 +157,14 @@
 - `experience TEXT CHECK (none|lt_6_months|6_to_24_months|gt_24_months)` : `level` en est déduit ; les deux premières valeurs donnent `beginner`, les deux autres `intermediate`
 - `days_per_week INTEGER CHECK (2..4)`
 - `session_minutes INTEGER CHECK (IN (30,45,60,75,90))`
-- `sport_code TEXT NULL`, `sport_other_label TEXT NULL CHECK (length <= 40)`
+- `sport_code TEXT NULL`, `sport_other_label TEXT NULL CHECK (length <= 40)` : libellé non vide obligatoire si `sport_code = 'other'`, NULL sinon (Comptes §8, E2)
 - `cautious_mode INTEGER 0/1` : manuel, non sanitaire, ouvert à tous
+- `goal`, `experience`, `days_per_week` et `session_minutes` restent NULL tant que leur écran n'est pas validé (chaque écran est enregistré au clic sur « Suivant », Comptes R-ONB-2). Ils doivent tous être renseignés pour terminer l'onboarding.
 
 **health_screening** — C2, E. Relation 1-1, `id = owner_id`. N'existe qu'avec le consentement santé.
 - `+SYNC`
 - `caution INTEGER 0/1`, `questionnaire_version TEXT`, `answered_at TEXT`
+- Contenu NULL seulement sur une tombstone : `CHECK (deleted_at IS NOT NULL OR (caution, questionnaire_version et answered_at NOT NULL))`. Au retrait du consentement santé, il ne reste ainsi qu'une tombstone sans contenu (Vie privée P-CST-3).
 
 **limitation** — C2, E.
 - `id`, `+SYNC`
@@ -166,6 +172,7 @@
 - `side TEXT CHECK (left|right|both|not_applicable)`
 - `severity TEXT CHECK (mild|severe)`
 - `note TEXT CHECK (length <= 200)`, `active INTEGER 0/1`
+- Contenu NULL seulement sur une tombstone : `CHECK (deleted_at IS NOT NULL OR (body_area, side, severity et active NOT NULL))`, comme pour `health_screening`.
 
 ### 1.4 Lieux et salles
 
@@ -174,7 +181,7 @@
 - `name` et `city` : `CHECK (length BETWEEN 2 AND 60)`
 - `load_settings TEXT JSON`
 - `created_by NULL`, `updated_by NULL` (ON DELETE SET NULL)
-- `rev`, `created_at`, `updated_at`, `deleted_at` : suppression réservée à l'admin, pour une salle inutilisée
+- `rev`, `created_at`, `updated_at`, `deleted_at` : suppression réservée à l'admin, pour une salle inutilisée ; une salle supprimée n'est jamais purgée, et la créer de nouveau sous le même nom dans la même ville la réactive (Comptes R-SAL-7)
 - Contrainte : `UNIQUE (name_key, city_key)`
 - Règle « dernière écriture gagnante », sans contrôle optimiste.
 

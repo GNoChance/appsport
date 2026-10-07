@@ -84,3 +84,32 @@ En cas de divergence, l'ordre de priorité est : ce document (§2), puis la sect
 
 - [Recherche initiale (synthèse)](../../research/2026-10-06-recherche-initiale.md) et [vérification adversariale](../../research/2026-10-06-verification.md) ; [rapports détaillés](../../research/rapports/).
 - Les décisions de ce document priment sur les recommandations de la recherche, qui supposaient parfois un nom de domaine, un public ouvert ou la base wger.
+
+## 9. Révisions
+
+**2026-10-07** — décisions prises à la relecture du plan du socle, reportées ici pour que la spec reste la source de vérité.
+
+- 01 R-SYN-23 : les salles et lieux supprimés ne sont jamais purgés ; corps d'erreur `{"error":"watermark_expired"}`, comme en 03 P-DRT-4.
+- 01 R-SYN-24 : corps d'erreur `{"error":"account_deleted"}`.
+- 01 R-SYN-25 : `epoch_started_at` est fixé en même temps que l'époque.
+- 01 R-SYN-27 : un `restore_upsert` qui porte une suppression l'emporte sur une ligne non supprimée.
+- 01 R-SYN-28 : le retrait de l'accord santé est renvoyé sans mot de passe, une fois, à trois conditions, sinon 409 ; journalisé et limité à 20 par heure et par IP.
+- 01 R-DEP-7 : aucun instantané de pré-déploiement gardé plus de 30 jours.
+- 01 R-PWA-8 (nouvelle) : navigation servie cache d'abord depuis la coquille du build courant.
+- 01 R-PWA-9 (nouvelle) : jamais d'activation d'une coquille dont le schéma Dexie est plus ancien.
+- 01 R-TST-4 : contrôle 7 ajouté, onboarding en moins de 2 min hors écran Santé (R-ONB-4).
+- 02 §3.4 : pseudo en lettres de l'écriture latine seulement (accents admis), contrôlé et stocké en NFC.
+- 02 R-AGE-6 et 03 P-MIN-8 : le message des 18 ans s'affiche une fois par appareil.
+- 02 §8 E2 : le libellé du sport « Autre » est obligatoire.
+- 02 R-SAL-7 : créer une salle de même nom et même ville réactive la salle supprimée.
+- 02 R-SUP-2 : la suppression d'un membre par l'admin exige le mot de passe de l'admin (P-AUT-5).
+- 02 §16 : `password_reset` en C0 admin, comme en 03 et 09 ; `session.must_change_password` ; règles de `training_profile`.
+- 03 §2 et P-DRT-1 : les sessions ne sont pas exportées (02 R-EXP-2 prime).
+- 03 §7 : journaux techniques bornés par l'âge ; salles et lieux supprimés gardés.
+- 03 P-AUT-5 : exception explicite pour le renvoi de R-SYN-28.
+- 08 R-OPS-10 : un instantané de pré-déploiement de plus de 30 jours est supprimé.
+- 08 R-OPS-15 (nouvelle) : journaux des conteneurs gardés 90 jours au plus.
+- 08 R-OPS-16 (nouvelle) : la base remplacée par `restore` est gardée 30 jours dans `snapshots/replaced-<horodatage>/`.
+- 08 §9 : `alive` avec 8 min de grâce ; `restore-test` sur 35 jours, plus 3 jours de grâce.
+- 09 §0 : `gym` et `place` supprimées jamais purgées.
+- 09 §1 : `server_meta.epoch_started_at` et `tombstone_purge_rev` ; `user.onboarding_step` (8 valeurs) et `username` en NFC ; `session.must_change_password` ; champs de `training_profile` vides avant la fin de l'onboarding et `sport_other_label` ; contenu de `health_screening` et `limitation` vide seulement sur une tombstone ; réactivation d'une `gym`.
