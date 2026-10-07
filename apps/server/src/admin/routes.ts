@@ -14,6 +14,7 @@ import type { AppDeps } from '../deps';
 import { validClientIp } from '../http/client-ip';
 import { httpError } from '../http/errors';
 import { parseJson } from '../http/validate';
+import { deleteGymAsAdmin } from '../places/gyms';
 import { deleteAccount } from '../privacy/delete-account';
 import { listMembers, revokeMemberSessions, setBirthDate, setRole, setStatus } from './members';
 import { readOpsStatus } from './ops-status';
@@ -88,6 +89,13 @@ export function adminRoutes(deps: AppDeps): Hono<AppEnv> {
       if (usernameKey(body.confirmUsername) !== target.usernameKey) throw httpError('validation');
       await deleteAccount(trx, deps, id, actor);
     });
+    return c.body(null, 204);
+  });
+
+  routes.delete('/gyms/:id', async (c) => {
+    const { actor } = actorOf(c);
+    const id = c.req.param('id');
+    await deps.db.transaction().execute((trx) => deleteGymAsAdmin(trx, deps, actor, id));
     return c.body(null, 204);
   });
 
