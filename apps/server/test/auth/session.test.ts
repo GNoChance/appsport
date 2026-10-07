@@ -190,6 +190,17 @@ describe('sessionMiddleware', () => {
     expect((await sessionRow(sessionId)).lastSeenAt).toBe('2026-10-06T11:01:00.000Z');
   });
 
+  it('touche exactement à +60 min, pas à +59 min 59 s 999 ms', async () => {
+    const { get, user, login } = await setup();
+    const { token, sessionId } = await login(await user());
+    ctx.clock.advance(3_600_000 - 1);
+    await get('/probe/user', token);
+    expect((await sessionRow(sessionId)).lastSeenAt).toBe('2026-10-06T10:00:00.000Z');
+    ctx.clock.advance(1);
+    await get('/probe/user', token);
+    expect((await sessionRow(sessionId)).lastSeenAt).toBe('2026-10-06T11:00:00.000Z');
+  });
+
   it('une session révoquée ne passe plus ; revokeSessions épargne la session exceptée', async () => {
     const { get, user, login } = await setup();
     const id = await user();
@@ -292,6 +303,10 @@ describe('journaux (03 §17 n°7)', () => {
     await ctx.app.request('/api/health', {
       headers: { Cookie: `${ctx.deps.config.sessionCookieName}=${token}` },
     });
+    const notFound = await ctx.app.request('/api/inconnu', {
+      headers: { Cookie: `${ctx.deps.config.sessionCookieName}=${token}` },
+    });
+    expect(notFound.status).toBe(404);
     const log = lines.join('\n');
     expect(lines.length).toBeGreaterThan(0);
     expect(log).not.toContain(token);
