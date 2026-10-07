@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { logSecurityEvent } from '../../src/auth/security-log';
-import { collectPrivacyEvents, reapplyPrivacyEvents } from '../../src/privacy/reapply';
+import { collectPrivacyEvents, PrivacyEventList, reapplyPrivacyEvents } from '../../src/privacy/reapply';
 import {
   createSyncTestContext,
   createUserAndLogin,
@@ -195,4 +195,14 @@ describe('privacy:reapply après restauration (03 §17 n°10, P-DRT-3, P-CST-3)'
     const admins = await ctx.deps.db.selectFrom('user').select('id').where('role', '=', 'admin').execute();
     expect(admins).toEqual([]);
   });
+});
+
+it('PrivacyEventList ramène since à la forme canonique', () => {
+  const list = PrivacyEventList.parse({
+    since: '2026-10-07T03:30:00Z',
+    collectedAt: '2026-10-07T04:00:00Z',
+    source: 'x',
+    events: [],
+  });
+  expect(list.since).toBe('2026-10-07T03:30:00.000Z');
 });

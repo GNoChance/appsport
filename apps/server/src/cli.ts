@@ -17,6 +17,7 @@ import { type AppDeps, createAppDeps, cryptoIds, systemClock } from './deps';
 import { HttpError } from './http/errors';
 import { createLogger } from './logger';
 import {
+  canonicalInstant,
   collectPrivacyEvents,
   hasActiveAdmin,
   PrivacyEventList,
@@ -159,7 +160,7 @@ async function runAdminReset(args: string[], ctx: CliContext): Promise<number> {
  */
 async function runPrivacyCollect(args: string[], ctx: CliContext): Promise<number> {
   const { flags } = parseFlags(args);
-  const since = z.iso.datetime().safeParse(flags.since);
+  const since = z.iso.datetime().transform(canonicalInstant).safeParse(flags.since);
   if (!since.success) {
     ctx.err('Date --since invalide (format ISO 8601 attendu)');
     return 1;

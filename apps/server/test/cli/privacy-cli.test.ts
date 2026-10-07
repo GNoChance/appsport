@@ -166,3 +166,46 @@ describe('privacy:reapply', () => {
     }
   });
 });
+
+describe('--since sans millisecondes (comparaison canonique)', () => {
+  const BOUNDARY = '2026-10-07T03:30:00Z';
+
+  it("garde l'événement de la première seconde, exclut celui pile à since, à la collecte et à la réapplication", async () => {
+    const { sqlite, db } = openDatabase(dbPath);
+    await insertFixtureRow(db, 'user', { id: 'u-a', username: 'alba', usernameKey: 'alba' });
+    await insertFixtureRow(db, 'user', { id: 'u-b', username: 'bruno', usernameKey: 'bruno' });
+    await insertFixtureRow(db, 'user', { username: 'chef', usernameKey: 'chef', role: 'admin' });
+    const insert = sqlite.prepare(
+      "INSERT INTO security_event (id, at, type, actor_id, target_id, tailnet_ip, outcome, details) VALUES (?, ?, 'account_deleted', NULL, ?, NULL, 'success', NULL)",
+    );
+    insert.run('ev-a', '2026-10-07T03:30:00.500Z', 'u-a');
+    insert.run('ev-b', '2026-10-07T03:30:00.000Z', 'u-b');
+    sqlite.close();
+
+    const out = join(dir, 'l.json');
+    expect(await cli('privacy:collect', '--since', BOUNDARY, '--out', out)).toBe(0);
+    const list = readList(out);
+    expect(list.since).toBe('2026-10-07T03:30:00.000Z');
+    expect(list.events.map((ev) => ev.targetId)).toEqual(['u-a']);
+
+    const handmade = join(dir, 'main.json');
+    writeFileSync(
+      handmade,
+      JSON.stringify({
+        since: BOUNDARY,
+        collectedAt: '2026-10-07T04:00:00Z',
+        source: 'main',
+        events: [
+          { type: 'account_deleted', at: '2026-10-07T03:30:00.000Z', targetId: 'u-b' },
+          { type: 'account_deleted', at: '2026-10-07T03:30:00.500Z', targetId: 'u-a' },
+        ],
+      }),
+    );
+    lines = [];
+    expect(await cli('privacy:reapply', handmade)).toBe(0);
+    expect(lines).toContain('Réapplication terminée : 1 compte(s) supprimé(s), 0 accord(s) santé retiré(s).');
+    withDb((s) => {
+      expect(s.prepare("SELECT id FROM user WHERE id IN ('u-a', 'u-b')").all()).toEqual([{ id: 'u-b' }]);
+    });
+  });
+});
