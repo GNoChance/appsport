@@ -60,8 +60,16 @@ export function useMe(): MeResponse | null {
   return useMeState().me;
 }
 
-/** `410 account_deleted` (P-DRT-4) : base locale effacée, file comprise, puis écran de connexion. */
+/**
+ * `410 account_deleted` (P-DRT-4) : base locale effacée, file comprise, puis écran de connexion.
+ * Un effacement en échec n'empêche pas la navigation et ne rejette pas (appelé en `void`).
+ */
 export async function handleAccountDeleted(db: AppDb, navigate: (to: string) => void): Promise<void> {
-  await wipeUserData(db, { keepOutbox: false });
-  navigate('/login?reason=account_deleted');
+  try {
+    await wipeUserData(db, { keepOutbox: false });
+  } catch {
+    // Base locale inaccessible : le moteur de synchro l'effacera au prochain 410.
+  } finally {
+    navigate('/login?reason=account_deleted');
+  }
 }

@@ -9,7 +9,7 @@ export function HelpPage() {
   const verifiedOn = HELP_RESOURCES.map((r) => r.verifiedOn).sort()[0];
   return (
     <Page title="Aide">
-      <p>En cas d'urgence, appelle le 15 ou le 112. Ces services sont gratuits et confidentiels.</p>
+      <p>En cas d'urgence, appelle le 15 ou le 112.</p>
       <ul className={styles.resources}>
         {HELP_RESOURCES.map((r) => (
           <li key={r.id} className={styles.resource}>

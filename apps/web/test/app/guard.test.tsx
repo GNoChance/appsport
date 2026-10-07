@@ -39,6 +39,10 @@ const ROWS: Row[] = [
   ['/login', true, makeMe(), 'online', to('/')],
   ['/admin/members', true, makeMe(), 'online', { kind: 'not_found' }],
   ['/admin/members', true, admin(), 'online', RENDER],
+  ['/privacy/', false, null, 'online', RENDER],
+  ['/help/', true, null, 'offline', RENDER],
+  ['/login/', true, makeMe(), 'online', to('/')],
+  ['/onboarding/', true, makeMe(), 'online', to('/')],
 ];
 
 describe('resolveGuard', () => {

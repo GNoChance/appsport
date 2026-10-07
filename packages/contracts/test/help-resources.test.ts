@@ -42,11 +42,15 @@ describe('HELP_RESOURCES', () => {
   });
 
   it("l'ancien numéro TCA n'apparaît dans aucun fichier de apps/, packages/, data/", () => {
-    const old = ['0810', '037', '037'].join(' ');
+    // Chiffres seuls, sans espaces, points ni tirets : attrape aussi les formes collées et `tel:`.
+    const old = ['0810', '037', '037'].join('');
     const hits: string[] = [];
     for (const top of ['apps', 'packages', 'data']) {
       for (const file of walk(join(REPO, top))) {
-        if (readFileSync(file).toString('utf8').includes(old)) hits.push(file);
+        const compact = readFileSync(file)
+          .toString('utf8')
+          .replace(/[\s.\- ]/g, '');
+        if (compact.includes(old)) hits.push(file);
       }
     }
     expect(hits).toEqual([]);

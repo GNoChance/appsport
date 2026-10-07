@@ -1,6 +1,39 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { buildPrivacySections } from '../../src/features/public/privacy-content';
 import { renderApp } from '../support/render';
+
+const privacyText = (owner: string | undefined) =>
+  buildPrivacySections(owner)
+    .flatMap((s) => s.items)
+    .join('\n');
+
+describe('responsable des données (03 §1, §10.8)', () => {
+  it.each([undefined, '', '   '])(
+    'sans prénom (%j) : administrateur hébergeur, porteur du projet',
+    (owner) => {
+      const text = privacyText(owner);
+      expect(text).toContain("hébergé chez l'administrateur");
+      expect(text).toContain('Le responsable des données est le porteur du projet');
+      expect(text).toContain('seul le porteur du projet en détient les clés');
+      expect(text).toContain('adresse-toi directement au porteur du projet');
+    },
+  );
+
+  it('avec prénom : le porteur est nommé partout', () => {
+    const text = privacyText(' Bastien ');
+    expect(text).toContain('hébergé chez Bastien.');
+    expect(text).toContain('Le responsable des données est Bastien,');
+    expect(text).toContain('seul Bastien en détient les clés');
+    expect(text).toContain('adresse-toi directement à Bastien');
+    expect(text).toContain(
+      "L'administrateur a la main sur le serveur et peut techniquement lire la base. Il s'engage à ne faire aucune requête manuelle sur les données d'une personne sans son accord.",
+    );
+    expect(text).toContain(
+      "L'administrateur voit l'adresse de ton compte Tailscale, une information gérée par Tailscale.",
+    );
+  });
+});
 
 describe('pages publiques', () => {
   it('/privacy reprend la fiche de traitement', async () => {
@@ -26,6 +59,13 @@ describe('pages publiques', () => {
     ]) {
       expect(text, expected).toContain(expected);
     }
+    for (const expected of [
+      "jusqu'à la déconnexion (si la file d'envoi est vide)",
+      'consulte le journal de sécurité',
+      'ton adresse IP',
+    ]) {
+      expect(text, expected).toContain(expected);
+    }
     expect(screen.getByRole('heading', { name: 'Règles pour les 16-17 ans' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Coach et mineurs' })).toBeTruthy();
     expect(text).not.toMatch(/’/);
@@ -42,6 +82,12 @@ describe('pages publiques', () => {
     const text = document.body.textContent ?? '';
     expect(text).toContain('Numéros vérifiés le 06/10/2026');
     expect(text.split('Horaires :').length - 1).toBe(1);
+    expect(text).not.toContain('gratuits et confidentiels');
+  });
+
+  it('/privacy/ avec barre finale reste publique', async () => {
+    await renderApp({ path: '/privacy/', me: null });
+    await screen.findByRole('heading', { level: 1, name: 'Confidentialité et règles' });
   });
 
   it('/credits statique, sans requête', async () => {

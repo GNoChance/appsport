@@ -29,6 +29,9 @@ const LOST_SESSION: readonly ConnectionState[] = ['unauthenticated', 'account_de
 
 const isAdminPath = (path: string) => path === '/admin' || path.startsWith('/admin/');
 
+/** Chemin sans barre finale (`/privacy/` → `/privacy`), `/` gardé. */
+export const normalizePath = (path: string): string => path.replace(/\/+$/, '') || '/';
+
 /**
  * Garde des routes, dans l'ordre : chemin public ; base locale pas encore lue ; session absente ou
  * refusée par le serveur ; mot de passe à changer (R-MDP-1) ; onboarding ; rôle admin (R-ROLE-1).
@@ -39,19 +42,20 @@ export function resolveGuard(i: {
   me: MeResponse | null;
   connection: ConnectionState;
 }): GuardResult {
+  const path = normalizePath(i.path);
   const sessionValid = i.me !== null && !LOST_SESSION.includes(i.connection);
-  if (PUBLIC_PATHS.includes(i.path)) {
-    return i.path === '/login' && sessionValid ? { kind: 'redirect', to: '/' } : { kind: 'render' };
+  if (PUBLIC_PATHS.includes(path)) {
+    return path === '/login' && sessionValid ? { kind: 'redirect', to: '/' } : { kind: 'render' };
   }
   if (!i.loaded) return { kind: 'wait' };
   if (!i.me || !sessionValid) return { kind: 'redirect', to: '/login' };
   if (i.me.mustChangePassword) {
-    return i.path === '/profile' ? { kind: 'render' } : { kind: 'redirect', to: '/profile' };
+    return path === '/profile' ? { kind: 'render' } : { kind: 'redirect', to: '/profile' };
   }
   const onboarded = i.me.onboardingCompletedAt !== null;
-  if (!onboarded && i.path !== '/onboarding') return { kind: 'redirect', to: '/onboarding' };
-  if (onboarded && i.path === '/onboarding') return { kind: 'redirect', to: '/' };
-  if (isAdminPath(i.path) && i.me.role !== 'admin') return { kind: 'not_found' };
+  if (!onboarded && path !== '/onboarding') return { kind: 'redirect', to: '/onboarding' };
+  if (onboarded && path === '/onboarding') return { kind: 'redirect', to: '/' };
+  if (isAdminPath(path) && i.me.role !== 'admin') return { kind: 'not_found' };
   return { kind: 'render' };
 }
 
@@ -93,7 +97,7 @@ export function App() {
         </AppShell>
       );
     case 'render':
-      return PUBLIC_PATHS.includes(path) ? (
+      return PUBLIC_PATHS.includes(normalizePath(path)) ? (
         <PublicShell>
           <PublicRoutes />
         </PublicShell>
