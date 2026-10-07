@@ -63,6 +63,7 @@ export type WithdrawConsentRequest = z.infer<typeof WithdrawConsentRequest>;
 export const ReplayWithdrawRequest = z.strictObject({ withdrawnAt: z.iso.datetime() });
 export type ReplayWithdrawRequest = z.infer<typeof ReplayWithdrawRequest>;
 
+/** Une réponse par question de HEALTH_QUESTIONNAIRE (longueur vérifiée par test/consent.test.ts). */
 export const HealthScreeningRequest = z.strictObject({
   answers: z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]),
   questionnaireVersion: z.string(),
@@ -76,7 +77,14 @@ export const LimitationInput = z.strictObject({
   bodyArea: BodyArea,
   side: LimitationSide,
   severity: LimitationSeverity,
-  note: z.string().trim().max(LIMITATION_NOTE_MAX).nullable().optional(),
+  // Une note vide ou faite d'espaces est enregistrée comme absente.
+  note: z
+    .string()
+    .trim()
+    .max(LIMITATION_NOTE_MAX)
+    .transform((n) => (n === '' ? null : n))
+    .nullable()
+    .optional(),
   active: z.boolean().optional(),
 });
 export type LimitationInput = z.infer<typeof LimitationInput>;

@@ -1,9 +1,15 @@
-import { type EntityRule, SYNC_COLUMNS } from '@appsport/contracts';
+import {
+  type EntityRule,
+  type LimitationInput,
+  type LimitationPatch,
+  SYNC_COLUMNS,
+} from '@appsport/contracts';
 import { type RawBuilder, sql, type Transaction } from 'kysely';
 import { logSecurityEvent } from '../auth/security-log';
 import { writeStamp } from '../db/rev';
 import type { Database, DbExecutor } from '../db/schema';
 import type { AppDeps } from '../deps';
+import { httpError } from '../http/errors';
 import { type ConsentType, getConsentState, isHealthConsentActive } from './consent-state';
 
 export type HealthWithdrawHook = (trx: Transaction<Database>, deps: AppDeps, userId: string) => Promise<void>;
@@ -173,4 +179,108 @@ export async function withdrawHealthConsent(
     outcome: 'success',
     details: { consentType: 'health', ...(opts.replay ? { replay: true } : {}) },
   });
+}
+
+/**
+ * Garde C2 (R-CST-4, P-CST-2). Les routes l'appliquent avant parseJson (ordre des erreurs) ;
+ * chaque écriture C2 la relit en premier dans sa transaction, pour qu'un retrait validé entre-temps
+ * ne laisse ni ressusciter un questionnaire ni écrire une limitation sans accord.
+ */
+export async function assertHealthConsent(db: DbExecutor, userId: string): Promise<void> {
+  if (!(await isHealthConsentActive(db, userId))) throw httpError('health_consent_required');
+}
+
+/** Upsert du questionnaire sur id = owner_id ; réactive la tombstone d'un retrait antérieur. */
+export async function saveHealthScreening(
+  trx: Transaction<Database>,
+  deps: AppDeps,
+  userId: string,
+  input: { caution: boolean; questionnaireVersion: string },
+): Promise<void> {
+  await assertHealthConsent(trx, userId);
+  const stamp = await writeStamp(trx, deps, userId);
+  const content = {
+    caution: input.caution ? 1 : 0,
+    questionnaireVersion: input.questionnaireVersion,
+    answeredAt: stamp.updatedAt,
+    deletedAt: null,
+    ...stamp,
+  };
+  await trx
+    .insertInto('healthScreening')
+    .values({ id: userId, ownerId: userId, createdAt: stamp.updatedAt, ...content })
+    .onConflict((oc) => oc.column('id').doUpdateSet(content))
+    .execute();
+}
+
+export async function createLimitation(
+  trx: Transaction<Database>,
+  deps: AppDeps,
+  userId: string,
+  input: LimitationInput,
+): Promise<string> {
+  await assertHealthConsent(trx, userId);
+  const id = deps.ids.uuidv7();
+  const stamp = await writeStamp(trx, deps, userId);
+  await trx
+    .insertInto('limitation')
+    .values({
+      id,
+      ownerId: userId,
+      createdAt: stamp.updatedAt,
+      bodyArea: input.bodyArea,
+      side: input.side,
+      severity: input.severity,
+      note: input.note ?? null,
+      active: input.active === false ? 0 : 1,
+      ...stamp,
+    })
+    .execute();
+  return id;
+}
+
+/** La route a vérifié que la limitation est vivante et à l'utilisateur. */
+export async function updateLimitation(
+  trx: Transaction<Database>,
+  deps: AppDeps,
+  userId: string,
+  id: string,
+  patch: LimitationPatch,
+): Promise<void> {
+  await assertHealthConsent(trx, userId);
+  const { active, ...rest } = patch;
+  const stamp = await writeStamp(trx, deps, userId);
+  await trx
+    .updateTable('limitation')
+    .set({ ...rest, ...(active === undefined ? {} : { active: active ? 1 : 0 }), ...stamp })
+    .where('id', '=', id)
+    .where('ownerId', '=', userId)
+    .where('deletedAt', 'is', null)
+    .execute();
+}
+
+/** Tombstone sans contenu (R-SYN-9, P-CST-3). */
+export async function deleteLimitation(
+  trx: Transaction<Database>,
+  deps: AppDeps,
+  userId: string,
+  id: string,
+): Promise<void> {
+  await assertHealthConsent(trx, userId);
+  const stamp = await writeStamp(trx, deps, userId);
+  await trx
+    .updateTable('limitation')
+    .set({
+      bodyArea: null,
+      side: null,
+      severity: null,
+      note: null,
+      active: null,
+      deletedAt: stamp.updatedAt,
+      ...stamp,
+    })
+    .where('id', '=', id)
+    .where('ownerId', '=', userId)
+    .where('deletedAt', 'is', null)
+    .execute();
 }

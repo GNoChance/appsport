@@ -1,4 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { HttpError } from '../../src/http/errors';
+import {
+  deleteLimitation,
+  saveHealthScreening,
+  updateLimitation,
+  createLimitation as writeLimitation,
+} from '../../src/privacy/consent';
 import {
   createTestContext,
   createUser,
@@ -210,5 +217,50 @@ describe('/api/me/limitations', () => {
       }
     }
     expect(await limitation(row.id as string)).toEqual(row);
+  });
+});
+
+describe('garde C2 dans la transaction d’écriture (course avec un retrait)', () => {
+  it('chaque écriture C2 relit l’accord et refuse après un retrait', async () => {
+    const u = await setup();
+    await grant(u);
+    await screening(u, [true, false, false, false]);
+    const { id } = (await (await createLimitation(u, KNEE)).json()) as { id: string };
+    const withdrawn = await call(u, '/api/me/consents/withdraw', 'POST', {
+      type: 'health',
+      password: u.password,
+    });
+    expect(withdrawn.status).toBe(200);
+    const { db } = ctx.deps;
+    const dump = async () => ({
+      screening: await db.selectFrom('healthScreening').selectAll().execute(),
+      limitations: await db.selectFrom('limitation').selectAll().execute(),
+    });
+    const before = await dump();
+    const writes: [string, (trx: Parameters<typeof deleteLimitation>[0]) => Promise<unknown>][] = [
+      [
+        'questionnaire',
+        (trx) => saveHealthScreening(trx, ctx.deps, u.id, { caution: true, questionnaireVersion: '1.0' }),
+      ],
+      [
+        'création',
+        (trx) => writeLimitation(trx, ctx.deps, u.id, { bodyArea: 'hip', side: 'both', severity: 'mild' }),
+      ],
+      ['modification', (trx) => updateLimitation(trx, ctx.deps, u.id, id, { severity: 'severe' })],
+      ['suppression', (trx) => deleteLimitation(trx, ctx.deps, u.id, id)],
+    ];
+    for (const [label, write] of writes) {
+      const error = await db
+        .transaction()
+        .execute(write)
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+      expect(error, label).toBeInstanceOf(HttpError);
+      expect((error as HttpError).status, label).toBe(403);
+      expect((error as HttpError).code, label).toBe('health_consent_required');
+    }
+    expect(await dump()).toEqual(before);
   });
 });

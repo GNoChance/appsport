@@ -97,6 +97,17 @@ describe('POST /api/me/consents/health/replay-withdraw (R-SYN-28)', () => {
     expect(await state(u.id)).toEqual(before);
   });
 
+  it('refuse quand aucun accord n’a jamais existé', async () => {
+    ctx = await createTestContext();
+    const u = await createUserAndLogin(ctx);
+    ctx.clock.set('2026-10-06T12:30:00.000Z');
+    const before = await state(u.id);
+    const res = await replay(u, '2026-10-06T09:00:00.000Z');
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'conflict' });
+    expect(await state(u.id)).toEqual(before);
+  });
+
   it('refuse une date illisible', async () => {
     const u = await setup();
     expect((await replay(u, 'hier')).status).toBe(400);
