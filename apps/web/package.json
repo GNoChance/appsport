@@ -9,10 +9,13 @@
   },
   "dependencies": {
     "@appsport/contracts": "workspace:*",
-    "@appsport/domain": "workspace:*"
+    "@appsport/domain": "workspace:*",
+    "dexie": "^4.4.6",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@appsport/server": "workspace:*",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20"
   }
 }

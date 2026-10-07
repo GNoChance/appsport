@@ -1,0 +1,94 @@
+{
+  "localDbVersion": 1,
+  "protocol": 1,
+  "stores": {
+    "meta": "key",
+    "outbox": "opId, userId, [entity+id]",
+    "deadletter": "opId, userId",
+    "user": "id",
+    "training_profile": "id",
+    "health_screening": "id",
+    "limitation": "id",
+    "consent_event": "id, [type+createdAt]",
+    "gym": "id, nameKey",
+    "gym_equipment": "id, gymId",
+    "place": "id, gymId",
+    "home_equipment": "id, placeId",
+    "sync_rejection": "id, dismissedAt",
+    "exercises": "id",
+    "illustrations": "id",
+    "programTemplates": "id",
+    "adviceSheets": "id"
+  },
+  "meta": {
+    "deviceId": "0199b9a0-0000-7000-8000-0000000000d1",
+    "userId": "0199b9a0-0000-7000-8000-0000000000aa",
+    "watermark": "0199b9a0-0000-7000-8000-0000000000e1:42",
+    "serverEpoch": "0199b9a0-0000-7000-8000-0000000000e1",
+    "protocol": 1
+  },
+  "outbox": [
+    {
+      "opId": "0199b9a0-0000-7000-8000-000000000001",
+      "userId": "0199b9a0-0000-7000-8000-0000000000aa",
+      "entity": "sync_rejection",
+      "id": "0199b9a0-0000-7000-8000-0000000000b1",
+      "kind": "patch",
+      "fields": { "dismissedAt": "2026-10-05T08:00:00.000Z" },
+      "clientTs": "2026-10-05T08:00:00.000Z",
+      "protocol": 1,
+      "attempts": 2
+    },
+    {
+      "opId": "0199b9a0-0000-7000-8000-000000000002",
+      "userId": "0199b9a0-0000-7000-8000-0000000000aa",
+      "entity": "sync_rejection",
+      "id": "0199b9a0-0000-7000-8000-0000000000b1",
+      "kind": "patch",
+      "fields": { "dismissedAt": "2026-10-05T09:30:00.000Z" },
+      "clientTs": "2026-10-05T09:30:00.000Z",
+      "protocol": 1,
+      "attempts": 0
+    }
+  ],
+  "deadletter": [],
+  "mirrors": {
+    "sync_rejection": [
+      {
+        "id": "0199b9a0-0000-7000-8000-0000000000b1",
+        "ownerId": "0199b9a0-0000-7000-8000-0000000000aa",
+        "rev": 41,
+        "createdAt": "2026-10-04T18:00:00.000Z",
+        "updatedAt": "2026-10-05T09:30:00.000Z",
+        "updatedBy": null,
+        "deletedAt": null,
+        "opId": "0199b9a0-0000-7000-8000-0000000000c1",
+        "entity": "sync_rejection",
+        "rowId": "0199b9a0-0000-7000-8000-0000000000b0",
+        "code": "validation",
+        "detailJson": { "reason": "dismissed_at" },
+        "dismissedAt": "2026-10-05T09:30:00.000Z",
+        "serverRevSeen": 41
+      }
+    ],
+    "training_profile": [
+      {
+        "id": "0199b9a0-0000-7000-8000-0000000000aa",
+        "ownerId": "0199b9a0-0000-7000-8000-0000000000aa",
+        "rev": 40,
+        "createdAt": "2026-10-01T12:00:00.000Z",
+        "updatedAt": "2026-10-01T12:05:00.000Z",
+        "updatedBy": "0199b9a0-0000-7000-8000-0000000000aa",
+        "deletedAt": null,
+        "goal": "muscle",
+        "experience": "none",
+        "daysPerWeek": 3,
+        "sessionMinutes": 45,
+        "sportCode": null,
+        "sportOtherLabel": null,
+        "cautiousMode": false,
+        "serverRevSeen": 40
+      }
+    ]
+  }
+}
