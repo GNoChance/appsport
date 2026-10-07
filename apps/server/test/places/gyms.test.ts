@@ -357,27 +357,40 @@ describe('PATCH /api/gyms/:id (R-SAL-6, R-CHG-3)', () => {
 });
 
 describe('visibilité (R-VIS-1 à R-VIS-5)', () => {
-  it('ne compte que les membres majeurs, actifs et visibles', async () => {
+  it('ne compte que les lieux visibles de comptes actifs ; un mineur est visible sur demande', async () => {
     ctx = await createTestContext();
     const lea = await createUserAndLogin(ctx, { username: 'lea' });
     const gymId = ((await (await createGym(lea)).json()) as { gymId: string }).gymId;
-    const minor = await createUser(ctx, { birthDate: '2012-01-01' });
+    const minorHidden = await createUser(ctx, { birthDate: '2012-01-01' });
+    const minorShown = await createUser(ctx, { birthDate: '2012-01-01', username: 'tom' });
     const hidden = await createUser(ctx);
     const disabled = await createUser(ctx, { status: 'disabled' });
     const removed = await createUser(ctx);
-    await give(minor, gymId, { visibleAtGym: 1 });
+    // Un mineur sans choix a visibleAtGym 0 (défaut de la colonne) ; avec 1, il est listé.
+    await give(minorHidden, gymId, { visibleAtGym: 0 });
+    await give(minorShown, gymId, { visibleAtGym: 1 });
     await give(hidden, gymId, { visibleAtGym: 0 });
     await give(disabled, gymId);
-    const gone = await give(removed, gymId);
+    await give(removed, gymId);
     await ctx.deps.db
-      .updateTable('place')
-      .set({ deletedAt: '2026-10-06T10:00:00.000Z' })
-      .where('id', '=', gone.id as string)
-      .execute();
+      .transaction()
+      .execute((trx) => deleteAccount(trx, ctx.deps, removed.id, { actorId: null, ip: null }));
     const d = await detail(lea, gymId);
-    expect(d.visibleMembers).toEqual(['lea']);
+    expect(d.visibleMembers).toEqual(['lea', 'tom']);
     const list = (await (await call(lea.cookie, '/api/gyms')).json()) as { visibleMemberCount: number }[];
-    expect(list[0]?.visibleMemberCount).toBe(1);
+    expect(list[0]?.visibleMemberCount).toBe(2);
+  });
+
+  it("l'auteur d'une modification n'est nommé que s'il est admin ou visible à la salle", async () => {
+    const { a, b, admin, gymId } = await setup();
+    const c = await createUserAndLogin(ctx);
+    await give(b, gymId, { visibleAtGym: 0 });
+    await give(c, gymId, { visibleAtGym: 1 });
+    expect((await call(b.cookie, `/api/gyms/${gymId}/equipment/leg_press`, 'PUT')).status).toBe(204);
+    expect((await call(c.cookie, `/api/gyms/${gymId}/equipment/leg_curl`, 'PUT')).status).toBe(204);
+    expect((await call(admin.cookie, `/api/gyms/${gymId}/equipment/seated_row`, 'PUT')).status).toBe(204);
+    const h = (await detail(a, gymId)).history;
+    expect(h.map((x) => x.authorUsername)).toEqual([admin.username, c.username, null, a.username]);
   });
 });
 

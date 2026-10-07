@@ -41,13 +41,13 @@ export function gymRoutes(deps: AppDeps): Hono<AppEnv> {
 
   routes.get('/', async (c) => {
     const { q } = parseQuery(c, SearchQuery);
-    return c.json(await searchGyms(deps.db, deps, q ?? ''));
+    return c.json(await searchGyms(deps.db, q ?? ''));
   });
 
   // Déclaré avant `/:id`.
   routes.get('/similar', async (c) => {
     const { name, city } = parseQuery(c, SimilarQuery);
-    return c.json(await similarGyms(deps.db, deps, name, city));
+    return c.json(await similarGyms(deps.db, name, city));
   });
 
   routes.post('/', async (c) => {
@@ -57,7 +57,7 @@ export function gymRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json(created, 201);
   });
 
-  routes.get('/:id', async (c) => c.json(await gymDetail(deps.db, deps, userOf(c), c.req.param('id'))));
+  routes.get('/:id', async (c) => c.json(await gymDetail(deps.db, userOf(c), c.req.param('id'))));
 
   routes.patch('/:id', async (c) => {
     const user = userOf(c);

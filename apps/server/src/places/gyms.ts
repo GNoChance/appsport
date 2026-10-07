@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import {
   type CreateGymRequest,
   type CreateGymResponse,
@@ -10,7 +11,7 @@ import {
   type LoadSettings,
   type UpdateGymRequest,
 } from '@appsport/contracts';
-import { ageBandOn, normalize, parisDate } from '@appsport/domain';
+import { normalize } from '@appsport/domain';
 import { sql } from 'kysely';
 import type { SessionUser } from '../app-env';
 import { logSecurityEvent } from '../auth/security-log';
@@ -22,6 +23,29 @@ import { insertGymPlace } from './place-rows';
 
 const HISTORY_LIMIT = 10;
 const MIN_SIMILAR = 2;
+
+const SQLITE_CONSTRAINT = 19;
+
+/** Une violation UNIQUE sur la clé (nom, ville) devient 409 gym_duplicate. */
+async function uniqueAsDuplicate<T>(
+  trx: DbExecutor,
+  keys: { nameKey: string; cityKey: string },
+  run: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    const code = (error as { errcode?: unknown }).errcode;
+    if (typeof code !== 'number' || (code & 0xff) !== SQLITE_CONSTRAINT) throw error;
+    const clash = await trx
+      .selectFrom('gym')
+      .select('id')
+      .where('nameKey', '=', keys.nameKey)
+      .where('cityKey', '=', keys.cityKey)
+      .executeTakeFirst();
+    throw httpError('gym_duplicate', clash ? { gymId: clash.id } : undefined);
+  }
+}
 
 async function loadGym(db: DbExecutor, gymId: string) {
   return db.selectFrom('gym').selectAll().where('id', '=', gymId).executeTakeFirst();
@@ -55,40 +79,35 @@ async function addHistory(
     .execute();
 }
 
-/** Pseudos des membres visibles (R-VIS) : lieu actif visible, compte actif, majeur. */
-async function visibleMembersByGym(
+/** Membres visibles (R-VIS) : lieu actif avec visible_at_gym = 1 et compte actif (un mineur l'active lieu par lieu). */
+async function visibleRowsByGym(
   db: DbExecutor,
-  deps: AppDeps,
   gymIds: string[],
-): Promise<Map<string, string[]>> {
-  const result = new Map<string, string[]>(gymIds.map((id) => [id, []]));
+): Promise<Map<string, { id: string; username: string }[]>> {
+  const result = new Map<string, { id: string; username: string }[]>(gymIds.map((id) => [id, []]));
   if (gymIds.length === 0) return result;
   const rows = await db
     .selectFrom('place')
     .innerJoin('user', 'user.id', 'place.ownerId')
-    .select(['place.gymId as gymId', 'user.username as username', 'user.birthDate as birthDate'])
+    .select(['place.gymId as gymId', 'user.id as id', 'user.username as username'])
     .where('place.gymId', 'in', gymIds)
     .where('place.deletedAt', 'is', null)
     .where('place.visibleAtGym', '=', 1)
     .where('user.status', '=', 'active')
     .orderBy('user.usernameKey')
     .execute();
-  const today = parisDate(deps.clock.now());
   for (const row of rows) {
-    if (row.gymId === null || ageBandOn(row.birthDate, today) !== 'adult') continue;
-    result.get(row.gymId)?.push(row.username);
+    if (row.gymId !== null) result.get(row.gymId)?.push({ id: row.id, username: row.username });
   }
   return result;
 }
 
 async function summaries(
   db: DbExecutor,
-  deps: AppDeps,
   gyms: { id: string; name: string; city: string }[],
 ): Promise<GymSummary[]> {
-  const members = await visibleMembersByGym(
+  const members = await visibleRowsByGym(
     db,
-    deps,
     gyms.map((g) => g.id),
   );
   return gyms.map((g) => ({
@@ -99,7 +118,7 @@ async function summaries(
   }));
 }
 
-export async function searchGyms(db: DbExecutor, deps: AppDeps, q: string): Promise<GymSummary[]> {
+export async function searchGyms(db: DbExecutor, q: string): Promise<GymSummary[]> {
   const key = normalize(q);
   let query = db
     .selectFrom('gym')
@@ -112,15 +131,10 @@ export async function searchGyms(db: DbExecutor, deps: AppDeps, q: string): Prom
       eb.or([eb(sql`instr(name_key, ${key})`, '>', 0), eb(sql`instr(city_key, ${key})`, '>', 0)]),
     );
   }
-  return summaries(db, deps, await query.execute());
+  return summaries(db, await query.execute());
 }
 
-export async function similarGyms(
-  db: DbExecutor,
-  deps: AppDeps,
-  name: string,
-  city: string,
-): Promise<GymSummary[]> {
+export async function similarGyms(db: DbExecutor, name: string, city: string): Promise<GymSummary[]> {
   const nameKey = normalize(name);
   const cityKey = normalize(city);
   const useName = nameKey.length >= MIN_SIMILAR;
@@ -136,7 +150,6 @@ export async function similarGyms(
     .execute();
   return summaries(
     db,
-    deps,
     gyms.filter((g) => (useName && close(g.nameKey, nameKey)) || (useCity && close(g.cityKey, cityKey))),
   );
 }
@@ -160,12 +173,7 @@ export async function loadEditableGym(db: DbExecutor, user: SessionUser, gymId: 
   return gym;
 }
 
-export async function gymDetail(
-  db: DbExecutor,
-  deps: AppDeps,
-  user: SessionUser,
-  gymId: string,
-): Promise<GymDetail> {
+export async function gymDetail(db: DbExecutor, user: SessionUser, gymId: string): Promise<GymDetail> {
   const gym = await loadGym(db, gymId);
   if (!gym) throw httpError('not_found');
   const active = new Set(
@@ -186,13 +194,16 @@ export async function gymDetail(
       'gymHistory.action as action',
       'gymHistory.detail as detail',
       'user.username as authorUsername',
+      'user.role as authorRole',
+      'gymHistory.authorId as authorId',
     ])
     .where('gymHistory.gymId', '=', gymId)
     .orderBy('gymHistory.at', 'desc')
     .orderBy('gymHistory.id', 'desc')
     .limit(HISTORY_LIMIT)
     .execute();
-  const members = (await visibleMembersByGym(db, deps, [gymId])).get(gymId) ?? [];
+  const members = (await visibleRowsByGym(db, [gymId])).get(gymId) ?? [];
+  const visibleIds = new Set(members.map((m) => m.id));
   return {
     id: gym.id,
     name: gym.name,
@@ -201,11 +212,15 @@ export async function gymDetail(
     deletedAt: gym.deletedAt,
     equipment: EQUIPMENT.filter((code) => active.has(code)),
     canEdit: gym.deletedAt === null && (await canEditGym(db, user, gymId)),
-    visibleMembers: members,
+    visibleMembers: members.map((m) => m.username),
     history: history.map((h) => ({
       at: h.at,
       action: h.action,
-      authorUsername: h.authorUsername,
+      // Le pseudo n'est rendu que pour un admin ou un membre visible à cette salle.
+      authorUsername:
+        h.authorId !== null && (h.authorRole === 'admin' || visibleIds.has(h.authorId))
+          ? h.authorUsername
+          : null,
       detail: JSON.parse(h.detail) as unknown,
     })),
   };
@@ -325,20 +340,22 @@ export async function createGym(
   } else {
     gymId = deps.ids.uuidv7();
     const stamp = await writeStamp(trx, deps, user.id);
-    await trx
-      .insertInto('gym')
-      .values({
-        id: gymId,
-        name: req.name,
-        nameKey,
-        city: req.city,
-        cityKey,
-        loadSettings: JSON.stringify(defaultLoadSettings('gym')),
-        createdBy: user.id,
-        createdAt: stamp.updatedAt,
-        ...stamp,
-      })
-      .execute();
+    await uniqueAsDuplicate(trx, { nameKey, cityKey }, () =>
+      trx
+        .insertInto('gym')
+        .values({
+          id: gymId,
+          name: req.name,
+          nameKey,
+          city: req.city,
+          cityKey,
+          loadSettings: JSON.stringify(defaultLoadSettings('gym')),
+          createdBy: user.id,
+          createdAt: stamp.updatedAt,
+          ...stamp,
+        })
+        .execute(),
+    );
   }
   for (const code of codes) await setEquipment(trx, deps, user.id, gymId, code, true);
   await addHistory(trx, deps, gymId, user.id, 'create', {
@@ -381,24 +398,25 @@ export async function updateGym(
   if (name !== gym.name) info.name = { from: gym.name, to: name };
   if (city !== gym.city) info.city = { from: gym.city, to: city };
   const from = JSON.parse(gym.loadSettings) as LoadSettings;
-  const settingsChanged =
-    req.loadSettings !== undefined && JSON.stringify(req.loadSettings) !== JSON.stringify(from);
+  const settingsChanged = req.loadSettings !== undefined && !isDeepStrictEqual(req.loadSettings, from);
   const infoChanged = info.name !== undefined || info.city !== undefined;
   if (!infoChanged && !settingsChanged) return;
 
   const stamp = await writeStamp(trx, deps, user.id);
-  await trx
-    .updateTable('gym')
-    .set({
-      name,
-      nameKey,
-      city,
-      cityKey,
-      ...(settingsChanged ? { loadSettings: JSON.stringify(req.loadSettings) } : {}),
-      ...stamp,
-    })
-    .where('id', '=', gymId)
-    .execute();
+  await uniqueAsDuplicate(trx, { nameKey, cityKey }, () =>
+    trx
+      .updateTable('gym')
+      .set({
+        name,
+        nameKey,
+        city,
+        cityKey,
+        ...(settingsChanged ? { loadSettings: JSON.stringify(req.loadSettings) } : {}),
+        ...stamp,
+      })
+      .where('id', '=', gymId)
+      .execute(),
+  );
   if (infoChanged) await addHistory(trx, deps, gymId, user.id, 'update_info', info);
   if (settingsChanged) {
     await addHistory(trx, deps, gymId, user.id, 'update_load_settings', { from, to: req.loadSettings });
