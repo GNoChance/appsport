@@ -220,21 +220,14 @@ describe('POST /api/sync/push : rejets', () => {
     expect(JSON.parse(rowsOf('sync_rejection')[0]?.detail_json as string).reason).toBe('owner_mismatch');
   });
 
-  it("patch d'une ligne absente → validation ; restore_upsert → validation", async () => {
+  it("patch d'une ligne absente → validation", async () => {
     const a = await setup();
     const res = await syncPush(ctx, a.cookie, [
       makeOp({ userId: a.id, entity: 'fixture_note', id: newId(), kind: 'patch', fields: { title: 't' } }),
-      makeOp({
-        userId: a.id,
-        entity: 'fixture_note',
-        id: newId(),
-        kind: 'restore_upsert',
-        fields: { title: 't' },
-      }),
     ]);
-    expect(res.body.results.map((r: Row) => r.code)).toEqual(['validation', 'validation']);
+    expect(res.body.results.map((r: Row) => r.code)).toEqual(['validation']);
     const reasons = rowsOf('sync_rejection').map((r) => JSON.parse(r.detail_json as string).reason);
-    expect(reasons).toEqual(['row_missing', 'not_supported']);
+    expect(reasons).toEqual(['row_missing']);
   });
 
   it('une contrainte SQLite rejette une op sans annuler les autres (point de sauvegarde)', async () => {

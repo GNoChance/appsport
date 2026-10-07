@@ -8,7 +8,7 @@ import type { DailyJob } from '../jobs/scheduler';
 const DAY_MS = 86_400_000;
 
 /** Retire des mois calendaires en UTC ; le jour est ramené à la fin du mois cible si besoin. */
-function subtractMonths(date: Date, months: number): Date {
+export function subtractMonths(date: Date, months: number): Date {
   const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
   target.setUTCDate(Math.min(date.getUTCDate(), lastDay));

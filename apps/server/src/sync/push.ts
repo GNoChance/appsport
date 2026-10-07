@@ -10,12 +10,14 @@ import {
 } from '@appsport/contracts';
 import { isUuidV7 } from '@appsport/domain';
 import { sql, type Transaction } from 'kysely';
+import { z } from 'zod';
 import type { SessionUser } from '../app-env';
 import { writeStamp } from '../db/rev';
 import type { AppliedOpTable, Database } from '../db/schema';
 import type { AppDeps } from '../deps';
 import { isHealthConsentActive } from '../privacy/consent-state';
 import type { EntitySyncHooks, HookCtx } from './hooks';
+import { applyRestoreUpsert, type RestoreUpsertOutcome } from './restore-upsert';
 
 /** Rejet d'une op : enregistré dans sync_rejection, le reste du lot continue. */
 export class OpRejection extends Error {
@@ -218,14 +220,19 @@ async function applyOp(b: Batch, raw: Raw): Promise<Applied> {
     await recordAppliedOp(b, op.opId, op.entity, op.id, 'applied_partial', null);
     return { result: { opId: op.opId, status: 'applied_partial', dropped: true } };
   }
-  // 9. Champs écrits par le client ; C2 à null sans accord.
+  // 9. Champs écrits par le client ; C2 à null sans accord ; restore_upsert admet aussi deletedAt.
   const { fields, droppedFields } =
     op.kind === 'delete' ? { fields: {}, droppedFields: [] } : keepFields(rule, op.fields, b.consent);
+  if (op.kind === 'restore_upsert' && Object.hasOwn(op.fields, 'deletedAt')) {
+    fields.deleted_at = restoredDeletedAt(op.fields.deletedAt);
+  }
   // 10. Écriture.
-  if (op.kind === 'restore_upsert') throw new OpRejection('validation', 'not_supported');
   const hookCtx: HookCtx = { trx, deps, userId: user.id, op };
   await hooks?.beforeApply?.(hookCtx, fields);
-  const outcome = await writeRow(b, op, existing, fields);
+  const outcome =
+    op.kind === 'restore_upsert'
+      ? restoreOutcome(await applyRestoreUpsert(hookCtx, rule, fields))
+      : await writeRow(b, op, existing, fields);
   // 11.
   if (outcome.wrote) await hooks?.afterApply?.(hookCtx);
   // 12.
@@ -292,6 +299,20 @@ async function assertParent(
   const row = await readRow(b.trx, parent.entity, parentId);
   if (!row || row.ownerId !== b.user.id) throw new OpRejection('parent_rejected', 'parent_rejected');
 }
+
+const IsoDateTime = z.iso.datetime();
+
+/** deletedAt d'un restore_upsert : null ou horodatage ISO, sinon rejet validation. */
+function restoredDeletedAt(value: unknown): string | null {
+  if (value === null) return null;
+  if (!IsoDateTime.safeParse(value).success) throw new OpRejection('validation', 'deleted_at');
+  return value as string;
+}
+
+const restoreOutcome = (r: RestoreUpsertOutcome): { rev: number; wrote: boolean } => ({
+  rev: r.rev,
+  wrote: r.outcome !== 'kept',
+});
 
 function isC2Value(rule: EntityRule, column: string, value: unknown): boolean {
   if (value === null || value === undefined) return false;
