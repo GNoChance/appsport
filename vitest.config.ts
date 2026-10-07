@@ -13,7 +13,7 @@ export default defineConfig({
           name: 'web',
           root: 'apps/web',
           environment: 'happy-dom',
-          setupFiles: ['fake-indexeddb/auto'],
+          setupFiles: ['test/setup.ts'],
           include: ['test/**/*.test.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
           exclude: ['e2e/**', '**/node_modules/**'],
         },

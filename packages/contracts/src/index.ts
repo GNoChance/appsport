@@ -11,6 +11,7 @@ export * from './case';
 export * from './catalog';
 export * from './constants';
 export * from './entity-rules';
+export * from './help-resources';
 export * from './load-settings';
 export * from './ops';
 export * from './presets';
