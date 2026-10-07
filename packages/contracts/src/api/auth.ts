@@ -7,6 +7,23 @@ export const RoleSchema = z.enum(['admin', 'member']);
 export const UserStatusSchema = z.enum(['active', 'disabled']);
 export const AgeBandSchema = z.enum(['minor', 'adult']);
 
+/** Issue d'un événement du journal de sécurité. */
+export const SECURITY_OUTCOMES = ['success', 'failure', 'blocked'] as const;
+export const SecurityOutcomeSchema = z.enum(SECURITY_OUTCOMES);
+export type SecurityOutcome = z.infer<typeof SecurityOutcomeSchema>;
+
+/** Motif de révocation d'une session. */
+export const SESSION_REVOKED_REASONS = [
+  'logout',
+  'logout_all',
+  'password_change',
+  'password_reset',
+  'admin',
+  'account_deleted',
+] as const;
+export const SessionRevokedReasonSchema = z.enum(SESSION_REVOKED_REASONS);
+export type SessionRevokedReason = z.infer<typeof SessionRevokedReasonSchema>;
+
 export const ONBOARDING_STEPS = [
   'goal',
   'sport',

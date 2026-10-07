@@ -9,6 +9,20 @@ export const GymEquipmentCode = EquipmentCodeSchema.refine((code) => !HOUSEHOLD.
   message: 'objet du quotidien non autorisé en salle',
 });
 
+export const PLACE_KINDS = ['gym', 'home'] as const;
+export const PlaceKindSchema = z.enum(PLACE_KINDS);
+export type PlaceKind = z.infer<typeof PlaceKindSchema>;
+
+export const GYM_NAME_MIN = 2;
+export const GYM_NAME_MAX = 60;
+export const GYM_CITY_MIN = 2;
+export const GYM_CITY_MAX = 60;
+export const PLACE_NAME_MAX = 30;
+
+const gymName = () => z.string().trim().min(GYM_NAME_MIN).max(GYM_NAME_MAX);
+const gymCity = () => z.string().trim().min(GYM_CITY_MIN).max(GYM_CITY_MAX);
+const placeName = () => z.string().trim().min(1).max(PLACE_NAME_MAX);
+
 export const GymHistoryAction = z.enum([
   'create',
   'update_info',
@@ -47,8 +61,8 @@ export const GymDetail = z.object({
 export type GymDetail = z.infer<typeof GymDetail>;
 
 export const CreateGymRequest = z.strictObject({
-  name: z.string().trim().min(2).max(60),
-  city: z.string().trim().min(2).max(60),
+  name: gymName(),
+  city: gymCity(),
   equipment: z.array(GymEquipmentCode),
   isPrimary: z.boolean(),
   visibleAtGym: z.boolean().optional(),
@@ -60,8 +74,8 @@ export type CreateGymResponse = z.infer<typeof CreateGymResponse>;
 
 export const UpdateGymRequest = z
   .strictObject({
-    name: z.string().trim().min(2).max(60).optional(),
-    city: z.string().trim().min(2).max(60).optional(),
+    name: gymName().optional(),
+    city: gymCity().optional(),
     loadSettings: LoadSettingsSchema.optional(),
   })
   .refine((v) => Object.keys(v).length > 0);
@@ -71,14 +85,14 @@ export const HOME_PLACE_DEFAULT_NAME = 'Maison';
 
 export const CreatePlaceRequest = z.discriminatedUnion('kind', [
   z.strictObject({
-    kind: z.literal('gym'),
+    kind: PlaceKindSchema.extract(['gym']),
     gymId: z.string(),
     isPrimary: z.boolean(),
     visibleAtGym: z.boolean().optional(),
   }),
   z.strictObject({
-    kind: z.literal('home'),
-    name: z.string().trim().min(1).max(30).optional(),
+    kind: PlaceKindSchema.extract(['home']),
+    name: placeName().optional(),
     equipment: z.array(EquipmentCodeSchema),
     isPrimary: z.boolean(),
   }),
@@ -90,7 +104,7 @@ export type CreatePlaceResponse = z.infer<typeof CreatePlaceResponse>;
 
 export const UpdatePlaceRequest = z
   .strictObject({
-    name: z.string().trim().min(1).max(30).optional(),
+    name: placeName().optional(),
     isPrimary: z.literal(true).optional(),
     visibleAtGym: z.boolean().optional(),
     loadSettings: LoadSettingsSchema.optional(),

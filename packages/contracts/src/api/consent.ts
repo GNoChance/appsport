@@ -50,11 +50,22 @@ export const LIMITATION_SEVERITY_LABELS: Record<LimitationSeverity, string> = {
 
 export const LIMITATION_NOTE_MAX = 200;
 
-export const GrantConsentRequest = z.strictObject({ type: z.literal('health'), textVersion: z.string() });
+export const CONSENT_TYPES = ['health', 'ai_coach'] as const;
+export const ConsentTypeSchema = z.enum(CONSENT_TYPES);
+export type ConsentType = z.infer<typeof ConsentTypeSchema>;
+
+export const CONSENT_ACTIONS = ['grant', 'withdraw'] as const;
+export const ConsentActionSchema = z.enum(CONSENT_ACTIONS);
+export type ConsentAction = z.infer<typeof ConsentActionSchema>;
+
+export const GrantConsentRequest = z.strictObject({
+  type: ConsentTypeSchema.extract(['health']),
+  textVersion: z.string(),
+});
 export type GrantConsentRequest = z.infer<typeof GrantConsentRequest>;
 
 export const WithdrawConsentRequest = z.strictObject({
-  type: z.literal('health'),
+  type: ConsentTypeSchema.extract(['health']),
   password: z.string().min(1).max(1024),
 });
 export type WithdrawConsentRequest = z.infer<typeof WithdrawConsentRequest>;

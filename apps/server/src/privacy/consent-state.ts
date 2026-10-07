@@ -1,7 +1,5 @@
-import type { ConsentState, ConsentStatus } from '@appsport/contracts';
+import type { ConsentState, ConsentStatus, ConsentType } from '@appsport/contracts';
 import type { DbExecutor } from '../db/schema';
-
-export type ConsentType = 'health' | 'ai_coach';
 
 const INACTIVE: ConsentStatus = { active: false, textVersion: null, at: null };
 

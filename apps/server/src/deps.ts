@@ -6,6 +6,7 @@ import type { Kysely } from 'kysely';
 import type { AppConfig } from './config';
 import type { Database } from './db/schema';
 import { createLogger, type Logger } from './logger';
+import { SYNC_HOOKS, type SyncHooksMap } from './sync/hooks';
 
 export interface Clock {
   now(): Date;
@@ -47,6 +48,7 @@ export interface AppDeps {
   config: AppConfig;
   logger: Logger;
   entityRules: EntityRulesMap;
+  syncHooks: SyncHooksMap;
 }
 
 export function createAppDeps(o: {
@@ -57,6 +59,7 @@ export function createAppDeps(o: {
   ids?: IdGen;
   logger?: Logger;
   entityRules?: EntityRulesMap;
+  syncHooks?: SyncHooksMap;
 }): AppDeps {
   return {
     db: o.db,
@@ -66,5 +69,6 @@ export function createAppDeps(o: {
     ids: o.ids ?? cryptoIds(),
     logger: o.logger ?? createLogger(),
     entityRules: o.entityRules ?? defaultEntityRules,
+    syncHooks: o.syncHooks ?? SYNC_HOOKS,
   };
 }

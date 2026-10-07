@@ -14,5 +14,6 @@ export * from './load-settings';
 export * from './ops';
 export * from './presets';
 export * from './sports';
+export * from './sync';
 export * from './taxonomy';
 export * from './texts';

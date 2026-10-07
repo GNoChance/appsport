@@ -1,4 +1,5 @@
 import {
+  type ConsentType,
   type EntityRule,
   type LimitationInput,
   type LimitationPatch,
@@ -10,7 +11,7 @@ import { writeStamp } from '../db/rev';
 import type { Database, DbExecutor } from '../db/schema';
 import type { AppDeps } from '../deps';
 import { httpError } from '../http/errors';
-import { type ConsentType, getConsentState, isHealthConsentActive } from './consent-state';
+import { getConsentState, isHealthConsentActive } from './consent-state';
 
 export type HealthWithdrawHook = (trx: Transaction<Database>, deps: AppDeps, userId: string) => Promise<void>;
 export type HealthWithdrawHooks = Readonly<Record<string /* table SQL */, HealthWithdrawHook>>;

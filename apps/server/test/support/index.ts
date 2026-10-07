@@ -3,4 +3,13 @@ export { createTestContext, TEST_ARGON2, type TestContext, type TestRequestInit 
 export { insertFixtureRow } from './factories';
 export { seqIds } from './ids';
 export { completeOnboarding } from './onboarding';
+export {
+  createSyncTestContext,
+  dumpDatabase,
+  makeOp,
+  PROTOCOL_HEADERS,
+  SYNC_FIXTURE_MIGRATION,
+  SYNC_FIXTURE_RULES,
+  syncPush,
+} from './sync-fixtures';
 export { type CreateUserOptions, createUser, createUserAndLogin, login, type TestUser } from './users';
