@@ -21,6 +21,10 @@ interface UserState {
   lockedUntil: number;
 }
 
+/** Une IP inconnue partage un seul seau : elle ne contourne pas les limites par IP. */
+const UNKNOWN_IP = 'unknown';
+const ipKey = (ip: string | null): string => ip ?? UNKNOWN_IP;
+
 const seconds = (ms: number): number => Math.ceil(ms / 1000);
 
 /** Limiteur en mémoire (R-AUTH-2, R-AUTH-3) : repart de zéro au redémarrage. */
@@ -45,7 +49,7 @@ export function createLoginLimiter(clock: Clock): LoginLimiter {
           waits.push(state.lastFailureAt + delay - now);
         }
       }
-      const ipFailures = ip === null ? [] : recent(ips.get(ip) ?? [], now);
+      const ipFailures = recent(ips.get(ipKey(ip)) ?? [], now);
       const oldest = ipFailures[0];
       if (ipFailures.length >= L.ipMaxFailuresPerHour && oldest !== undefined) {
         waits.push(oldest + L.windowMs - now);
@@ -66,7 +70,8 @@ export function createLoginLimiter(clock: Clock): LoginLimiter {
       state.failures = [...recent(state.failures, now), now];
       if (state.failures.length >= L.hourlyMaxFailures) state.lockedUntil = now + L.lockMs;
       users.set(usernameKey, state);
-      if (ip !== null) ips.set(ip, [...recent(ips.get(ip) ?? [], now), now]);
+      const bucket = ipKey(ip);
+      ips.set(bucket, [...recent(ips.get(bucket) ?? [], now), now]);
     },
     recordSuccess(usernameKey) {
       const state = users.get(usernameKey);
@@ -83,15 +88,15 @@ export function createIpLimiter(clock: Clock, opts: { limit: number; windowMs: n
   const hits = new Map<string, number[]>();
   return {
     hit(ip) {
-      if (ip === null) return { allowed: true, retryAfterS: 0 };
+      const bucket = ipKey(ip);
       const now = clock.now().getTime();
-      const inWindow = (hits.get(ip) ?? []).filter((t) => now - t < opts.windowMs);
+      const inWindow = (hits.get(bucket) ?? []).filter((t) => now - t < opts.windowMs);
       const oldest = inWindow[0];
       if (inWindow.length >= opts.limit && oldest !== undefined) {
-        hits.set(ip, inWindow);
+        hits.set(bucket, inWindow);
         return { allowed: false, retryAfterS: seconds(oldest + opts.windowMs - now) };
       }
-      hits.set(ip, [...inWindow, now]);
+      hits.set(bucket, [...inWindow, now]);
       return { allowed: true, retryAfterS: 0 };
     },
   };

@@ -74,9 +74,15 @@ describe('limiteur de connexion par IP (R-AUTH-3)', () => {
     for (let i = 0; i < 30; i += 1) limiter.recordFailure(`pseudo${i}`, IP);
     expect(limiter.check('lea', IP)).toEqual({ allowed: false, retryAfterS: 3600 });
     expect(limiter.check('lea', '100.64.0.10')).toEqual({ allowed: true });
-    expect(limiter.check('lea', null)).toEqual({ allowed: true });
     limiter.unlock('lea');
     expect(limiter.check('lea', IP)).toEqual({ allowed: false, retryAfterS: 3600 });
+  });
+
+  it('une IP nulle partage le seau unknown : elle ne contourne pas la limite par IP', () => {
+    const { limiter } = setup();
+    for (let i = 0; i < 30; i += 1) limiter.recordFailure(`pseudo${i}`, null);
+    expect(limiter.check('lea', null)).toEqual({ allowed: false, retryAfterS: 3600 });
+    expect(limiter.check('lea', IP)).toEqual({ allowed: true });
   });
 });
 
@@ -89,6 +95,14 @@ describe('limiteur d IP (codes)', () => {
     expect(limiter.hit(IP)).toEqual({ allowed: false, retryAfterS: 3600 });
     expect(limiter.hit('100.64.0.10').allowed).toBe(true);
     clock.advance(3_600_000);
+    expect(limiter.hit(IP).allowed).toBe(true);
+  });
+
+  it('une IP nulle partage un seau unknown : 20 essais par heure en tout', () => {
+    const clock = new FakeClock();
+    const limiter = createIpLimiter(clock, { limit: 20, windowMs: 3_600_000 });
+    for (let i = 0; i < 20; i += 1) expect(limiter.hit(null).allowed).toBe(true);
+    expect(limiter.hit(null)).toEqual({ allowed: false, retryAfterS: 3600 });
     expect(limiter.hit(IP).allowed).toBe(true);
   });
 });

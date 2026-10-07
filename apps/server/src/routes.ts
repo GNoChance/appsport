@@ -1,4 +1,5 @@
 import type { Hono } from 'hono';
+import { adminRoutes } from './admin/routes';
 import type { AppEnv } from './app-env';
 import { adminInvitationRoutes, invitationRoutes } from './auth/invitation-routes';
 import { meRoutes } from './auth/me-routes';
@@ -13,4 +14,5 @@ export function mountRoutes(app: Hono<AppEnv>, deps: AppDeps): void {
   app.route('/api/me', meRoutes(deps));
   app.route('/api/invitations', invitationRoutes(deps));
   app.route('/api/admin/invitations', adminInvitationRoutes(deps));
+  app.route('/api/admin', adminRoutes(deps));
 }

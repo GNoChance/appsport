@@ -1,6 +1,8 @@
 import { existsSync, renameSync, rmSync } from 'node:fs';
 import { CivilDate } from '@appsport/contracts';
+import { usernameKey } from '@appsport/domain';
 import { bootstrapAdminInvitation } from './auth/bootstrap';
+import { createPasswordReset } from './auth/password-reset';
 import { type AppConfig, loadConfig } from './config';
 import { migrate } from './db/migrate';
 import { MIGRATIONS, type Migration } from './db/migrations/index';
@@ -112,11 +114,43 @@ async function runAdminBootstrap(args: string[], ctx: CliContext): Promise<numbe
   }
 }
 
+async function runAdminReset(args: string[], ctx: CliContext): Promise<number> {
+  const username = parseFlags(args).positional[0];
+  if (!username) {
+    ctx.err('Pseudo manquant : utilise admin:reset <pseudo>.');
+    return 1;
+  }
+  const created = await withAppDeps(ctx, async (deps) => {
+    const user = await deps.db
+      .selectFrom('user')
+      .select(['id', 'username'])
+      .where('usernameKey', '=', usernameKey(username))
+      .executeTakeFirst();
+    if (!user) return null;
+    const link = await deps.db
+      .transaction()
+      .execute((trx) => createPasswordReset(trx, deps, user.id, { actorId: null, ip: null }));
+    return { ...link, username: user.username };
+  });
+  if (!created) {
+    ctx.err(`Pseudo inconnu : ${username}`);
+    return 1;
+  }
+  ctx.out(`Lien de réinitialisation pour ${created.username} (valable 24 h)`);
+  ctx.out(`Lien : ${created.link}`);
+  ctx.out(`Code : ${created.code}`);
+  return 0;
+}
+
 export const COMMANDS: Record<string, CliCommand> = {
   'admin:bootstrap': {
     usage:
       "admin:bootstrap --birth-date AAAA-MM-JJ : crée l'invitation du premier administrateur (valable 24 h)",
     run: runAdminBootstrap,
+  },
+  'admin:reset': {
+    usage: 'admin:reset <pseudo> : crée un lien de réinitialisation du mot de passe (valable 24 h)',
+    run: runAdminReset,
   },
   init: {
     usage: "init : crée la base d'un volume neuf (sentinelle requise) et fixe l'époque du serveur",

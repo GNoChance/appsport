@@ -78,3 +78,13 @@ export const AcceptInvitationRequest = z.object({
   termsVersion: z.string(),
 });
 export type AcceptInvitationRequest = z.infer<typeof AcceptInvitationRequest>;
+
+/** `role` : rôle de la cible, qui fixe le minimum de mot de passe côté client (14 caractères pour un admin). */
+export const ResetCheckResponse = z.object({ username: z.string(), role: RoleSchema });
+export type ResetCheckResponse = z.infer<typeof ResetCheckResponse>;
+
+export const ResetPasswordRequest = z.object({
+  code: z.string().min(1).max(300),
+  newPassword: z.string().min(1).max(1024),
+});
+export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequest>;

@@ -1,4 +1,10 @@
-import { ChangePasswordRequest, LoginRequest, PASSWORD_MIN_ADMIN } from '@appsport/contracts';
+import {
+  ChangePasswordRequest,
+  CodeRequest,
+  LoginRequest,
+  PASSWORD_MIN_ADMIN,
+  ResetPasswordRequest,
+} from '@appsport/contracts';
 import { passwordLength, usernameKey, validatePassword } from '@appsport/domain';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env';
@@ -11,6 +17,7 @@ import { COMMON_PASSWORDS } from './common-passwords';
 import { authLimiters } from './limiter';
 import { buildMe, storeNewPassword, verifyUserPassword } from './me';
 import { hashPassword, needsRehash, verifyPassword } from './password-hash';
+import { checkPasswordReset, consumePasswordReset } from './password-reset';
 import { logSecurityEvent } from './security-log';
 import {
   clearSessionCookie,
@@ -20,6 +27,12 @@ import {
   revokeSessions,
   setSessionCookie,
 } from './session';
+
+/** Vérifications de code et réinitialisations partagent le même compteur par IP (P-AUT-2). */
+function limitResetAttempts(deps: AppDeps, ip: string | null): void {
+  const verdict = authLimiters(deps).resetCheck.hit(ip);
+  if (!verdict.allowed) throw httpError('rate_limited', { retryAfterS: verdict.retryAfterS });
+}
 
 /** Empreinte factice, calculée une fois par `deps` : égalise le temps d'un pseudo inconnu. */
 const dummyHashes = new WeakMap<AppDeps, Promise<string>>();
@@ -174,6 +187,21 @@ export function authRoutes(deps: AppDeps): Hono<AppEnv> {
       });
     });
     return c.body(null, 204);
+  });
+
+  routes.post('/reset/check', async (c) => {
+    limitResetAttempts(deps, validClientIp(c));
+    const body = await parseJson(c, CodeRequest);
+    return c.json(await checkPasswordReset(deps.db, deps, body.code));
+  });
+
+  routes.post('/reset', async (c) => {
+    const ip = validClientIp(c);
+    limitResetAttempts(deps, ip);
+    const body = await parseJson(c, ResetPasswordRequest);
+    const { userId, token } = await consumePasswordReset(deps, body, ip);
+    setSessionCookie(c, deps, token);
+    return c.json(await buildMe(deps.db, deps, userId));
   });
 
   return routes;
