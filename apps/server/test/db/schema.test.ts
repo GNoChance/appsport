@@ -5,7 +5,6 @@ import { openDatabase } from '../../src/db/open';
 import { FakeClock } from '../support';
 import { dumpSchema } from './schema-dump';
 
-const REFUS = /CHECK constraint failed|UNIQUE constraint failed|FOREIGN KEY constraint failed/;
 const S = "1, '2026-10-06T10:00:00.000Z', '2026-10-06T10:00:00.000Z'";
 const x = (n: number) => 'x'.repeat(n);
 
@@ -13,7 +12,8 @@ describe('schéma du socle', () => {
   let h: ReturnType<typeof openDatabase>;
   const run = (q: string) => h.sqlite.exec(q);
   const ok = (q: string) => expect(() => run(q)).not.toThrow();
-  const bad = (q: string) => expect(() => run(q)).toThrow(REFUS);
+  const bad = (q: string, kind: 'CHECK' | 'UNIQUE' | 'FOREIGN KEY' = 'CHECK') =>
+    expect(() => run(q)).toThrow(`${kind} constraint failed`);
   const count = (q: string) => (h.sqlite.prepare(q).get() as { n: number }).n;
 
   const place = (id: string, owner: string, cols: string, vals: string) =>
@@ -83,10 +83,10 @@ describe('schéma du socle', () => {
     run(gym('g1', 'Salle un'));
     run(gym('g2', 'Salle deux'));
     ok(place('p1', 'u1', 'kind, is_primary', "'home', 1"));
-    bad(place('p2', 'u1', 'kind, is_primary', "'home', 1"));
+    bad(place('p2', 'u1', 'kind, is_primary', "'home', 1"), 'UNIQUE');
     ok(place('p3', 'u1', 'kind, is_primary, deleted_at', "'home', 1, 'x'"));
     ok(place('p4', 'u1', 'kind, gym_id', "'gym', 'g1'"));
-    bad(place('p5', 'u1', 'kind, gym_id', "'gym', 'g1'"));
+    bad(place('p5', 'u1', 'kind, gym_id', "'gym', 'g1'"), 'UNIQUE');
     ok(place('p6', 'u2', 'kind, gym_id', "'gym', 'g1'"));
     bad(place('p7', 'u1', 'kind', "'gym'"));
     bad(place('p8', 'u2', 'kind, gym_id, load_settings', "'gym', 'g2', '{}'"));
@@ -97,7 +97,7 @@ describe('schéma du socle', () => {
 
   it('gym, équipements, invitation, session et journaux', () => {
     ok(gym('g1', 'Salle un'));
-    bad(gym('g2', 'Salle deux', 'g1'));
+    bad(gym('g2', 'Salle deux', 'g1'), 'UNIQUE');
     bad(gym('g3', 'X'));
     const ge = (id: string) =>
       `INSERT INTO gym_equipment (id, gym_id, equipment_code, rev, created_at, updated_at) VALUES ('${id}', 'g1', 'barbell', ${S})`;

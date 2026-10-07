@@ -66,6 +66,9 @@ describe('migrate', () => {
     await sql`INSERT INTO schema_migrations (id, breaking, applied_at) VALUES ('0002_future', 0, 'x')`.execute(
       db,
     );
-    expect(await migrate(db, [], clock)).toEqual({ applied: [], unknownNonBreaking: ['0002_future'] });
+    expect(await migrate(db, MIGRATIONS, clock)).toEqual({
+      applied: ['0001_socle'],
+      unknownNonBreaking: ['0002_future'],
+    });
   });
 });

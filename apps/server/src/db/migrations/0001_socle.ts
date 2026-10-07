@@ -7,15 +7,15 @@ const FK_USER = 'TEXT REFERENCES user(id) ON DELETE SET NULL';
 const bool = (col: string, withDefault = true) =>
   `${col} INTEGER NOT NULL${withDefault ? ' DEFAULT 0' : ''} CHECK (${col} IN (0,1))`;
 
-/** Gabarit +SYNC (09 §0) ; `deleted` à false pour les tables sans suppression logique. */
-const sync = (deleted = true) =>
+/** Gabarit +SYNC (09 §0). */
+const sync = () =>
   [
     'owner_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE',
     'rev INTEGER NOT NULL',
     'created_at TEXT NOT NULL',
     'updated_at TEXT NOT NULL',
     `updated_by ${FK_USER}`,
-    ...(deleted ? ['deleted_at TEXT'] : []),
+    'deleted_at TEXT',
   ].join(', ');
 
 const table = (name: string, ...defs: string[]) => `CREATE TABLE ${name} (${defs.join(', ')}) STRICT`;
@@ -114,10 +114,14 @@ const TABLES: string[] = [
   table(
     'consent_event',
     'id TEXT PRIMARY KEY',
-    sync(false),
+    'owner_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE',
     "type TEXT NOT NULL CHECK (type IN ('health','ai_coach'))",
     "action TEXT NOT NULL CHECK (action IN ('grant','withdraw'))",
     'text_version TEXT NOT NULL',
+    'rev INTEGER NOT NULL',
+    'created_at TEXT NOT NULL',
+    'updated_at TEXT NOT NULL',
+    `updated_by ${FK_USER}`,
   ),
   table(
     'security_event',
