@@ -52,7 +52,8 @@ function childrenFirst(tables: string[], incoming: Map<string, IncomingFk[]>): s
 
 /**
  * Purge quotidienne de la synchro (R-SYN-26, 03 §7), en une transaction : tombstones J/D/E de plus
- * de 90 j (hors salles et lieux), enfants avant parents, jamais un parent encore référencé ;
+ * de 90 j (âge lu sur `updated_at`, horodaté par le serveur, jamais sur le `deleted_at` du client),
+ * hors salles et lieux, enfants avant parents, jamais un parent encore référencé ;
  * `tombstone_purge_rev` monte au plus grand rev supprimé ; `applied_op` de plus de 12 mois.
  */
 export const syncPurgeJob: DailyJob = {
@@ -80,7 +81,7 @@ export const syncPurgeJob: DailyJob = {
         );
         const conditions = [
           sql`deleted_at is not null`,
-          sql`deleted_at < ${tombstonesBefore}`,
+          sql`updated_at < ${tombstonesBefore}`,
           ...referenced,
         ];
         const deleted = await sql<{ rev: number }>`delete from ${sql.table(table)}

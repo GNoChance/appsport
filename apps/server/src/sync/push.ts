@@ -1,6 +1,7 @@
 import {
   camelToSnake,
   type EntityRule,
+  EPOCH_RESEND_DAYS,
   MIN_PROTOCOL,
   type PushResult,
   type RejectionCode,
@@ -36,6 +37,7 @@ export class OpRejection extends Error {
 class UnrecordedRejection extends Error {}
 
 const SQLITE_CONSTRAINT = 19;
+const DAY_MS = 86_400_000;
 
 interface Batch {
   trx: Transaction<Database>;
@@ -215,23 +217,28 @@ async function applyOp(b: Batch, raw: Raw): Promise<Applied> {
   if (rule.parent && (clientId || (op.kind === 'patch' && snakeToCamel(rule.parent.column) in op.fields))) {
     await assertParent(b, rule.parent, op.fields);
   }
-  // 8. Table C2 sans accord : op écartée, rien d'écrit.
-  if (!b.consent && rule.category === 'C2' && op.kind !== 'delete') {
+  // 8. Table C2 sans accord : op écartée, rien d'écrit ; une suppression (delete, ou restore_upsert
+  // portant deletedAt) l'emporte et n'écrit que la tombstone.
+  const restoredDeletion = op.kind === 'restore_upsert' && op.fields.deletedAt != null;
+  const c2Blocked = !b.consent && rule.category === 'C2';
+  if (c2Blocked && op.kind !== 'delete' && !restoredDeletion) {
     await recordAppliedOp(b, op.opId, op.entity, op.id, 'applied_partial', null);
     return { result: { opId: op.opId, status: 'applied_partial', dropped: true } };
   }
   // 9. Champs écrits par le client ; C2 à null sans accord ; restore_upsert admet aussi deletedAt.
   const { fields, droppedFields } =
-    op.kind === 'delete' ? { fields: {}, droppedFields: [] } : keepFields(rule, op.fields, b.consent);
+    op.kind === 'delete' || c2Blocked
+      ? { fields: {} as Record<string, unknown>, droppedFields: [] }
+      : keepFields(rule, op.fields, b.consent);
   if (op.kind === 'restore_upsert' && Object.hasOwn(op.fields, 'deletedAt')) {
-    fields.deleted_at = restoredDeletedAt(op.fields.deletedAt);
+    fields.deleted_at = restoredDeletedAt(op.fields.deletedAt, deps.clock.now());
   }
   // 10. Écriture.
   const hookCtx: HookCtx = { trx, deps, userId: user.id, op };
   await hooks?.beforeApply?.(hookCtx, fields);
   const outcome =
     op.kind === 'restore_upsert'
-      ? restoreOutcome(await applyRestoreUpsert(hookCtx, rule, fields))
+      ? restoreOutcome(await applyRestoreUpsert(hookCtx, rule, fields, existing))
       : await writeRow(b, op, existing, fields);
   // 11.
   if (outcome.wrote) await hooks?.afterApply?.(hookCtx);
@@ -302,11 +309,18 @@ async function assertParent(
 
 const IsoDateTime = z.iso.datetime();
 
-/** deletedAt d'un restore_upsert : null ou horodatage ISO, sinon rejet validation. */
-function restoredDeletedAt(value: unknown): string | null {
+/**
+ * deletedAt d'un restore_upsert : null ou horodatage ISO (sinon rejet validation), ramené dans
+ * [now − EPOCH_RESEND_DAYS, now] : une horloge d'appareil fausse ne date pas la tombstone.
+ */
+function restoredDeletedAt(value: unknown, now: Date): string | null {
   if (value === null) return null;
-  if (!IsoDateTime.safeParse(value).success) throw new OpRejection('validation', 'deleted_at');
-  return value as string;
+  if (typeof value !== 'string' || !IsoDateTime.safeParse(value).success) {
+    throw new OpRejection('validation', 'deleted_at');
+  }
+  const earliest = now.getTime() - EPOCH_RESEND_DAYS * DAY_MS;
+  const ms = Math.min(Math.max(new Date(value).getTime(), earliest), now.getTime());
+  return new Date(ms).toISOString();
 }
 
 const restoreOutcome = (r: RestoreUpsertOutcome): { rev: number; wrote: boolean } => ({

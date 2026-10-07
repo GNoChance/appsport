@@ -41,14 +41,19 @@ const bumpRev = () =>
 const rowOf = (table: string, id: string) =>
   ctx.deps.sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id) as Row | undefined;
 
-function insertNote(owner: { id: string }, deletedAt: string | null): { id: string; rev: number } {
+/** Tombstone : updated_at (horodatage serveur de la suppression) vaut deletedAt sauf mention contraire. */
+function insertNote(
+  owner: { id: string },
+  deletedAt: string | null,
+  updatedAt = deletedAt ?? NOW,
+): { id: string; rev: number } {
   const id = rowIds.uuidv7();
   const rev = bumpRev();
   ctx.deps.sqlite
     .prepare(
       'INSERT INTO fixture_note (id, owner_id, rev, created_at, updated_at, updated_by, deleted_at, title) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
-    .run(id, owner.id, rev, NOW, NOW, owner.id, deletedAt, 'note');
+    .run(id, owner.id, rev, NOW, updatedAt, owner.id, deletedAt, 'note');
   return { id, rev };
 }
 
@@ -56,6 +61,7 @@ function insertItem(
   owner: { id: string },
   noteId: string,
   deletedAt: string | null,
+  updatedAt = deletedAt ?? NOW,
 ): { id: string; rev: number } {
   const id = rowIds.uuidv7();
   const rev = bumpRev();
@@ -63,7 +69,7 @@ function insertItem(
     .prepare(
       'INSERT INTO fixture_note_item (id, owner_id, rev, created_at, updated_at, updated_by, deleted_at, note_id, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
-    .run(id, owner.id, rev, NOW, NOW, owner.id, deletedAt, noteId, 'item');
+    .run(id, owner.id, rev, NOW, updatedAt, owner.id, deletedAt, noteId, 'item');
   return { id, rev };
 }
 
@@ -85,11 +91,9 @@ describe('syncPurgeJob (tombstones à 90 j, applied_op à 12 mois)', () => {
     const old = insertNote(a, OLD);
     const recent = insertNote(a, RECENT);
     const live = insertNote(a, null);
-    const gym = await insertFixtureRow(ctx.deps.db, 'gym', { deletedAt: '2026-01-01T00:00:00.000Z' });
-    const place = await insertFixtureRow(ctx.deps.db, 'place', {
-      ownerId: a.id,
-      deletedAt: '2026-01-01T00:00:00.000Z',
-    });
+    const longAgo = { deletedAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
+    const gym = await insertFixtureRow(ctx.deps.db, 'gym', longAgo);
+    const place = await insertFixtureRow(ctx.deps.db, 'place', { ownerId: a.id, ...longAgo });
 
     await syncPurgeJob.run(ctx.deps);
 
@@ -119,6 +123,30 @@ describe('syncPurgeJob (tombstones à 90 j, applied_op à 12 mois)', () => {
     expect(rowOf('fixture_note', keptParent.id)).toBeDefined();
     expect(rowOf('fixture_note_item', liveChild.id)).toBeDefined();
     expect(await purgeRev()).toBe(other.rev);
+  });
+
+  it("l'âge se lit sur updated_at (serveur), jamais sur le deleted_at du client", async () => {
+    const a = await setup();
+    const clockReset = insertNote(a, '1970-01-01T00:00:00.000Z', '2026-10-05T10:00:00.000Z');
+    const future = insertNote(a, '2099-01-01T00:00:00.000Z', OLD);
+
+    await syncPurgeJob.run(ctx.deps);
+
+    expect(rowOf('fixture_note', clockReset.id)).toBeDefined();
+    expect(rowOf('fixture_note', future.id)).toBeUndefined();
+    expect(await purgeRev()).toBe(future.rev);
+  });
+
+  it('parent à 91 j avec un enfant tombstone à 89 j → parent gardé', async () => {
+    const a = await setup();
+    const parent = insertNote(a, OLD);
+    const child = insertItem(a, parent.id, RECENT);
+
+    await syncPurgeJob.run(ctx.deps);
+
+    expect(rowOf('fixture_note', parent.id)).toBeDefined();
+    expect(rowOf('fixture_note_item', child.id)).toBeDefined();
+    expect(await purgeRev()).toBe(0);
   });
 
   it('tombstone_purge_rev ne diminue jamais', async () => {

@@ -6,22 +6,27 @@ import type { HookCtx } from './hooks';
 
 export type RestoreUpsertOutcome = { outcome: 'inserted' | 'replaced' | 'kept'; rev: number };
 
+/** Ligne déjà lue par le push (étape 6) ; `undefined` si l'id est inconnu. */
+export interface RestoreTarget {
+  rev: number;
+  deletedAt: string | null;
+}
+
 /**
  * Renvoi d'une ligne J après une nouvelle époque (R-SYN-27). `fields` : colonnes snake_case déjà
  * filtrées, `deleted_at` compris s'il est fourni. Ligne absente → insérée ; ligne venue de la
  * sauvegarde (rev ≤ epoch_base_rev) que le client avait vue plus récente (serverRevSeen > rev) →
  * remplacée ; sinon gardée, sauf une suppression du client sur une ligne vivante, qui l'emporte.
+ * La règle n'est pas relue : le push n'admet que les tables J à `owner_id`.
  */
 export async function applyRestoreUpsert(
   ctx: HookCtx,
-  rule: EntityRule,
+  _rule: EntityRule,
   fields: Record<string, unknown>,
+  existing: RestoreTarget | undefined,
 ): Promise<RestoreUpsertOutcome> {
   const { trx, deps, userId, op } = ctx;
   const table = sql.table(op.entity);
-  const found = await sql<{ rev: number; deletedAt: string | null }>`
-    select rev, deleted_at from ${table} where id = ${op.id}`.execute(trx);
-  const existing = found.rows[0];
 
   if (!existing) {
     const stamp = await writeStamp(trx, deps, userId);
@@ -29,7 +34,7 @@ export async function applyRestoreUpsert(
       deleted_at: null,
       ...fields,
       id: op.id,
-      [rule.ownerColumn ?? 'owner_id']: userId,
+      owner_id: userId,
       rev: stamp.rev,
       created_at: stamp.updatedAt,
       updated_at: stamp.updatedAt,

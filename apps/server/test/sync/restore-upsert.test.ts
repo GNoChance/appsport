@@ -147,6 +147,19 @@ describe('restore_upsert : trois branches (R-SYN-27)', () => {
     const res = await syncPush(ctx, a.cookie, [ru(a, newId(), { title: 't', deletedAt: 'hier' })]);
     expect(res.body.results[0]).toMatchObject({ status: 'rejected', code: 'validation' });
   });
+
+  it('deletedAt ramené dans [now − 60 j, now] (horloge du client fausse)', async () => {
+    const a = await setup();
+    const future = newId();
+    const past = newId();
+    const res = await syncPush(ctx, a.cookie, [
+      ru(a, future, { title: 'f', deletedAt: '2099-01-01T00:00:00.000Z' }),
+      ru(a, past, { title: 'p', deletedAt: '1970-01-01T00:00:00.000Z' }),
+    ]);
+    expect(res.body.results.map((r: Row) => r.status)).toEqual(['applied', 'applied']);
+    expect(rowOf('fixture_note', future)?.deleted_at).toBe('2026-10-06T10:00:00.000Z');
+    expect(rowOf('fixture_note', past)?.deleted_at).toBe('2026-08-07T10:00:00.000Z');
+  });
 });
 
 describe('restore_upsert : garde-fous du push', () => {
@@ -168,6 +181,27 @@ describe('restore_upsert : garde-fous du push', () => {
       dropped: true,
     });
     expect(rowOf('fixture_c2_log', id)).toBeUndefined();
+  });
+
+  it('table C2 sans consentement : un restore_upsert portant deletedAt pose la tombstone, sans contenu', async () => {
+    const a = await setup();
+    const absent = newId();
+    const live = newId();
+    ctx.deps.sqlite
+      .prepare(
+        'INSERT INTO fixture_c2_log (id, owner_id, rev, created_at, updated_at, updated_by, deleted_at, value) VALUES (?, ?, 1, ?, ?, ?, NULL, 7)',
+      )
+      .run(live, a.id, '2026-10-06T10:00:00.000Z', '2026-10-06T10:00:00.000Z', a.id);
+    const deletedAt = '2026-10-01T08:00:00.000Z';
+    const res = await syncPush(ctx, a.cookie, [
+      ru(a, absent, { value: 3, deletedAt }, null, 'fixture_c2_log'),
+      ru(a, live, { value: 3, deletedAt }, null, 'fixture_c2_log'),
+    ]);
+    for (const r of res.body.results) {
+      expect(r).toEqual({ opId: expect.any(String), status: 'applied', rev: expect.any(Number) });
+    }
+    expect(rowOf('fixture_c2_log', absent)).toMatchObject({ deleted_at: deletedAt, value: null });
+    expect(rowOf('fixture_c2_log', live)).toMatchObject({ deleted_at: deletedAt, value: 7 });
   });
 
   it("ligne d'un autre → forbidden, ligne intacte", async () => {
