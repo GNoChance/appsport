@@ -63,3 +63,18 @@ export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequest>;
 /** Strict : birthDate ou tout autre champ → 400 validation (P-MIN-2). */
 export const UpdateMeRequest = z.strictObject({ username: z.string().min(1).max(100) });
 export type UpdateMeRequest = z.infer<typeof UpdateMeRequest>;
+
+export const CodeRequest = z.object({ code: z.string().min(1).max(300) });
+export type CodeRequest = z.infer<typeof CodeRequest>;
+
+/** `role` : rôle visé, qui fixe le minimum de mot de passe côté client (14 caractères pour l'amorçage). */
+export const InvitationCheckResponse = z.object({ birthDate: CivilDate, role: RoleSchema });
+export type InvitationCheckResponse = z.infer<typeof InvitationCheckResponse>;
+
+export const AcceptInvitationRequest = z.object({
+  code: z.string().min(1).max(300),
+  username: z.string().min(1).max(100),
+  password: z.string().min(1).max(1024),
+  termsVersion: z.string(),
+});
+export type AcceptInvitationRequest = z.infer<typeof AcceptInvitationRequest>;

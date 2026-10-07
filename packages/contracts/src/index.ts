@@ -1,3 +1,4 @@
+export * from './api/admin';
 export * from './api/auth';
 export * from './api/errors';
 export * from './api/health';

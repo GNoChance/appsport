@@ -1,10 +1,13 @@
 import { existsSync, renameSync, rmSync } from 'node:fs';
+import { CivilDate } from '@appsport/contracts';
+import { bootstrapAdminInvitation } from './auth/bootstrap';
 import { type AppConfig, loadConfig } from './config';
 import { migrate } from './db/migrate';
 import { MIGRATIONS, type Migration } from './db/migrations/index';
 import { openDatabase } from './db/open';
 import { initServerMeta } from './db/server-meta';
 import { type AppDeps, createAppDeps, cryptoIds, systemClock } from './deps';
+import { HttpError } from './http/errors';
 import { createLogger } from './logger';
 import { openMigrated } from './startup';
 import { assertStartupPreconditions } from './startup-guard';
@@ -84,7 +87,37 @@ export async function runInit(
   return 0;
 }
 
+async function runAdminBootstrap(args: string[], ctx: CliContext): Promise<number> {
+  const date = CivilDate.safeParse(parseFlags(args).flags['birth-date']);
+  if (!date.success) {
+    ctx.err('Date de naissance invalide : utilise --birth-date AAAA-MM-JJ.');
+    return 1;
+  }
+  try {
+    const { code, link } = await withAppDeps(ctx, (deps) => bootstrapAdminInvitation(deps, date.data));
+    ctx.out('Invitation administrateur (valable 24 h)');
+    ctx.out(`Lien : ${link}`);
+    ctx.out(`Code : ${code}`);
+    return 0;
+  } catch (error) {
+    if (error instanceof HttpError && error.code === 'under_min_age') {
+      ctx.err('appsport est réservé aux 16 ans et plus.');
+      return 1;
+    }
+    if (error instanceof HttpError && error.code === 'conflict') {
+      ctx.err('Un administrateur existe déjà : utilise admin:reset <pseudo>.');
+      return 1;
+    }
+    throw error;
+  }
+}
+
 export const COMMANDS: Record<string, CliCommand> = {
+  'admin:bootstrap': {
+    usage:
+      "admin:bootstrap --birth-date AAAA-MM-JJ : crée l'invitation du premier administrateur (valable 24 h)",
+    run: runAdminBootstrap,
+  },
   init: {
     usage: "init : crée la base d'un volume neuf (sentinelle requise) et fixe l'époque du serveur",
     run: (_args, ctx) => runInit(loadConfig(ctx.env), ctx),
