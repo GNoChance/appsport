@@ -14,5 +14,6 @@ export type AppEnv = {
     clientIp: string | null;
     user: SessionUser | null;
     sessionId: string | null;
+    sessionUnavailable?: boolean;
   };
 };

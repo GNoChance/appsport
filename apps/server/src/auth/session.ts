@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AppEnv } from '../app-env';
 import type { DbExecutor } from '../db/schema';
 import type { AppDeps } from '../deps';
-import { httpError } from '../http/errors';
+import { HttpError, httpError } from '../http/errors';
 import { hashSecret } from './secret';
 
 const DAY_MS = 86_400_000;
@@ -88,7 +88,21 @@ export function sessionMiddleware(deps: AppDeps): MiddlewareHandler<AppEnv> {
     c.set('user', null);
     c.set('sessionId', null);
     const token = getCookie(c, deps.config.sessionCookieName);
-    if (token) await resolveSession(c, deps, token);
+    if (token) {
+      try {
+        await resolveSession(c, deps, token);
+      } catch (error) {
+        // Base illisible : ni 401 (déconnecterait le client) ni 500 ; requireUser répond 503.
+        c.set('user', null);
+        c.set('sessionId', null);
+        c.set('sessionUnavailable', true);
+        deps.logger.error('session_unavailable', {
+          requestId: c.get('requestId'),
+          code: 'internal',
+          event: error instanceof Error ? error.name : 'unknown',
+        });
+      }
+    }
     await next();
   };
 }
@@ -139,6 +153,7 @@ export const MUST_CHANGE_ALLOWED: readonly string[] = [
 ];
 
 export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (c.get('sessionUnavailable')) throw new HttpError(503, 'internal');
   const user = c.get('user');
   if (!user) throw httpError(c.get('sessionId') ? 'account_deleted' : 'unauthenticated');
   if (user.mustChangePassword && !MUST_CHANGE_ALLOWED.includes(`${c.req.method} ${c.req.path}`)) {

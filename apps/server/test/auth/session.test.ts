@@ -257,6 +257,32 @@ describe('mot de passe à changer (R-MDP-1)', () => {
   });
 });
 
+describe('base illisible', () => {
+  it('/api/health reste en 503 dégradé avec swKill, pas en 500', async () => {
+    const { user, login } = await setup({ config: { swKillSwitch: true } });
+    const { token } = await login(await user());
+    ctx.deps.sqlite.close();
+    const res = await ctx.app.request('/api/health', {
+      headers: { Cookie: `${ctx.deps.config.sessionCookieName}=${token}` },
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ status: 'error', db: 'error', swKill: true });
+  });
+
+  it('une route protégée répond 503 et non 401', async () => {
+    const lines: string[] = [];
+    const { get, user, login } = await setup({ deps: { logger: createLogger((l) => lines.push(l)) } });
+    const { token } = await login(await user());
+    ctx.deps.sqlite.close();
+    for (const path of ['/probe/user', '/probe/admin']) {
+      const res = await get(path, token);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: 'internal' });
+    }
+    expect(lines.join(' ')).not.toContain(token);
+  });
+});
+
 describe('journaux (03 §17 n°7)', () => {
   it('ni le jeton ni son empreinte n’apparaissent', async () => {
     const lines: string[] = [];

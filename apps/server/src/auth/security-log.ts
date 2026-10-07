@@ -26,7 +26,10 @@ export type SecurityEventType =
 
 export type SecurityDetails = { [key: string]: string | number | boolean };
 
-/** Clés jamais écrites dans le journal : retirées à l'exécution (P-LOG-1). */
+/**
+ * Clés jamais écrites dans le journal : retirées à l'exécution (P-LOG-1).
+ * Volontairement large : retire aussi des clés inoffensives (equipmentCode, par exemple).
+ */
 export const FORBIDDEN_DETAIL_KEY = /password|code|token|secret|hash|cookie/i;
 
 export interface SecurityEventInput {
