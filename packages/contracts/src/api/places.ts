@@ -66,3 +66,37 @@ export const UpdateGymRequest = z
   })
   .refine((v) => Object.keys(v).length > 0);
 export type UpdateGymRequest = z.infer<typeof UpdateGymRequest>;
+
+export const HOME_PLACE_DEFAULT_NAME = 'Maison';
+
+export const CreatePlaceRequest = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('gym'),
+    gymId: z.string(),
+    isPrimary: z.boolean(),
+    visibleAtGym: z.boolean().optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('home'),
+    name: z.string().trim().min(1).max(30).optional(),
+    equipment: z.array(EquipmentCodeSchema),
+    isPrimary: z.boolean(),
+  }),
+]);
+export type CreatePlaceRequest = z.infer<typeof CreatePlaceRequest>;
+
+export const CreatePlaceResponse = z.object({ id: z.string() });
+export type CreatePlaceResponse = z.infer<typeof CreatePlaceResponse>;
+
+export const UpdatePlaceRequest = z
+  .strictObject({
+    name: z.string().trim().min(1).max(30).optional(),
+    isPrimary: z.literal(true).optional(),
+    visibleAtGym: z.boolean().optional(),
+    loadSettings: LoadSettingsSchema.optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0);
+export type UpdatePlaceRequest = z.infer<typeof UpdatePlaceRequest>;
+
+export const DeletePlaceRequest = z.strictObject({ newPrimaryId: z.string().optional() });
+export type DeletePlaceRequest = z.infer<typeof DeletePlaceRequest>;

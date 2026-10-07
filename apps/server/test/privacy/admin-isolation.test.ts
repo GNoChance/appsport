@@ -2,9 +2,9 @@ import { entityRules } from '@appsport/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTestContext, createUser, insertFixtureRow, login, type TestContext } from '../support';
 
-// Planchers du nombre de routes énumérées : T18 monte MIN_ID_ROUTES à 4, T19 à 6.
+// Planchers du nombre de routes énumérées : T18 a monté MIN_ID_ROUTES à 4, T19 le monte à 6.
 const MIN_ADMIN_ROUTES = 10;
-const MIN_ID_ROUTES = 0;
+const MIN_ID_ROUTES = 4;
 
 let ctx: TestContext;
 afterEach(() => ctx?.close());
@@ -95,14 +95,4 @@ describe("isolation de l'administrateur (P-ADM-1, P-ADM-2, 02 §15 n°14)", () =
       }
     }
   });
-
-  it.runIf(MIN_ID_ROUTES === 0)(
-    "cas vide explicite : aucune route /api/(me|places) à :id n'existe encore (le plancher monte avec T18 et T19)",
-    async () => {
-      await setup();
-      expect(
-        listRoutes().filter((r) => /^\/api\/(me|places)\//.test(r.path) && r.path.includes(':id')),
-      ).toEqual([]);
-    },
-  );
 });
