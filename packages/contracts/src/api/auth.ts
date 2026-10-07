@@ -88,3 +88,6 @@ export const ResetPasswordRequest = z.object({
   newPassword: z.string().min(1).max(1024),
 });
 export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequest>;
+
+export const DeleteAccountRequest = z.object({ password: z.string().min(1).max(1024) });
+export type DeleteAccountRequest = z.infer<typeof DeleteAccountRequest>;

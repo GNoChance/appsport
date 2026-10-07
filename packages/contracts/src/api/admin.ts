@@ -58,3 +58,10 @@ export type SetBirthDateRequest = z.infer<typeof SetBirthDateRequest>;
 
 export const OpsStatusResponse = z.object({ version: z.string(), opsStatus: OpsStatus.nullable() });
 export type OpsStatusResponse = z.infer<typeof OpsStatusResponse>;
+
+/** `password` : mot de passe de l'admin (P-AUT-5) ; faux → 401 `invalid_credentials`. */
+export const AdminDeleteMemberRequest = z.object({
+  confirmUsername: z.string().min(1).max(100),
+  password: z.string().min(1).max(1024),
+});
+export type AdminDeleteMemberRequest = z.infer<typeof AdminDeleteMemberRequest>;

@@ -1,4 +1,10 @@
-import { SetBirthDateRequest, SetRoleRequest, SetStatusRequest } from '@appsport/contracts';
+import {
+  AdminDeleteMemberRequest,
+  SetBirthDateRequest,
+  SetRoleRequest,
+  SetStatusRequest,
+} from '@appsport/contracts';
+import { usernameKey } from '@appsport/domain';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env';
 import { verifyUserPassword } from '../auth/me';
@@ -8,6 +14,7 @@ import type { AppDeps } from '../deps';
 import { validClientIp } from '../http/client-ip';
 import { httpError } from '../http/errors';
 import { parseJson } from '../http/validate';
+import { deleteAccount } from '../privacy/delete-account';
 import { listMembers, revokeMemberSessions, setBirthDate, setRole, setStatus } from './members';
 import { readOpsStatus } from './ops-status';
 
@@ -63,6 +70,24 @@ export function adminRoutes(deps: AppDeps): Hono<AppEnv> {
     const body = await parseJson(c, SetBirthDateRequest);
     const id = c.req.param('id');
     await deps.db.transaction().execute((trx) => setBirthDate(trx, deps, actor, id, body.birthDate));
+    return c.body(null, 204);
+  });
+
+  routes.post('/members/:id/delete', async (c) => {
+    const { admin, actor } = actorOf(c);
+    const body = await parseJson(c, AdminDeleteMemberRequest);
+    const id = c.req.param('id');
+    await verifyUserPassword(deps.db, deps, admin, body.password, actor.ip);
+    await deps.db.transaction().execute(async (trx) => {
+      const target = await trx
+        .selectFrom('user')
+        .select('usernameKey')
+        .where('id', '=', id)
+        .executeTakeFirst();
+      if (!target) throw httpError('not_found');
+      if (usernameKey(body.confirmUsername) !== target.usernameKey) throw httpError('validation');
+      await deleteAccount(trx, deps, id, actor);
+    });
     return c.body(null, 204);
   });
 
