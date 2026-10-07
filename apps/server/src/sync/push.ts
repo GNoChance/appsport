@@ -80,24 +80,37 @@ export async function applyPush(
   user: SessionUser,
   ops: readonly unknown[],
 ): Promise<PushResult[]> {
-  const results = await deps.db.transaction().execute(async (trx) => {
-    const batch: Batch = {
-      trx,
-      deps,
-      user,
-      consent: await isHealthConsentActive(trx, user.id),
-      rejectedRows: new Set(),
-      written: new Map(),
-    };
-    const out: PushResult[] = [];
-    for (const [index, raw] of ops.entries()) out.push(await applyInSavepoint(batch, asRecord(raw), index));
-    for (const [entity, applied] of batch.written) {
-      await own(deps.syncHooks, entity)?.afterBatch?.({ trx, deps, userId: user.id, applied });
-    }
-    return out;
-  });
+  const results = await runBatch(deps, user, ops);
   deps.logger.info('sync push', { event: 'sync_push', count: ops.length });
   return results;
+}
+
+/** Une valeur levée qui n'est pas une Error (hook) devient une Error sans contenu : 500 propre. */
+function asError(err: unknown): Error {
+  return err instanceof Error ? err : new Error('Valeur non Error levée pendant le push');
+}
+
+async function runBatch(deps: AppDeps, user: SessionUser, ops: readonly unknown[]): Promise<PushResult[]> {
+  try {
+    return await deps.db.transaction().execute(async (trx) => {
+      const batch: Batch = {
+        trx,
+        deps,
+        user,
+        consent: await isHealthConsentActive(trx, user.id),
+        rejectedRows: new Set(),
+        written: new Map(),
+      };
+      const out: PushResult[] = [];
+      for (const [index, raw] of ops.entries()) out.push(await applyInSavepoint(batch, asRecord(raw), index));
+      for (const [entity, applied] of batch.written) {
+        await own(deps.syncHooks, entity)?.afterBatch?.({ trx, deps, userId: user.id, applied });
+      }
+      return out;
+    });
+  } catch (err) {
+    throw asError(err);
+  }
 }
 
 async function applyInSavepoint(b: Batch, raw: Raw, index: number): Promise<PushResult> {
@@ -164,13 +177,12 @@ async function applyOp(b: Batch, raw: Raw): Promise<Applied> {
   if (rawOpId) {
     const seen = await trx
       .selectFrom('appliedOp')
-      .select(['userId', 'assignedRev'])
+      .select(['userId', 'status', 'assignedRev'])
       .where('opId', '=', rawOpId)
       .executeTakeFirst();
     if (seen) {
       if (seen.userId !== user.id) throw new UnrecordedRejection();
-      const rev = seen.assignedRev ?? undefined;
-      return { result: { opId: rawOpId, status: 'duplicate', ...(rev !== undefined ? { rev } : {}) } };
+      return { result: await duplicateOf(b, rawOpId, seen) };
     }
   }
   // 1. Forme.
@@ -228,6 +240,32 @@ async function applyOp(b: Batch, raw: Raw): Promise<Applied> {
     },
     ...(outcome.wrote ? { wrote: { entity: op.entity, id: op.id } } : {}),
   };
+}
+
+/**
+ * Rejeu d'un opId déjà traité : renvoie l'issue d'origine pour que le client nettoie sa copie
+ * même si la première réponse s'est perdue. Le code d'un rejet est relu dans sync_rejection ;
+ * une op C2 écartée est la seule issue applied_partial sans rev attribué.
+ */
+async function duplicateOf(
+  b: Batch,
+  opId: string,
+  seen: { status: AppliedOpTable['status']; assignedRev: number | null },
+): Promise<PushResult> {
+  const result: PushResult = { opId, status: 'duplicate' };
+  if (seen.status !== 'duplicate') result.originalStatus = seen.status;
+  if (seen.assignedRev !== null) result.rev = seen.assignedRev;
+  if (seen.status === 'applied_partial' && seen.assignedRev === null) result.dropped = true;
+  if (seen.status === 'rejected') {
+    const rejection = await b.trx
+      .selectFrom('syncRejection')
+      .select('code')
+      .where('opId', '=', opId)
+      .where('ownerId', '=', b.user.id)
+      .executeTakeFirst();
+    if (rejection) result.code = rejection.code;
+  }
+  return result;
 }
 
 async function readRow(

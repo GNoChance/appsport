@@ -115,6 +115,12 @@ describe('push et données de santé (C2)', () => {
     });
     expect(rowsOf('sync_rejection')).toHaveLength(0);
     expectNoWitness();
+
+    const again = await syncPush(ctx, a.cookie, [op]);
+    expect(again.body.results).toEqual([
+      { opId: op.opId, status: 'duplicate', originalStatus: 'applied_partial', dropped: true },
+    ]);
+    expect(rowsOf('fixture_c2_log')).toHaveLength(0);
   });
 
   it('avec accord : la donnée C2 est écrite', async () => {

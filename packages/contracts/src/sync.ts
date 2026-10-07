@@ -57,6 +57,8 @@ export type PushEnvelope = z.infer<typeof PushEnvelope>;
 export const PushResult = z.object({
   opId: z.string(),
   status: z.enum(['applied', 'applied_partial', 'duplicate', 'rejected']),
+  /** Avec status 'duplicate' : issue de la première application (code et dropped repris aussi). */
+  originalStatus: z.enum(['applied', 'applied_partial', 'rejected']).optional(),
   rev: z.number().int().optional(),
   code: RejectionCode.optional(),
   droppedFields: z.array(z.string()).optional(),

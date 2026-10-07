@@ -67,11 +67,33 @@ describe('POST /api/sync/push : lot et idempotence', () => {
     const first = await syncPush(ctx, a.cookie, [op]);
     const again = await syncPush(ctx, a.cookie, [op]);
     expect(again.body.results).toEqual([
-      { opId: op.opId, status: 'duplicate', rev: first.body.results[0].rev },
+      { opId: op.opId, status: 'duplicate', originalStatus: 'applied', rev: first.body.results[0].rev },
     ]);
     expect(
       ctx.deps.sqlite.prepare('SELECT count(*) AS n FROM applied_op WHERE op_id = ?').get(op.opId),
     ).toEqual({ n: 1 });
+  });
+
+  it('le même opId deux fois dans un lot : le second est duplicate', async () => {
+    const a = await setup();
+    const op = note(a);
+    const res = await syncPush(ctx, a.cookie, [op, op]);
+    const [first, second] = res.body.results;
+    expect(first.status).toBe('applied');
+    expect(second).toEqual({ opId: op.opId, status: 'duplicate', originalStatus: 'applied', rev: first.rev });
+    expect(rowsOf('fixture_note')).toHaveLength(1);
+  });
+
+  it("le rejeu d'une op rejetée renvoie duplicate avec le statut et le code d'origine", async () => {
+    const a = await setup();
+    const op = note(a, { title: '' });
+    const first = await syncPush(ctx, a.cookie, [op]);
+    expect(first.body.results[0]).toMatchObject({ status: 'rejected', code: 'validation' });
+    const again = await syncPush(ctx, a.cookie, [op]);
+    expect(again.body.results).toEqual([
+      { opId: op.opId, status: 'duplicate', originalStatus: 'rejected', code: 'validation' },
+    ]);
+    expect(rowsOf('sync_rejection')).toHaveLength(1);
   });
 
   it("l'opId d'un autre utilisateur est refusé forbidden sans écriture", async () => {
@@ -473,5 +495,37 @@ describe('POST /api/sync/push : hooks de synchro', () => {
     expect(rowsOf('fixture_note')).toHaveLength(0);
     expect(rowsOf('applied_op')).toHaveLength(0);
     expect(rowsOf('sync_rejection')).toHaveLength(0);
+  });
+
+  it('une valeur non Error levée par un hook donne un 500 propre', async () => {
+    const beforeApply = vi.fn(async () => {
+      throw 'VALEUR-SECRETE';
+    });
+    const lines: string[] = [];
+    const a = await setup({
+      deps: {
+        logger: createLogger((l) => lines.push(l)),
+        syncHooks: withHooks({ fixture_note: { beforeApply } }),
+      },
+    });
+    const res = await syncPush(ctx, a.cookie, [note(a)]);
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'internal' });
+    expect(rowsOf('fixture_note')).toHaveLength(0);
+    expect(lines.join('\n')).not.toContain('VALEUR-SECRETE');
+  });
+
+  it("un create sans effet sur une ligne existante n'appelle ni afterApply ni afterBatch", async () => {
+    const afterBatch = vi.fn(async (_b: BatchCtx) => {});
+    const afterApply = vi.fn(async () => {});
+    const a = await setup({ deps: { syncHooks: withHooks({ fixture_note: { afterBatch, afterApply } }) } });
+    const id = newId();
+    await syncPush(ctx, a.cookie, [note(a, { title: 'premier' }, id)]);
+    afterBatch.mockClear();
+    afterApply.mockClear();
+    const res = await syncPush(ctx, a.cookie, [note(a, { title: 'second' }, id)]);
+    expect(res.body.results[0].status).toBe('applied');
+    expect(afterApply).not.toHaveBeenCalled();
+    expect(afterBatch).not.toHaveBeenCalled();
   });
 });
