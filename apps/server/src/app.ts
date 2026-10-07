@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import type { AppEnv } from './app-env';
+import { sessionMiddleware } from './auth/session';
 import type { AppDeps } from './deps';
 import { clientIp } from './http/client-ip';
 import { epochHeader } from './http/epoch-header';
@@ -23,6 +24,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.use('*', securityHeaders());
   app.use('/api/*', epochHeader(deps.db));
   app.use('*', originGuard(deps.config));
+  app.use('/api/*', sessionMiddleware(deps));
   mountRoutes(app, deps);
   app.notFound((c) => c.json({ error: 'not_found' }, 404));
   app.onError(errorHandler(deps.logger));
