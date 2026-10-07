@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { SPORT_OTHER_LABEL_MAX, SportCodeSchema } from '../sports';
+import { OnboardingStep } from './auth';
 
 export const GOALS = ['muscle', 'strength', 'fat_loss', 'fitness', 'sport_support'] as const;
 export const Goal = z.enum(GOALS);
@@ -22,3 +24,19 @@ export const EXPERIENCE_LABELS: Record<Experience, string> = {
   '6_to_24_months': '6 mois à 2 ans',
   gt_24_months: 'Plus de 2 ans',
 };
+
+export const DAYS_PER_WEEK = [2, 3, 4] as const;
+export const SESSION_MINUTES = [30, 45, 60, 75, 90] as const;
+
+/** Strict : tout champ inconnu → 400 validation. */
+export const TrainingProfilePatch = z.strictObject({
+  goal: Goal.optional(),
+  experience: Experience.optional(),
+  daysPerWeek: z.literal(DAYS_PER_WEEK).optional(),
+  sessionMinutes: z.literal(SESSION_MINUTES).optional(),
+  sportCode: SportCodeSchema.nullable().optional(),
+  sportOtherLabel: z.string().trim().min(1).max(SPORT_OTHER_LABEL_MAX).nullable().optional(),
+  cautiousMode: z.boolean().optional(),
+  onboardingStep: OnboardingStep.optional(),
+});
+export type TrainingProfilePatch = z.infer<typeof TrainingProfilePatch>;

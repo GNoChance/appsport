@@ -1,4 +1,4 @@
-import { snakeToCamel } from '@appsport/contracts';
+import { type Experience, type Goal, snakeToCamel } from '@appsport/contracts';
 import type { Generated, Kysely, Transaction } from 'kysely';
 
 /** Gabarit +SYNC des tables à propriétaire (09 §0). */
@@ -145,8 +145,8 @@ export interface SecurityEventTable {
 
 export interface TrainingProfileTable extends SyncColumns, SoftDelete {
   id: string;
-  goal: 'muscle' | 'strength' | 'fat_loss' | 'fitness' | 'sport_support' | null;
-  experience: 'none' | 'lt_6_months' | '6_to_24_months' | 'gt_24_months' | null;
+  goal: Goal | null;
+  experience: Experience | null;
   daysPerWeek: number | null;
   sessionMinutes: number | null;
   sportCode: string | null;

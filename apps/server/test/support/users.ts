@@ -68,3 +68,12 @@ export async function login(
   if (!cookie) throw new Error('Set-Cookie absent');
   return cookie;
 }
+
+/** Crée un compte puis le connecte (`login` avec le mot de passe de la fabrique). */
+export async function createUserAndLogin(
+  ctx: TestContext,
+  o: CreateUserOptions = {},
+): Promise<TestUser & { cookie: string }> {
+  const user = await createUser(ctx, o);
+  return { ...user, cookie: await login(ctx, user.username, user.password) };
+}
