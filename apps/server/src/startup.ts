@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
+import { CATALOG_STARTUP_TASK } from './catalog/loader';
 import type { AppConfig } from './config';
 import { migrate } from './db/migrate';
 import { MIGRATIONS } from './db/migrations/index';
@@ -14,7 +15,7 @@ export interface StartupTask {
 }
 
 /** Tâches exécutées avant l'écoute ; les tâches suivantes s'ajoutent ici. */
-export const STARTUP_TASKS: StartupTask[] = [];
+export const STARTUP_TASKS: StartupTask[] = [CATALOG_STARTUP_TASK];
 
 /** Ouvre la base et applique les migrations ; en cas d'échec, la base est refermée avant de relancer. */
 export async function openMigrated(

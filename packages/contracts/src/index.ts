@@ -8,6 +8,7 @@ export * from './api/places';
 export * from './api/profile';
 export * from './auth-constants';
 export * from './case';
+export * from './catalog';
 export * from './constants';
 export * from './entity-rules';
 export * from './load-settings';
