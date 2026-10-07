@@ -10,6 +10,7 @@ export {
   PROTOCOL_HEADERS,
   SYNC_FIXTURE_MIGRATION,
   SYNC_FIXTURE_RULES,
+  syncPull,
   syncPush,
 } from './sync-fixtures';
 export { type CreateUserOptions, createUser, createUserAndLogin, login, type TestUser } from './users';

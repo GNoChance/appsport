@@ -125,6 +125,20 @@ export async function syncPush(
   return { status: res.status, body: await res.json() };
 }
 
+export async function syncPull(
+  ctx: TestContext,
+  cookie: string,
+  q: { since?: string; limit?: number } = {},
+  // biome-ignore lint/suspicious/noExplicitAny: corps de réponse lu librement par les tests
+): Promise<{ status: number; body: any; headers: Headers }> {
+  const params = new URLSearchParams();
+  if (q.since !== undefined) params.set('since', q.since);
+  if (q.limit !== undefined) params.set('limit', String(q.limit));
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  const res = await ctx.request(`/api/sync/pull${query}`, { cookie, headers: PROTOCOL_HEADERS });
+  return { status: res.status, body: await res.json(), headers: res.headers };
+}
+
 /** JSON de toutes les lignes de toutes les tables, pour chercher des valeurs témoins. */
 export function dumpDatabase(sqlite: DatabaseSync): string {
   const tables = sqlite

@@ -105,3 +105,16 @@ export function decodeWatermark(w: string): { epoch: string; rev: number } | nul
   if (!Number.isSafeInteger(rev)) return null;
   return { epoch: w.slice(0, sep), rev };
 }
+
+/** Décodage d'une colonne SQLite vers la valeur du miroir ; `null` reste `null`. */
+export type ColumnCodec = 'boolean' | 'json';
+
+/** Colonnes `x IN (0,1)` (boolean) et `json_valid(x)` (json) des tables miroirs. */
+export const COLUMN_CODECS: Readonly<Record<string, Readonly<Record<string, ColumnCodec>>>> = {
+  training_profile: { cautious_mode: 'boolean' },
+  health_screening: { caution: 'boolean' },
+  limitation: { active: 'boolean' },
+  gym: { load_settings: 'json' },
+  place: { is_primary: 'boolean', visible_at_gym: 'boolean', load_settings: 'json' },
+  sync_rejection: { detail_json: 'json' },
+};
