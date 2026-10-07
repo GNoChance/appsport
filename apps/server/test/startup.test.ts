@@ -1,7 +1,8 @@
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runCli } from '../src/cli';
 import { loadConfig } from '../src/config';
 import { MigrationError } from '../src/db/migrate';
@@ -63,27 +64,42 @@ describe('garde de démarrage', () => {
 describe('startServer', () => {
   it("tâches de démarrage avant l'écoute, /api/health 200, arrêt en moins de 9 s", async () => {
     await initVolume();
-    const calls: string[] = [];
-    const s = await startServer(env, {
-      logger: createLogger(() => {}),
-      startupTasks: [
-        {
-          name: 't',
-          run: async () => {
-            calls.push('startup');
-          },
-        },
-      ],
-      dailyJobs: [
-        {
-          name: 'j',
-          run: async () => {
-            calls.push('job');
-          },
-        },
-      ],
+    const free = await new Promise<number>((resolve) => {
+      const probe = createServer().listen(0, '127.0.0.1', () => {
+        const { port } = probe.address() as AddressInfo;
+        probe.close(() => resolve(port));
+      });
     });
+    const calls: string[] = [];
+    const s = await startServer(
+      { ...env, PORT: String(free) },
+      {
+        logger: createLogger(() => {}),
+        startupTasks: [
+          {
+            name: 't',
+            run: async () => {
+              const listening = await fetch(`http://127.0.0.1:${free}/api/health`).then(
+                () => true,
+                () => false,
+              );
+              calls.push(listening ? 'startup:already-listening' : 'startup');
+            },
+          },
+        ],
+        dailyJobs: [
+          {
+            name: 'j',
+            run: async () => {
+              calls.push('job');
+            },
+          },
+        ],
+      },
+    );
+    expect(s.port).toBe(free);
     expect(calls[0]).toBe('startup');
+    await vi.waitFor(() => expect(calls).toEqual(['startup', 'job']));
     const res = await fetch(`http://127.0.0.1:${s.port}/api/health`);
     expect(res.status).toBe(200);
     expect(((await res.json()) as { status: string }).status).toBe('ok');

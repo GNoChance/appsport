@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isUuidV7 } from '@appsport/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseFlags, runCli } from '../../src/cli';
+import { parseFlags, runCli, runInit } from '../../src/cli';
+import { loadConfig } from '../../src/config';
+import { MIGRATIONS } from '../../src/db/migrations/index';
 import { openDatabase } from '../../src/db/open';
 import { getServerMeta } from '../../src/db/server-meta';
 
@@ -52,6 +54,21 @@ describe('init', () => {
     expect(await runCli(['init'], env, o, e)).toBe(1);
     expect(err.join('\n')).toMatch(/existe déjà/);
   });
+});
+
+it('un init en échec ne laisse aucun fichier et un second init réussit', async () => {
+  sentinel();
+  const failing = {
+    id: '0002_boom',
+    breaking: false,
+    up: async () => {
+      throw new Error('boom');
+    },
+  };
+  const ctx = { env, out: o, err: e };
+  await expect(runInit(loadConfig(env), ctx, [...MIGRATIONS, failing])).rejects.toThrow();
+  expect(readdirSync(dir)).toEqual(['.appsport-volume']);
+  expect(await runCli(['init'], env, o, e)).toBe(0);
 });
 
 describe('db:check', () => {

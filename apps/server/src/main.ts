@@ -43,7 +43,7 @@ export async function startServer(
       port: listening.port,
       deps,
       close: async () => {
-        jobs.stop();
+        await jobs.stop();
         await new Promise<void>((resolve) => {
           listening.server.close(() => resolve());
           if ('closeIdleConnections' in listening.server) listening.server.closeIdleConnections();
@@ -63,7 +63,10 @@ export async function main(argv: string[]): Promise<number> {
   return new Promise<number>((resolve) => {
     const stop = (): void => {
       setTimeout(() => process.exit(1), 9000).unref();
-      void running.close().then(() => resolve(0));
+      running.close().then(
+        () => resolve(0),
+        () => process.exit(1),
+      );
     };
     process.once('SIGTERM', stop);
     process.once('SIGINT', stop);

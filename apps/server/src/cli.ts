@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, renameSync, rmSync } from 'node:fs';
 import { type AppConfig, loadConfig } from './config';
 import { migrate } from './db/migrate';
-import { MIGRATIONS } from './db/migrations/index';
+import { MIGRATIONS, type Migration } from './db/migrations/index';
 import { openDatabase } from './db/open';
 import { initServerMeta } from './db/server-meta';
 import { type AppDeps, createAppDeps, cryptoIds, systemClock } from './deps';
@@ -48,7 +48,12 @@ export async function withAppDeps<T>(ctx: CliContext, fn: (deps: AppDeps) => Pro
   }
 }
 
-async function runInit(config: AppConfig, ctx: CliContext): Promise<number> {
+/** Construit la base sous un nom temporaire puis la renomme : jamais de base partielle. */
+export async function runInit(
+  config: AppConfig,
+  ctx: CliContext,
+  migrations: readonly Migration[] = MIGRATIONS,
+): Promise<number> {
   if (!existsSync(config.sentinelPath)) {
     ctx.err(`Fichier sentinelle absent : ${config.sentinelPath} ; init refusé.`);
     return 1;
@@ -57,16 +62,26 @@ async function runInit(config: AppConfig, ctx: CliContext): Promise<number> {
     ctx.err(`La base existe déjà : ${config.dbPath} ; init refusé.`);
     return 1;
   }
-  const { sqlite, db } = openDatabase(config.dbPath);
+  const tmpPath = `${config.dbPath}.init-tmp`;
+  const removeTmp = (): void => {
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${tmpPath}${suffix}`, { force: true });
+  };
+  removeTmp();
+  const { sqlite, db } = openDatabase(tmpPath);
+  let epoch: string;
   try {
-    await migrate(db, MIGRATIONS, systemClock);
-    const meta = await initServerMeta(db, { ids: cryptoIds(), clock: systemClock });
-    ctx.out(`Base initialisée : ${config.dbPath}`);
-    ctx.out(`Époque du serveur : ${meta.serverEpoch}`);
-    return 0;
-  } finally {
+    await migrate(db, migrations, systemClock);
+    epoch = (await initServerMeta(db, { ids: cryptoIds(), clock: systemClock })).serverEpoch;
+  } catch (error) {
     sqlite.close();
+    removeTmp();
+    throw error;
   }
+  sqlite.close();
+  renameSync(tmpPath, config.dbPath);
+  ctx.out(`Base initialisée : ${config.dbPath}`);
+  ctx.out(`Époque du serveur : ${epoch}`);
+  return 0;
 }
 
 export const COMMANDS: Record<string, CliCommand> = {

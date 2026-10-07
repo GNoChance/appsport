@@ -57,3 +57,36 @@ it("isole l'échec d'un job et le journalise sans son message", async () => {
   );
   expect(lines.join('\n')).not.toContain('TEMOIN');
 });
+
+it('stop() attend le job en cours et saute les suivants', async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const ran: string[] = [];
+  const handle = startDailyJobs(depsWith([]), [
+    {
+      name: 'slow',
+      run: async () => {
+        await gate;
+        ran.push('slow');
+      },
+    },
+    {
+      name: 'next',
+      run: async () => {
+        ran.push('next');
+      },
+    },
+  ]);
+  await vi.advanceTimersByTimeAsync(0);
+  let stopped = false;
+  const stopping = handle.stop().then(() => {
+    stopped = true;
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(stopped).toBe(false);
+  release();
+  await stopping;
+  expect(ran).toEqual(['slow']);
+});
