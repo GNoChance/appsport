@@ -19,7 +19,7 @@ export class HealthConsentRequiredError extends Error {
 /**
  * Écriture locale d'une table J : ligne miroir et op d'outbox dans une seule transaction
  * (R-SYN-11 à R-SYN-14). Sans accord santé, une table C2 est refusée (sauf suppression) et les
- * valeurs C2 retirées ; un patch ainsi vidé est rendu sans être écrit ni mis en file.
+ * valeurs C2 retirées ; un patch ainsi vidé n'est ni écrit ni mis en file (rend null).
  */
 export async function writeLocal(
   db: AppDb,
@@ -31,7 +31,7 @@ export async function writeLocal(
     healthConsentActive: boolean;
     rules?: EntityRulesMap;
   },
-): Promise<OutboxOp> {
+): Promise<OutboxOp | null> {
   const rules = ctx.rules ?? entityRules;
   const rule = Object.hasOwn(rules, change.entity) ? rules[change.entity] : undefined;
   if (rule?.syncClass !== 'J') throw new Error('entity_not_journal');
@@ -60,7 +60,7 @@ export async function writeLocal(
   });
 
   // Patch vidé par le retrait des valeurs C2 : rien à écrire (comme purgeHealthData), op non mise en file.
-  if (change.kind === 'patch' && stripped && Object.keys(fields).length === 0) return op;
+  if (change.kind === 'patch' && stripped && Object.keys(fields).length === 0) return null;
 
   const mirror = db.mirror(change.entity);
   await db.transaction('rw', db.outbox, mirror, async () => {

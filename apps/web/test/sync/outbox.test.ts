@@ -1,6 +1,6 @@
 import { SYNC_FIXTURE_RULES, seqIds } from '@appsport/server/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AppDb } from '../../src/local-db/db';
+import type { AppDb, OutboxOp } from '../../src/local-db/db';
 import { HealthConsentRequiredError, pendingCount, writeLocal } from '../../src/sync/outbox';
 import { createFixtureLocalDb } from '../support/local-db';
 
@@ -25,8 +25,15 @@ afterEach(async () => {
   await db.delete();
 });
 
+/** writeLocal dont l'op doit être mise en file. */
+async function queued(...args: Parameters<typeof writeLocal>): Promise<OutboxOp> {
+  const op = await writeLocal(...args);
+  if (!op) throw new Error('op non mise en file');
+  return op;
+}
+
 const createNote = () =>
-  writeLocal(db, { entity: 'fixture_note', id: 'n1', kind: 'create', fields: { title: 't' } }, ctx);
+  queued(db, { entity: 'fixture_note', id: 'n1', kind: 'create', fields: { title: 't' } }, ctx);
 
 describe('writeLocal', () => {
   it('écrit la ligne miroir et l’op dans l’outbox', async () => {
@@ -98,7 +105,7 @@ describe('writeLocal', () => {
 
   it('sans consentement : champs et valeurs C2 retirés, table C2 refusée', async () => {
     const noConsent = { ...ctx, healthConsentActive: false };
-    const op = await writeLocal(
+    const op = await queued(
       db,
       {
         entity: 'fixture_note_item',
@@ -113,7 +120,7 @@ describe('writeLocal', () => {
     expect(row).not.toHaveProperty('painNote');
     expect(row).not.toHaveProperty('reason');
 
-    const kept = await writeLocal(
+    const kept = await queued(
       db,
       {
         entity: 'fixture_note_item',
@@ -136,11 +143,7 @@ describe('writeLocal', () => {
   it('sans consentement : suppression d’une ligne C2 admise (P-CST-2)', async () => {
     await writeLocal(db, { entity: 'fixture_c2_log', id: 'c1', kind: 'create', fields: { value: 3 } }, ctx);
     const later = { ...ctx, healthConsentActive: false, now: () => LATER };
-    const del = await writeLocal(
-      db,
-      { entity: 'fixture_c2_log', id: 'c1', kind: 'delete', fields: {} },
-      later,
-    );
+    const del = await queued(db, { entity: 'fixture_c2_log', id: 'c1', kind: 'delete', fields: {} }, later);
     expect(await db.outbox.get(del.opId)).toMatchObject({ kind: 'delete', entity: 'fixture_c2_log' });
     expect(await db.mirror('fixture_c2_log').get('c1')).toMatchObject({ deletedAt: LATER, updatedAt: LATER });
   });
@@ -157,8 +160,7 @@ describe('writeLocal', () => {
       { entity: 'fixture_note_item', id: 'i1', kind: 'patch', fields: { painNote: 'TEMOIN' } },
       later,
     );
-    expect(op.fields).toEqual({});
-    expect(await db.outbox.get(op.opId)).toBeUndefined();
+    expect(op).toBeNull();
     expect(await db.outbox.count()).toBe(1);
     expect(await db.mirror('fixture_note_item').get('i1')).toEqual({
       id: 'i1',
@@ -172,7 +174,7 @@ describe('writeLocal', () => {
   });
 
   it('avec consentement : champs C2 gardés', async () => {
-    const op = await writeLocal(
+    const op = await queued(
       db,
       {
         entity: 'fixture_note_item',
@@ -199,7 +201,7 @@ describe('writeLocal', () => {
       updatedAt: LATER,
     });
     const end = '2026-10-06T12:00:00.000Z';
-    const del = await writeLocal(
+    const del = await queued(
       db,
       { entity: 'fixture_note', id: 'n1', kind: 'delete', fields: {} },
       {
