@@ -1,0 +1,117 @@
+import { existsSync } from 'node:fs';
+import { type AppConfig, loadConfig } from './config';
+import { migrate } from './db/migrate';
+import { MIGRATIONS } from './db/migrations/index';
+import { openDatabase } from './db/open';
+import { initServerMeta } from './db/server-meta';
+import { type AppDeps, createAppDeps, cryptoIds, systemClock } from './deps';
+import { createLogger } from './logger';
+import { openMigrated } from './startup';
+import { assertStartupPreconditions } from './startup-guard';
+
+export interface CliContext {
+  env: Record<string, string | undefined>;
+  out(line: string): void;
+  err(line: string): void;
+}
+
+export interface CliCommand {
+  usage: string;
+  run(args: string[], ctx: CliContext): Promise<number>;
+}
+
+export function parseFlags(args: string[]): { positional: string[]; flags: Record<string, string> } {
+  const positional: string[] = [];
+  const flags: Record<string, string> = {};
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i] as string;
+    if (arg.startsWith('--')) {
+      flags[arg.slice(2)] = args[i + 1] ?? '';
+      i += 1;
+    } else {
+      positional.push(arg);
+    }
+  }
+  return { positional, flags };
+}
+
+/** Garde de démarrage et migrations, puis `fn` ; la base est toujours refermée. */
+export async function withAppDeps<T>(ctx: CliContext, fn: (deps: AppDeps) => Promise<T>): Promise<T> {
+  const config = loadConfig(ctx.env);
+  assertStartupPreconditions(config);
+  const logger = createLogger();
+  const { sqlite, db } = await openMigrated(config, logger);
+  try {
+    return await fn(createAppDeps({ sqlite, db, config, logger }));
+  } finally {
+    sqlite.close();
+  }
+}
+
+async function runInit(config: AppConfig, ctx: CliContext): Promise<number> {
+  if (!existsSync(config.sentinelPath)) {
+    ctx.err(`Fichier sentinelle absent : ${config.sentinelPath} ; init refusé.`);
+    return 1;
+  }
+  if (existsSync(config.dbPath)) {
+    ctx.err(`La base existe déjà : ${config.dbPath} ; init refusé.`);
+    return 1;
+  }
+  const { sqlite, db } = openDatabase(config.dbPath);
+  try {
+    await migrate(db, MIGRATIONS, systemClock);
+    const meta = await initServerMeta(db, { ids: cryptoIds(), clock: systemClock });
+    ctx.out(`Base initialisée : ${config.dbPath}`);
+    ctx.out(`Époque du serveur : ${meta.serverEpoch}`);
+    return 0;
+  } finally {
+    sqlite.close();
+  }
+}
+
+export const COMMANDS: Record<string, CliCommand> = {
+  init: {
+    usage: "init : crée la base d'un volume neuf (sentinelle requise) et fixe l'époque du serveur",
+    run: (_args, ctx) => runInit(loadConfig(ctx.env), ctx),
+  },
+  'db:check': {
+    usage: "db:check : vérifie l'intégrité de la base (integrity_check et foreign_key_check)",
+    run: (_args, ctx) =>
+      withAppDeps(ctx, async ({ sqlite }) => {
+        const integrity = sqlite.prepare('PRAGMA integrity_check').all() as { integrity_check: string }[];
+        const foreign = sqlite.prepare('PRAGMA foreign_key_check').all();
+        const integrityOk = integrity.length === 1 && integrity[0]?.integrity_check === 'ok';
+        if (integrityOk && foreign.length === 0) {
+          ctx.out('OK');
+          return 0;
+        }
+        const problems = [
+          ...(integrityOk ? [] : integrity.map((r) => r.integrity_check)),
+          ...(foreign.length > 0 ? [`${foreign.length} clé(s) étrangère(s) invalide(s)`] : []),
+        ];
+        ctx.err(`Base corrompue : ${problems.join(' ; ')}`);
+        return 1;
+      }),
+  },
+};
+
+export async function runCli(
+  argv: string[],
+  env: Record<string, string | undefined>,
+  out: (line: string) => void = (line) => console.log(line),
+  err: (line: string) => void = (line) => console.error(line),
+): Promise<number> {
+  const [name, ...args] = argv;
+  const command = name !== undefined && Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
+  if (!command) {
+    err(`Commande inconnue : ${name ?? ''}`);
+    for (const c of Object.values(COMMANDS)) err(`  ${c.usage}`);
+    return 1;
+  }
+  try {
+    return await command.run(args, { env, out, err });
+  } catch (error) {
+    err(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+}
