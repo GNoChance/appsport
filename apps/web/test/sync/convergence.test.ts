@@ -15,9 +15,8 @@ import { createSyncEngine, type SyncEngine } from '../../src/sync/engine';
 import { type LocalChange, pendingCount, writeLocal } from '../../src/sync/outbox';
 import { inProcessTransport } from '../support/in-process-transport';
 import { createFixtureLocalDb } from '../support/local-db';
-import { type LossyOptions, lossyTransport } from '../support/lossy-transport';
+import { type LossyOptions, lossyTransport, seededBytes } from '../support/lossy-transport';
 
-const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 type Row = Record<string, unknown>;
 
 interface Device {
@@ -190,14 +189,19 @@ const REJ_MIRROR = { id: 'id', opId: 'opId', entity: 'entity', rowId: 'rowId', c
 const mirrorRows = async (d: Device, entity: string): Promise<Row[]> =>
   d.db.mirror(entity).orderBy('id').toArray();
 
-async function setupReal(opts: LossyOptions, run: number): Promise<Real> {
+/**
+ * Un essai entièrement déterminé par `netSeed` (tiré par fast-check, donc dans le contre-exemple) :
+ * réseau dégradé de chaque appareil et octets aléatoires des générateurs UUIDv7.
+ */
+async function setupReal(opts: LossyOptions, netSeed: number): Promise<Real> {
+  const base = (opts.seed + netSeed) >>> 0;
   const ctx = await createSyncTestContext();
   const user = await createUserAndLogin(ctx);
   const cookies = [user.cookie, await login(ctx, user.username, user.password, '100.64.0.2')];
   const now = () => ctx.clock.now().getTime();
   const newOpIds: [() => string, () => string] = [
-    createMonotonicUuidV7(now, randomBytes),
-    createMonotonicUuidV7(now, randomBytes),
+    createMonotonicUuidV7(now, seededBytes(base + 10)),
+    createMonotonicUuidV7(now, seededBytes(base + 11)),
   ];
   const devices = await Promise.all(
     ([0, 1] as const).map(async (i): Promise<Device> => {
@@ -205,7 +209,7 @@ async function setupReal(opts: LossyOptions, run: number): Promise<Real> {
       await setMeta(db, 'userId', user.id);
       const lossy = lossyTransport(
         inProcessTransport(ctx, () => cookies[i] ?? ''),
-        { ...opts, seed: opts.seed + run * 2 + i },
+        { ...opts, seed: base + i },
       );
       const engine = createSyncEngine({
         db,
@@ -222,7 +226,7 @@ async function setupReal(opts: LossyOptions, run: number): Promise<Real> {
     ctx,
     userId: user.id,
     devices: devices as [Device, Device],
-    newRowId: createMonotonicUuidV7(now, randomBytes),
+    newRowId: createMonotonicUuidV7(now, seededBytes(base + 12)),
     newOpIds,
     createdItems: [],
   };
@@ -276,30 +280,50 @@ describe('convergence de deux appareils sur le vrai serveur', () => {
   ])(
     'deux appareils convergent malgré pertes, doublons, retards et réordonnancements (%o)',
     async (opts) => {
-      let run = 0;
-      const totals = { dropped: 0, duplicated: 0, replayedLate: 0 };
+      // Non-vacuité : cumul sur tous les essais, chaque compteur doit être positif.
+      const totals = {
+        serverNotes: 0,
+        rejections: 0,
+        deadletters: 0,
+        droppedRequests: 0,
+        droppedResponses: 0,
+        pushResponsesDroppedAfterApply: 0,
+        duplicated: 0,
+        replayedLate: 0,
+      };
       await fc.assert(
-        fc.asyncProperty(fc.commands(commandArbs, { maxCommands: 60, size: 'large' }), async (cmds) => {
-          const real = await setupReal(opts, run++);
-          try {
-            await fc.asyncModelRun(() => ({ model: {}, real }), cmds);
-            for (const d of real.devices) {
-              totals.dropped += d.lossy.stats.dropped;
-              totals.duplicated += d.lossy.stats.duplicated;
-              totals.replayedLate += d.lossy.stats.replayedLate;
+        fc.asyncProperty(
+          fc.commands(commandArbs, { maxCommands: 60, size: 'large' }),
+          fc.integer({ min: 0, max: 0x7fffffff }),
+          async (cmds, netSeed) => {
+            const real = await setupReal(opts, netSeed);
+            try {
+              await fc.asyncModelRun(() => ({ model: {}, real }), cmds);
+              for (const { lossy } of real.devices) {
+                totals.droppedRequests += lossy.stats.droppedRequests;
+                totals.droppedResponses += lossy.stats.droppedResponses;
+                totals.pushResponsesDroppedAfterApply +=
+                  lossy.stats.droppedResponsesByPath['/api/sync/push'] ?? 0;
+                totals.duplicated += lossy.stats.duplicated;
+                totals.replayedLate += lossy.stats.replayedLate;
+              }
+              await settle(real);
+              await expectConverged(real);
+              totals.serverNotes += serverRows(real.ctx, 'fixture_note').length;
+              totals.rejections += serverRows(real.ctx, 'sync_rejection').length;
+              for (const d of real.devices) totals.deadletters += await d.db.deadletter.count();
+            } finally {
+              await teardown(real);
             }
-            await settle(real);
-            await expectConverged(real);
-          } finally {
-            await teardown(real);
-          }
-        }),
-        { numRuns: 25, seed: opts.seed },
+          },
+        ),
+        // Un échec affiche son contre-exemple (même en cours de réduction) avant le délai du test.
+        { numRuns: 25, seed: opts.seed, interruptAfterTimeLimit: 90_000, markInterruptAsFailure: true },
       );
-      // Le transport a réellement perdu et dupliqué des requêtes.
-      expect(totals.dropped).toBeGreaterThan(0);
-      expect(totals.duplicated).toBeGreaterThan(0);
-      if (opts.reorder) expect(totals.replayedLate).toBeGreaterThan(0);
+      for (const [name, total] of Object.entries(totals)) {
+        if (name === 'replayedLate' && !opts.reorder) continue;
+        expect({ name, positive: total > 0 }).toEqual({ name, positive: true });
+      }
     },
     120_000,
   );

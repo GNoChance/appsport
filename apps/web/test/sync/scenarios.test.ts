@@ -172,13 +172,21 @@ describe('scénarios de synchro ciblés (deux appareils, vrai serveur)', () => {
     await setMeta(d.db, 'userId', userB.id);
     d.userId = userB.id;
     d.cookie = userB.cookie;
+    const opB = await d.write({
+      entity: 'fixture_note',
+      id: d.newId(),
+      kind: 'create',
+      fields: { title: 'de B' },
+    });
     await d.engine.syncNow('manual');
 
     expect(d.engine.getState().connection).toBe('online');
     expect(d.transport.log.length).toBeGreaterThan(0);
-    const pushed = pushedOps(d.transport);
-    expect(pushed.filter((o) => o.userId === userA.id || noteIds.includes(o.id))).toEqual([]);
-    expect(serverRows('fixture_note')).toHaveLength(0);
+    // Seule l'op de B part ; aucune op de A n'atteint le serveur.
+    expect(pushedOps(d.transport)).toEqual([expect.objectContaining({ opId: opB.opId, userId: userB.id })]);
+    expect(serverRows('fixture_note')).toMatchObject([{ id: opB.id, owner_id: userB.id, title: 'de B' }]);
+    expect(serverRows('fixture_note').filter((r) => noteIds.includes(String(r.id)))).toEqual([]);
+    expect(await pendingCount(d.db, userB.id)).toBe(0);
     expect(await pendingCount(d.db, userA.id)).toBe(2);
   });
 
