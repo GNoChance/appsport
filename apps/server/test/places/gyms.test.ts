@@ -515,3 +515,20 @@ describe('DELETE /api/admin/gyms/:id (R-SAL-7)', () => {
     expect((await detail(b, gymId)).history[0]?.action).toBe('create');
   });
 });
+
+describe('historique : horodatage à la minute', () => {
+  it('`at` est tronqué à la minute dans la réponse (pas de corrélation exacte avec les lignes synchronisées)', async () => {
+    ctx = await createTestContext({ now: '2026-10-06T10:17:42.123Z' });
+    const a = await createUserAndLogin(ctx);
+    const res = await createGym(a);
+    const { gymId } = (await res.json()) as { gymId: string };
+    const d = (await (await call(a.cookie, `/api/gyms/${gymId}`)).json()) as { history: { at: string }[] };
+    expect(d.history.map((h) => h.at)).toEqual(['2026-10-06T10:17:00.000Z']);
+    const stored = await ctx.deps.db
+      .selectFrom('gymHistory')
+      .select('at')
+      .where('gymId', '=', gymId)
+      .execute();
+    expect(stored.map((h) => h.at)).toEqual(['2026-10-06T10:17:42.123Z']);
+  });
+});

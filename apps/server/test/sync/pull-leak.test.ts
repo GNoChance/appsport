@@ -55,6 +55,19 @@ async function pullAll(cookie: string, since?: string): Promise<{ rows: Pulled[]
   }
 }
 
+describe('pull : masquage des auteurs', () => {
+  it("toute colonne vers user d'une table miroir sans propriétaire est dans pullRedact", async () => {
+    ctx = await createTestContext();
+    for (const table of mirroredTables().filter((t) => entityRules[t]?.ownerColumn === null)) {
+      const fks = ctx.deps.sqlite
+        .prepare(`SELECT "from" AS col FROM pragma_foreign_key_list(?) WHERE "table" = 'user'`)
+        .all(table) as { col: string }[];
+      expect(fks.length, table).toBeGreaterThan(0);
+      for (const { col } of fks) expect(entityRules[table]?.pullRedact ?? [], table).toContain(col);
+    }
+  });
+});
+
 describe.each(['member', 'admin'] as const)('pull : test de fuite (session %s)', (role) => {
   it("aucune ligne ni valeur de l'autre utilisateur, aucune colonne secrète", async () => {
     ctx = await createTestContext();
@@ -62,8 +75,10 @@ describe.each(['member', 'admin'] as const)('pull : test de fuite (session %s)',
     const b = await createUser(ctx);
     const own = await seedUser(a.id, 'A');
     const others = await seedUser(b.id, 'B');
-    const gym = await insertFixtureRow(ctx.deps.db, 'gym');
-    await insertFixtureRow(ctx.deps.db, 'gym_equipment', { gymId: gym.id });
+    // Salle de B, auteur vivant : ses ids d'auteur sont masqués ; salle de A : les siens restent.
+    const gymB = await insertFixtureRow(ctx.deps.db, 'gym', { createdBy: b.id, updatedBy: b.id });
+    await insertFixtureRow(ctx.deps.db, 'gym_equipment', { gymId: gymB.id, addedBy: b.id });
+    const gymA = await insertFixtureRow(ctx.deps.db, 'gym', { createdBy: a.id, updatedBy: b.id });
 
     const { rows } = await pullAll(a.cookie);
     const dump = JSON.stringify(rows);
@@ -73,6 +88,9 @@ describe.each(['member', 'admin'] as const)('pull : test de fuite (session %s)',
     expect(dump).not.toContain(b.id);
     for (const w of others) expect(dump).not.toContain(w);
     for (const r of rows) for (const key of SECRET_KEYS) expect(r.row).not.toHaveProperty(key);
+    expect(rows.find((r) => r.row.id === gymB.id)?.row).toMatchObject({ createdBy: null, updatedBy: null });
+    expect(rows.find((r) => r.entity === 'gym_equipment')?.row).toMatchObject({ addedBy: null });
+    expect(rows.find((r) => r.row.id === gymA.id)?.row).toMatchObject({ createdBy: a.id, updatedBy: null });
   });
 
   it("après la suppression d'un compte, aucun pull ne contient son id", async () => {
@@ -84,6 +102,7 @@ describe.each(['member', 'admin'] as const)('pull : test de fuite (session %s)',
     const gym = await insertFixtureRow(ctx.deps.db, 'gym', { createdBy: b.id, updatedBy: b.id });
     await insertFixtureRow(ctx.deps.db, 'gym_equipment', { gymId: gym.id, addedBy: b.id });
     const before = await pullAll(a.cookie);
+    expect(JSON.stringify(before.rows)).not.toContain(b.id);
 
     await ctx.deps.db
       .transaction()

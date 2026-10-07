@@ -173,6 +173,13 @@ export async function loadEditableGym(db: DbExecutor, user: SessionUser, gymId: 
   return gym;
 }
 
+/** '2026-10-06T10:17:42.123Z' → '2026-10-06T10:17:00.000Z'. */
+function toMinute(iso: string): string {
+  const d = new Date(iso);
+  d.setUTCSeconds(0, 0);
+  return d.toISOString();
+}
+
 export async function gymDetail(db: DbExecutor, user: SessionUser, gymId: string): Promise<GymDetail> {
   const gym = await loadGym(db, gymId);
   if (!gym) throw httpError('not_found');
@@ -214,7 +221,8 @@ export async function gymDetail(db: DbExecutor, user: SessionUser, gymId: string
     canEdit: gym.deletedAt === null && (await canEditGym(db, user, gymId)),
     visibleMembers: members.map((m) => m.username),
     history: history.map((h) => ({
-      at: h.at,
+      // À la minute : l'instant exact permettrait d'apparier l'entrée aux lignes gym/gym_equipment synchronisées.
+      at: toMinute(h.at),
       action: h.action,
       // Le pseudo n'est rendu que pour un admin ou un membre visible à cette salle.
       authorUsername:

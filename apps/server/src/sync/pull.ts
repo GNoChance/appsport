@@ -22,6 +22,8 @@ interface Source {
   rule: EntityRule;
   columns: readonly string[];
   scope: RawBuilder<unknown>;
+  /** Utilisateur de la session : seule valeur gardée dans les colonnes `pullRedact`. */
+  userId: string;
 }
 
 const MIRRORED = new Set(['J', 'D', 'E']);
@@ -36,7 +38,7 @@ function sourcesFor(deps: AppDeps, userId: string): Source[] {
     else if (rule.category === 'C0') scope = sql`1 = 1`;
     else continue;
     const columns = rule.columns.filter((c) => !rule.secretColumns.includes(c));
-    sources.push({ entity, rule, columns, scope });
+    sources.push({ entity, rule, columns, scope, userId });
   }
   return sources;
 }
@@ -46,13 +48,18 @@ function decode(codec: ColumnCodec | undefined, value: unknown): unknown {
   return codec === 'boolean' ? value === 1 : JSON.parse(String(value));
 }
 
-/** Ligne SQL → ligne de pull : camelCase, sans secret, codecs appliqués, `deletedAt` toujours présent. */
+/**
+ * Ligne SQL → ligne de pull : camelCase, sans secret, codecs appliqués, `deletedAt` toujours présent ;
+ * les colonnes `pullRedact` (auteurs d'une ligne partagée) ne gardent que l'id de l'utilisateur de la session.
+ */
 function toPulled(source: Source, raw: Raw): PulledRow {
   const codecs = COLUMN_CODECS[source.entity] ?? {};
+  const redact = source.rule.pullRedact ?? [];
   const row: Raw = { deletedAt: null };
   for (const column of source.columns) {
     const key = snakeToCamel(column);
-    row[key] = decode(codecs[column], raw[key]);
+    const value = redact.includes(column) && raw[key] !== source.userId ? null : raw[key];
+    row[key] = decode(codecs[column], value);
   }
   return { entity: source.entity, rev: Number(row.rev), row };
 }
@@ -79,12 +86,14 @@ async function hasRowsAfter(trx: Transaction<Database>, sources: Source[], rev: 
   return false;
 }
 
+const compare = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
 const byRev = (a: PulledRow, b: PulledRow) =>
-  a.rev - b.rev || a.entity.localeCompare(b.entity) || String(a.row.id).localeCompare(String(b.row.id));
+  a.rev - b.rev || compare(a.entity, b.entity) || compare(String(a.row.id), String(b.row.id));
 
 /**
  * Page de pull (R-SYN-20, R-SYN-21, R-SYN-23) lue dans une seule transaction : lignes de rev > since,
- * triées, `limit` au plus, sans jamais couper un groupe de même rev.
+ * triées, `limit` au plus, sans jamais couper un groupe de même rev. Watermark d'une autre époque,
+ * antérieur à la dernière purge ou au-delà du compteur courant → 410 `watermark_expired` (pull complet).
  */
 export async function buildPull(
   deps: AppDeps,
@@ -101,7 +110,9 @@ export async function buildPull(
     const meta = await getServerMeta(trx);
     if (
       sinceWatermark &&
-      (sinceWatermark.epoch !== meta.serverEpoch || sinceWatermark.rev < meta.tombstonePurgeRev)
+      (sinceWatermark.epoch !== meta.serverEpoch ||
+        sinceWatermark.rev < meta.tombstonePurgeRev ||
+        sinceWatermark.rev > meta.syncCounter)
     ) {
       throw httpError('watermark_expired');
     }
@@ -122,7 +133,8 @@ export async function buildPull(
       rows = [...rows.filter((r) => r.rev !== last.rev), ...group.sort(byRev)];
       hasMore = await hasRowsAfter(trx, sources, last.rev);
     }
-    const nextRev = hasMore && last ? last.rev : Math.max(sinceRev, meta.syncCounter);
+    // sinceRev ≤ syncCounter (vérifié plus haut) : la fin du flux est le compteur courant.
+    const nextRev = hasMore && last ? last.rev : meta.syncCounter;
     return {
       rows,
       nextWatermark: encodeWatermark(meta.serverEpoch, nextRev),

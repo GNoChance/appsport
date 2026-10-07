@@ -49,6 +49,17 @@ function insertNote(owner: { id: string }, o: { rev?: number; deletedAt?: string
   return id;
 }
 
+/** Ligne de la seconde table de test, au rev donné. */
+function insertLog(owner: { id: string }, rev: number): string {
+  const id = rowIds.uuidv7();
+  ctx.deps.sqlite
+    .prepare(
+      'INSERT INTO fixture_c2_log (id, owner_id, rev, created_at, updated_at, updated_by, deleted_at, value) VALUES (?, ?, ?, ?, ?, ?, NULL, 1)',
+    )
+    .run(id, owner.id, rev, NOW, NOW, owner.id);
+  return id;
+}
+
 /** Watermark courant après un pull complet (point de départ des tests de pagination). */
 async function drain(u: Member): Promise<string> {
   const res = await syncPull(ctx, u.cookie);
@@ -119,6 +130,31 @@ describe('GET /api/sync/pull : pagination', () => {
     expect(res.body.nextWatermark).toBe(`${meta().server_epoch}:${shared}`);
   });
 
+  it('deux tables entrelacées, groupe de même rev à cheval sur les deux à la coupe, limit=2', async () => {
+    const a = await setup();
+    const since = await drain(a);
+    const n1 = insertNote(a);
+    const shared = bumpRev();
+    const n2 = insertNote(a, { rev: shared });
+    const l2 = insertLog(a, shared);
+    const l3 = insertLog(a, bumpRev());
+    const n4 = insertNote(a);
+
+    const first = await syncPull(ctx, a.cookie, { since, limit: 2 });
+    const page1 = first.body.rows as Pulled[];
+    expect(page1.map((r) => [r.entity, r.row.id])).toEqual([
+      ['fixture_note', n1],
+      ['fixture_c2_log', l2],
+      ['fixture_note', n2],
+    ]);
+    const epoch = meta().server_epoch;
+    expect(first.body).toMatchObject({ hasMore: true, nextWatermark: `${epoch}:${shared}` });
+
+    const second = await syncPull(ctx, a.cookie, { since: first.body.nextWatermark, limit: 2 });
+    expect((second.body.rows as Pulled[]).map((r) => r.row.id)).toEqual([l3, n4]);
+    expect(second.body).toMatchObject({ hasMore: false, nextWatermark: `${epoch}:${meta().sync_counter}` });
+  });
+
   it('un watermark sans ligne nouvelle garde son rev au moins', async () => {
     const a = await setup();
     const since = await drain(a);
@@ -162,8 +198,12 @@ describe('GET /api/sync/pull : contenu des lignes', () => {
   it('salle créée par b : gym et gym_equipment présents, loadSettings objet ; aucun place de b', async () => {
     const a = await setup();
     const b = await createUserAndLogin(ctx);
-    const gym = await insertFixtureRow(ctx.deps.db, 'gym', { loadSettings: '{"barG":20000}' });
-    const equipment = await insertFixtureRow(ctx.deps.db, 'gym_equipment', { gymId: gym.id });
+    const gym = await insertFixtureRow(ctx.deps.db, 'gym', {
+      loadSettings: '{"barG":20000}',
+      createdBy: b.id,
+      updatedBy: b.id,
+    });
+    const equipment = await insertFixtureRow(ctx.deps.db, 'gym_equipment', { gymId: gym.id, addedBy: b.id });
     const place = await insertFixtureRow(ctx.deps.db, 'place', {
       ownerId: b.id,
       kind: 'gym',
@@ -175,9 +215,15 @@ describe('GET /api/sync/pull : contenu des lignes', () => {
     expect(rows.find((r) => r.entity === 'gym')?.row).toMatchObject({
       id: gym.id,
       loadSettings: { barG: 20000 },
+      createdBy: null,
+      updatedBy: null,
     });
-    expect(rows.find((r) => r.entity === 'gym_equipment')?.row.id).toBe(equipment.id);
+    expect(rows.find((r) => r.entity === 'gym_equipment')?.row).toMatchObject({
+      id: equipment.id,
+      addedBy: null,
+    });
     expect(rows.some((r) => r.row.id === place.id)).toBe(false);
+    expect(JSON.stringify(rows)).not.toContain(b.id);
   });
 
   it('place : booléens et réglages JSON décodés, réglages null restent null', async () => {
@@ -203,12 +249,23 @@ describe('GET /api/sync/pull : watermark et métadonnées', () => {
 
   it('tombstone_purge_rev = 10 : since rev 5 → 410, rev 10 → 200', async () => {
     const a = await setup();
-    ctx.deps.sqlite.prepare('UPDATE server_meta SET tombstone_purge_rev = 10').run();
+    ctx.deps.sqlite
+      .prepare('UPDATE server_meta SET tombstone_purge_rev = 10, sync_counter = max(sync_counter, 12)')
+      .run();
     const epoch = meta().server_epoch;
     const old = await syncPull(ctx, a.cookie, { since: `${epoch}:5` });
     expect(old.status).toBe(410);
     expect(old.body).toEqual({ error: 'watermark_expired' });
     expect((await syncPull(ctx, a.cookie, { since: `${epoch}:10` })).status).toBe(200);
+  });
+
+  it('since au-delà du compteur de la même époque → 410 watermark_expired (resynchro complète)', async () => {
+    const a = await setup();
+    const { server_epoch, sync_counter } = meta();
+    const ahead = await syncPull(ctx, a.cookie, { since: `${server_epoch}:${sync_counter + 1}` });
+    expect(ahead.status).toBe(410);
+    expect(ahead.body).toEqual({ error: 'watermark_expired' });
+    expect((await syncPull(ctx, a.cookie, { since: `${server_epoch}:${sync_counter}` })).status).toBe(200);
   });
 
   it("since 'abc' → 400 validation", async () => {

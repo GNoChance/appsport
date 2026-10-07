@@ -44,6 +44,16 @@ describe('entityRules', () => {
     expect(ruleOf('user').secretColumns).toEqual(['password_hash']);
   });
 
+  it('masque au pull les auteurs des salles et de leur matériel', () => {
+    const redacted = Object.entries(entityRules)
+      .filter(([, r]) => r.pullRedact !== undefined)
+      .map(([t, r]) => [t, r.pullRedact]);
+    expect(redacted).toEqual([
+      ['gym', ['created_by', 'updated_by']],
+      ['gym_equipment', ['added_by']],
+    ]);
+  });
+
   it('liste les tables miroir en ordre alphabétique', () => {
     expect(mirroredTables()).toEqual([
       'consent_event',
@@ -93,6 +103,7 @@ describe('entityRules', () => {
           expect(Object.keys(entityRules)).toContain(r.parent.entity);
           expect(r.columns).toContain(r.parent.column);
         }
+        for (const c of r.pullRedact ?? []) expect(r.columns).toContain(c);
         for (const c of Object.keys(r.c2Values ?? {})) {
           expect(r.columns).toContain(c);
           expect(r.c2Columns).not.toContain(c);

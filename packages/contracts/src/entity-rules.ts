@@ -16,6 +16,8 @@ export interface EntityRule {
   parent?: { entity: string; column: string };
   /** Colonne C1 → valeurs C2 (ex. `swap_reason: ['pain']`) ; clés ⊂ columns \ c2Columns. */
   c2Values?: Record<string, readonly string[]>;
+  /** Colonnes vers `user` d'une table sans propriétaire, mises à null au pull sauf si elles valent l'utilisateur de la session. */
+  pullRedact?: readonly string[];
 }
 
 export type EntityRulesMap = Readonly<Record<string, EntityRule>>;
@@ -33,7 +35,7 @@ type Spec = Pick<
   EntityRule,
   'category' | 'syncClass' | 'ownerColumn' | 'columns' | 'exported' | 'onUserDelete'
 > &
-  Partial<Pick<EntityRule, 'clientWritable' | 'secretColumns'>>;
+  Partial<Pick<EntityRule, 'clientWritable' | 'secretColumns' | 'pullRedact'>>;
 
 const rule = (spec: Spec): EntityRule => ({ clientWritable: [], c2Columns: [], secretColumns: [], ...spec });
 
@@ -244,6 +246,7 @@ export const entityRules: EntityRulesMap = {
       'updated_at',
       'deleted_at',
     ],
+    pullRedact: ['created_by', 'updated_by'],
     exported: false,
     onUserDelete: 'set_null',
   }),
@@ -252,6 +255,7 @@ export const entityRules: EntityRulesMap = {
     syncClass: 'E',
     ownerColumn: null,
     columns: ['id', 'gym_id', 'equipment_code', 'added_by', 'rev', 'created_at', 'updated_at', 'deleted_at'],
+    pullRedact: ['added_by'],
     exported: false,
     onUserDelete: 'set_null',
   }),
