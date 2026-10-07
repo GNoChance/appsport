@@ -8,6 +8,7 @@ import { createApiClient } from './api/client';
 import { type AppServices, handleAccountDeleted, ServicesProvider } from './app-services';
 import { bootApp } from './boot';
 import { createAppDb } from './local-db/db';
+import { getSwStatus } from './sw/sw-client';
 import { createSyncEngine } from './sync/engine';
 import { browserTransport } from './sync/transport';
 
@@ -27,7 +28,11 @@ const api = createApiClient(transport, {
   onUnauthenticated: () => void sync.syncNow('manual'),
   onAccountDeleted: () => void handleAccountDeleted(db, go),
 });
-const services: AppServices = { db, api, sync, transport, now: Date.now, newOpId };
+// Vite en développement n'enregistre pas de SW : coquille et illustrations réputées en cache.
+const swStatus: AppServices['swStatus'] = import.meta.env.DEV
+  ? async () => ({ type: 'STATUS', buildHash: 'dev', shellCached: true, illustrationsMissing: 0 })
+  : () => getSwStatus();
+const services: AppServices = { db, api, sync, transport, now: Date.now, newOpId, swStatus };
 
 bootApp(services);
 

@@ -17,6 +17,7 @@ function services(api: FakeApi, sync: SyncEngine, db = createTestLocalDb()): App
     transport: api.transport,
     now: () => DEFAULT_NOW,
     newOpId: () => crypto.randomUUID(),
+    swStatus: async () => null,
   };
 }
 

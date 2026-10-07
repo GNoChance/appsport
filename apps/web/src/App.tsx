@@ -1,4 +1,5 @@
 import type { MeResponse } from '@appsport/contracts';
+import { useEffect, useRef } from 'react';
 import { Redirect, Route, Switch, useLocation } from 'wouter';
 import { useMeState, useSyncState } from './app-services';
 import { HomePage } from './features/home/HomePage';
@@ -6,6 +7,7 @@ import { CreditsPage } from './features/public/CreditsPage';
 import { HelpPage } from './features/public/HelpPage';
 import { NotFound } from './features/public/NotFound';
 import { PrivacyPage } from './features/public/PrivacyPage';
+import { useRepos } from './repos';
 import type { ConnectionState } from './sync/engine';
 import { AppShell, PublicShell } from './ui';
 
@@ -83,6 +85,16 @@ export function App() {
   const [path] = useLocation();
   const { loaded, me } = useMeState();
   const { connection } = useSyncState();
+  const repos = useRepos();
+  const knownUser = loaded && me !== null;
+  const refreshed = useRef(false);
+  // Profil frais au lancement si l'appareil connaît une session (ageBand, consentements, mot de
+  // passe à changer) ; hors ligne : cache. Sans session connue, aucune requête (pages publiques).
+  useEffect(() => {
+    if (!knownUser || refreshed.current) return;
+    refreshed.current = true;
+    repos.me.refresh().catch(() => {});
+  }, [repos, knownUser]);
   const guard = resolveGuard({ path, loaded, me, connection });
 
   switch (guard.kind) {

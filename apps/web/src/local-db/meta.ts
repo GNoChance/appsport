@@ -1,4 +1,4 @@
-import type { MeResponse } from '@appsport/contracts';
+import type { AgeBand, MeResponse } from '@appsport/contracts';
 import type { AppDb } from './db';
 
 export interface MetaValues {
@@ -13,6 +13,8 @@ export interface MetaValues {
   lastPullOkAt: string;
   persistGranted: boolean;
   me: MeResponse;
+  /** Tranche d'âge vue en dernier sur l'appareil : message des 18 ans, une fois (R-AGE-6). */
+  lastAgeBand: AgeBand;
 }
 
 /** Clés liées à l'utilisateur connecté, effacées par `wipeUserData`. */
@@ -23,6 +25,7 @@ export const USER_META_KEYS: readonly (keyof MetaValues)[] = [
   'lastPullOkAt',
   'activeSessionId',
   'me',
+  'lastAgeBand',
 ];
 
 export async function getMeta<K extends keyof MetaValues>(

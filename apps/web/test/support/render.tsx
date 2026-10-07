@@ -9,6 +9,7 @@ import { createApiClient } from '../../src/api/client';
 import { type AppServices, handleAccountDeleted, ServicesProvider } from '../../src/app-services';
 import type { AppDb } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
+import type { SwStatus } from '../../src/sw/protocol';
 import { createFakeApi, createFakeSyncEngine, type FakeApi, type FakeSyncEngine } from './fake-api';
 import { createTestLocalDb } from './local-db';
 
@@ -45,7 +46,16 @@ export interface RenderAppOptions {
   sync?: FakeSyncEngine;
   db?: AppDb;
   now?: number;
+  /** Réponse du service worker ; absent : coquille et illustrations en cache. */
+  swStatus?: SwStatus | null;
 }
+
+export const DEFAULT_SW_STATUS: SwStatus = {
+  type: 'STATUS',
+  buildHash: 'test',
+  shellCached: true,
+  illustrationsMissing: 0,
+};
 
 export interface RenderAppResult extends RenderResult {
   services: AppServices;
@@ -55,11 +65,16 @@ export interface RenderAppResult extends RenderResult {
   location(): string;
 }
 
-/** Rend `ui` avec des services de test, dans un routeur en mémoire (wouter). */
-export async function renderWithServices(
-  ui: ReactElement,
-  opts: RenderAppOptions = {},
-): Promise<RenderAppResult> {
+export interface TestServices {
+  services: AppServices;
+  api: FakeApi;
+  sync: FakeSyncEngine;
+  db: AppDb;
+  memory: ReturnType<typeof memoryLocation>;
+}
+
+/** Services de test sans rendu (dépôts testés seuls) ; `me` posé dans meta comme une session. */
+export async function createTestServices(opts: RenderAppOptions = {}): Promise<TestServices> {
   const api = opts.api ?? createFakeApi();
   const sync = opts.sync ?? createFakeSyncEngine();
   const db = opts.db ?? createTestLocalDb();
@@ -69,6 +84,7 @@ export async function renderWithServices(
     await setMeta(db, 'userId', me.id);
     await setMeta(db, 'me', me);
   }
+  const swStatus = opts.swStatus === undefined ? DEFAULT_SW_STATUS : opts.swStatus;
   const memory = memoryLocation({ path: opts.path ?? '/', record: true });
   const services: AppServices = {
     db,
@@ -83,7 +99,17 @@ export async function renderWithServices(
       () => nowMs,
       (n) => crypto.getRandomValues(new Uint8Array(n)),
     ),
+    swStatus: async () => swStatus,
   };
+  return { services, api, sync, db, memory };
+}
+
+/** Rend `ui` avec des services de test, dans un routeur en mémoire (wouter). */
+export async function renderWithServices(
+  ui: ReactElement,
+  opts: RenderAppOptions = {},
+): Promise<RenderAppResult> {
+  const { services, api, sync, db, memory } = await createTestServices(opts);
   const result = render(
     <Router hook={memory.hook} searchHook={memory.searchHook}>
       <ServicesProvider services={services}>{ui}</ServicesProvider>

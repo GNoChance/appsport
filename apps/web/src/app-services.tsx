@@ -5,6 +5,7 @@ import type { ApiClient } from './api/client';
 import type { AppDb } from './local-db/db';
 import { getMeta } from './local-db/meta';
 import { wipeUserData } from './local-db/wipe';
+import type { SwStatus } from './sw/protocol';
 import type { SyncEngine, SyncState } from './sync/engine';
 import type { SyncTransport } from './sync/transport';
 
@@ -16,6 +17,8 @@ export interface AppServices {
   transport: SyncTransport;
   now(): number;
   newOpId(): string;
+  /** État du service worker (voyant « Prêt hors ligne ») ; null sans SW ou sans réponse. */
+  swStatus(): Promise<SwStatus | null>;
 }
 
 const ServicesContext = createContext<AppServices | null>(null);
