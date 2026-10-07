@@ -37,16 +37,18 @@ function IndicatorView(p: { readiness: Readiness; onRetry?: () => void; retrying
 }
 
 function LiveIndicator() {
-  const { readiness, retry } = useReadiness();
+  const { readiness, loaded, retry } = useReadiness();
   const [retrying, setRetrying] = useState(false);
   const onRetry = () => {
     setRetrying(true);
     void retry().finally(() => setRetrying(false));
   };
+  // Rien avant le premier calcul : pas d'annonce « pas prêt » à tort au montage.
+  if (!loaded) return null;
   return <IndicatorView readiness={readiness} onRetry={onRetry} retrying={retrying} />;
 }
 
-/** Voyant « Prêt hors ligne » : état fourni, ou calculé en direct (`useReadiness`). */
+/** Voyant « Prêt hors ligne » : état fourni, ou calculé en direct (`useReadiness`, rien avant le premier résultat). */
 export function OfflineReadyIndicator(p: { readiness?: Readiness }) {
   return p.readiness ? <IndicatorView readiness={p.readiness} /> : <LiveIndicator />;
 }

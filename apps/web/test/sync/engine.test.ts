@@ -546,6 +546,22 @@ describe('file unique et déclencheurs', () => {
     expect(server.maxInFlight).toBe(1);
   });
 
+  it('rejet écarté sur un autre appareil : sa deadletter locale ne compte plus', async () => {
+    const a = await createNote('a');
+    makeEngine();
+    pushWith(() => [{ opId: a.op.opId, status: 'rejected', code: 'validation' }]);
+    server.rows = [
+      {
+        entity: 'sync_rejection',
+        rev: 9,
+        row: { id: newId(), ownerId: 'u1', opId: a.op.opId, dismissedAt: NOW_ISO, deletedAt: null, rev: 9 },
+      },
+    ];
+    await engine.syncNow('manual');
+    expect(await db.deadletter.count()).toBe(1);
+    expect(engine.getState().rejected).toBe(0);
+  });
+
   it('pending et rejected à jour, subscribe notifié', async () => {
     const a = await createNote('a');
     await createNote('b');

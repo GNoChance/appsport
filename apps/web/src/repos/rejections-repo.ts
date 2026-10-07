@@ -26,12 +26,18 @@ const LOCAL_PREFIX = 'local:';
 export function createRejectionsRepo(s: AppServices): RejectionsRepo {
   const { db } = s;
 
-  /** Rejets serveur non écartés, puis rejets locaux que le serveur n'a pas (encore) enregistrés. */
+  /**
+   * Rejets serveur non écartés, puis rejets locaux (deadletter) que le serveur n'a pas enregistrés.
+   * Une deadletter couverte par une ligne sync_rejection, même écartée (sur un autre appareil),
+   * n'est pas affichée.
+   */
   async function list(): Promise<RejectionView[]> {
     const userId = await currentUserId(db);
     if (userId === null) return [];
-    const server: RejectionView[] = (await ownedRows(db, 'sync_rejection', userId))
-      .filter((r) => r.dismissedAt == null && typeof r.opId === 'string')
+    const rows = (await ownedRows(db, 'sync_rejection', userId)).filter((r) => typeof r.opId === 'string');
+    const covered = new Set(rows.map((r) => String(r.opId)));
+    const server: RejectionView[] = rows
+      .filter((r) => r.dismissedAt == null)
       .map((r) => ({
         id: r.id,
         source: 'server' as const,
@@ -43,7 +49,6 @@ export function createRejectionsRepo(s: AppServices): RejectionsRepo {
         at: text(r.createdAt) ?? '',
       }))
       .sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
-    const covered = new Set(server.map((r) => r.opId));
     const local: RejectionView[] = (await db.deadletter.where('userId').equals(userId).toArray())
       .filter((d) => !covered.has(d.opId))
       .map((d) => ({
@@ -73,9 +78,10 @@ export function createRejectionsRepo(s: AppServices): RejectionsRepo {
       return (await list()).length;
     },
     /**
-     * Rejet serveur : `dismissedAt` écrit par l'outbox (seule écriture J du socle), deadletter de
-     * même opId retirée. Rejet local : deadletter retirée. Puis synchro « mutation », qui envoie
-     * l'op et met à jour les compteurs du moteur (l'intervalle de 60 s voit l'op en attente).
+     * Rejet serveur : `dismissedAt` écrit par l'outbox (seule écriture J du socle) et deadletter de
+     * même opId retirée, en une transaction. Rejet local : deadletter retirée. Puis synchro
+     * « mutation », qui envoie l'op et met à jour les compteurs du moteur (l'intervalle de 60 s
+     * voit l'op en attente).
      */
     async dismiss(id) {
       const userId = await currentUserId(db);
@@ -83,24 +89,22 @@ export function createRejectionsRepo(s: AppServices): RejectionsRepo {
       if (id.startsWith(LOCAL_PREFIX)) {
         await dropDeadletter(id.slice(LOCAL_PREFIX.length), userId);
       } else {
-        const row = await db.mirror('sync_rejection').get(id);
-        if (!row || row.ownerId !== userId) return;
-        await writeLocal(
-          db,
-          {
-            entity: 'sync_rejection',
-            id,
-            kind: 'patch',
-            fields: { dismissedAt: new Date(s.now()).toISOString() },
-          },
-          {
-            userId,
-            now: () => new Date(s.now()).toISOString(),
-            newOpId: s.newOpId,
-            healthConsentActive: (await getMeta(db, 'me'))?.consents.health.active === true,
-          },
-        );
-        if (typeof row.opId === 'string') await dropDeadletter(row.opId, userId);
+        // meta hors de la transaction : lu avant.
+        const healthConsentActive = (await getMeta(db, 'me'))?.consents.health.active === true;
+        const nowIso = () => new Date(s.now()).toISOString();
+        const mirror = db.mirror('sync_rejection');
+        const written = await db.transaction('rw', [db.outbox, mirror, db.deadletter], async () => {
+          const row = await mirror.get(id);
+          if (!row || row.ownerId !== userId) return false;
+          await writeLocal(
+            db,
+            { entity: 'sync_rejection', id, kind: 'patch', fields: { dismissedAt: nowIso() } },
+            { userId, now: nowIso, newOpId: s.newOpId, healthConsentActive },
+          );
+          if (typeof row.opId === 'string') await dropDeadletter(row.opId, userId);
+          return true;
+        });
+        if (!written) return;
       }
       void s.sync.syncNow('mutation');
     },

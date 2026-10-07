@@ -146,19 +146,20 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     for (const fn of listeners) fn(state);
   }
 
+  /**
+   * Rejets à montrer : lignes sync_rejection non écartées, plus les deadletters qu'aucune ligne
+   * sync_rejection vivante ne couvre (une ligne écartée sur un autre appareil couvre la sienne).
+   */
   async function rejectedCount(userId: string): Promise<number> {
-    const opIds = new Set((await db.deadletter.where('userId').equals(userId).toArray()).map((d) => d.opId));
-    if (db.mirrorNames.includes('sync_rejection')) {
-      for (const r of await db.mirror('sync_rejection').toArray()) {
-        if (
-          r.ownerId === userId &&
-          r.dismissedAt == null &&
-          r.deletedAt == null &&
-          typeof r.opId === 'string'
-        ) {
-          opIds.add(r.opId);
-        }
-      }
+    const rows = db.mirrorNames.includes('sync_rejection')
+      ? (await db.mirror('sync_rejection').toArray()).filter(
+          (r) => r.ownerId === userId && r.deletedAt == null && typeof r.opId === 'string',
+        )
+      : [];
+    const covered = new Set(rows.map((r) => String(r.opId)));
+    const opIds = new Set(rows.filter((r) => r.dismissedAt == null).map((r) => String(r.opId)));
+    for (const d of await db.deadletter.where('userId').equals(userId).toArray()) {
+      if (!covered.has(d.opId)) opIds.add(d.opId);
     }
     return opIds.size;
   }

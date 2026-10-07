@@ -1,5 +1,5 @@
 import type { MeResponse } from '@appsport/contracts';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getMeta, setMeta } from '../../src/local-db/meta';
 import { createRepos } from '../../src/repos';
 import { createSyncEngine, type SyncEngine } from '../../src/sync/engine';
@@ -16,6 +16,7 @@ let engine: SyncEngine | null = null;
 afterEach(() => {
   engine?.stop();
   engine = null;
+  vi.restoreAllMocks();
 });
 
 describe('MeRepo : profil en cache', () => {
@@ -49,8 +50,15 @@ describe('MeRepo : changement de compte (P-AUT-6)', () => {
     const repos = createRepos(services);
     expect(await repos.me.deviceOwner()).toEqual({ userId: 'u-A', username: 'lea', pending: 2 });
 
-    api.on('POST', '/api/auth/login', ok(max));
+    sync.start();
+    let startedDuringLogin: boolean | null = null;
+    api.on('POST', '/api/auth/login', () => {
+      startedDuringLogin = sync.started;
+      return ok(max);
+    });
     const me = await repos.me.login({ username: 'max', password: 'pw' });
+    // Moteur arrêté pendant la requête : aucun cycle de u-A sous le cookie de u-B.
+    expect(startedDuringLogin).toBe(false);
     expect(me.id).toBe('u-B');
     expect(await db.outbox.count()).toBe(0);
     expect(await getMeta(db, 'userId')).toBe('u-B');
@@ -79,23 +87,52 @@ describe('MeRepo : changement de compte (P-AUT-6)', () => {
     expect(await getMeta(db, 'userId')).toBe('u-A');
   });
 
-  it("connexion refusée : rien n'est effacé", async () => {
-    const { services, api, db } = await createTestServices({ me: lea });
+  it("connexion refusée : rien n'est effacé, moteur relancé", async () => {
+    const { services, api, sync, db } = await createTestServices({ me: lea });
     await seedOutbox(db, 'u-A', 2);
+    sync.start();
     api.on('POST', '/api/auth/login', { status: 401, body: { error: 'invalid_credentials' } });
     await expect(createRepos(services).me.login({ username: 'max', password: 'x' })).rejects.toMatchObject({
       code: 'invalid_credentials',
     });
     expect(await db.outbox.count()).toBe(2);
     expect(await getMeta(db, 'userId')).toBe('u-A');
+    expect(sync.started).toBe(true);
+  });
+
+  it('échec local après la réponse : moteur relancé quand même', async () => {
+    const { services, api, sync, db } = await createTestServices({ me: lea });
+    sync.start();
+    api.on('POST', '/api/auth/login', ok(lea));
+    vi.spyOn(db, 'transaction').mockRejectedValueOnce(new Error('base inaccessible'));
+    await expect(createRepos(services).me.login({ username: 'lea', password: 'pw' })).rejects.toThrow(
+      'base inaccessible',
+    );
+    expect(sync.started).toBe(true);
+  });
+
+  it('refresh vers un autre compte en échec : moteur relancé', async () => {
+    const { services, api, sync, db } = await createTestServices({ me: lea });
+    sync.start();
+    api.on('GET', '/api/me', ok(max));
+    vi.spyOn(db, 'transaction').mockRejectedValueOnce(new Error('base inaccessible'));
+    await expect(createRepos(services).me.refresh()).rejects.toThrow('base inaccessible');
+    expect(sync.started).toBe(true);
   });
 
   it('logout : une requête, base vidée, meta.userId et meta.me absents', async () => {
-    const { services, api, db } = await createTestServices({ me: lea });
+    const { services, api, sync, db } = await createTestServices({ me: lea });
     await seedOutbox(db, 'u-A', 2);
-    api.on('POST', '/api/auth/logout', { status: 204 });
+    sync.start();
+    let startedDuringLogout: boolean | null = null;
+    api.on('POST', '/api/auth/logout', () => {
+      startedDuringLogout = sync.started;
+      return { status: 204 };
+    });
     await createRepos(services).me.logout('current');
     expect(api.calls.map((c) => c.path)).toEqual(['/api/auth/logout']);
+    expect(startedDuringLogout).toBe(false);
+    expect(sync.started).toBe(true);
     expect(await db.outbox.count()).toBe(0);
     expect(await getMeta(db, 'me')).toBeUndefined();
     expect(await getMeta(db, 'userId')).toBeUndefined();
@@ -106,6 +143,32 @@ describe('MeRepo : changement de compte (P-AUT-6)', () => {
     api.on('POST', '/api/auth/logout-all', { status: 204 });
     await createRepos(services).me.logout('all');
     expect(api.calls.map((c) => c.path)).toEqual(['/api/auth/logout-all']);
+  });
+
+  it('logout hors ligne : rien effacé, moteur relancé', async () => {
+    const { services, api, sync, db } = await createTestServices({ me: lea });
+    sync.start();
+    api.setOffline('reject');
+    await expect(createRepos(services).me.logout('current')).rejects.toThrow('Nécessite le réseau');
+    expect(await getMeta(db, 'userId')).toBe('u-A');
+    expect(sync.started).toBe(true);
+  });
+
+  it('deleteAccount : moteur arrêté pendant la requête, base vidée, moteur relancé', async () => {
+    const { services, api, sync, db } = await createTestServices({ me: lea });
+    await seedOutbox(db, 'u-A', 2);
+    sync.start();
+    let startedDuringDelete: boolean | null = null;
+    api.on('POST', '/api/me/delete', (req) => {
+      startedDuringDelete = sync.started;
+      expect(req.body).toEqual({ password: 'pw' });
+      return { status: 204 };
+    });
+    await createRepos(services).me.deleteAccount('pw');
+    expect(startedDuringDelete).toBe(false);
+    expect(await db.outbox.count()).toBe(0);
+    expect(await getMeta(db, 'userId')).toBeUndefined();
+    expect(sync.started).toBe(true);
   });
 
   it('changePassword : POST puis GET /api/me, meta.me à jour, synchro manuelle', async () => {

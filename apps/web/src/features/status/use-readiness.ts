@@ -5,12 +5,23 @@ import { computeReadiness, NOT_READY, type Readiness } from './readiness';
 
 export const READINESS_REFRESH_MS = 5000;
 
-/** État « Prêt hors ligne », recalculé au montage, à chaque état de synchro et toutes les 5 s. */
-export function useReadiness(): { readiness: Readiness; refresh(): Promise<void>; retry(): Promise<void> } {
+/**
+ * État « Prêt hors ligne », recalculé au montage, à chaque état de synchro et toutes les 5 s.
+ * `loaded` reste faux jusqu'au premier résultat (`readiness` vaut alors NOT_READY).
+ */
+export function useReadiness(): {
+  readiness: Readiness;
+  loaded: boolean;
+  refresh(): Promise<void>;
+  retry(): Promise<void>;
+} {
   const services = useServices();
   const repos = useRepos();
   const syncState = useSyncState();
-  const [readiness, setReadiness] = useState<Readiness>(NOT_READY);
+  const [state, setState] = useState<{ readiness: Readiness; loaded: boolean }>({
+    readiness: NOT_READY,
+    loaded: false,
+  });
   const latest = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
@@ -28,7 +39,7 @@ export function useReadiness(): { readiness: Readiness; refresh(): Promise<void>
     ]);
     // Un calcul plus récent a pu finir avant celui-ci.
     if (!mounted.current || call !== latest.current) return;
-    setReadiness(computeReadiness({ sw, ...inputs, now: services.now() }));
+    setState({ readiness: computeReadiness({ sw, ...inputs, now: services.now() }), loaded: true });
   }, [services, repos]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recalcul voulu à chaque état de synchro
@@ -52,5 +63,5 @@ export function useReadiness(): { readiness: Readiness; refresh(): Promise<void>
     await refresh();
   }, [repos, refresh]);
 
-  return { readiness, refresh, retry };
+  return { ...state, refresh, retry };
 }

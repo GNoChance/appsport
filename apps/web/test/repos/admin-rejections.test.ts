@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeadletterEntry } from '../../src/local-db/db';
 import { createRepos } from '../../src/repos';
 import { createSyncEngine, type SyncEngine } from '../../src/sync/engine';
@@ -36,7 +36,13 @@ async function setup() {
     rejection('r-2', 'op-2', { dismissedAt: AT }),
     rejection('r-3', 'op-3', { deletedAt: AT }),
   ]);
-  await t.db.deadletter.bulkPut([dead('op-1', 'u-1'), dead('op-7', 'u-1'), dead('op-8', 'u-2')]);
+  // op-2 : rejet déjà écarté (sur un autre appareil) ; sa deadletter locale ne doit pas réapparaître.
+  await t.db.deadletter.bulkPut([
+    dead('op-1', 'u-1'),
+    dead('op-2', 'u-1'),
+    dead('op-7', 'u-1'),
+    dead('op-8', 'u-2'),
+  ]);
   return { ...t, repos: createRepos(t.services) };
 }
 
@@ -44,6 +50,7 @@ let engine: SyncEngine | null = null;
 afterEach(() => {
   engine?.stop();
   engine = null;
+  vi.restoreAllMocks();
 });
 
 describe('RejectionsRepo', () => {
@@ -83,6 +90,17 @@ describe('RejectionsRepo', () => {
     expect((await repos.rejections.list()).map((r) => r.id)).toEqual(['local:op-7']);
   });
 
+  it('dismiss atomique : échec sur la deadletter → ni op ni copie modifiée', async () => {
+    const { repos, db } = await setup();
+    vi.spyOn(db.deadletter, 'where').mockImplementationOnce(() => {
+      throw new Error('deadletter inaccessible');
+    });
+    await expect(repos.rejections.dismiss('r-1')).rejects.toThrow('deadletter inaccessible');
+    expect(await db.outbox.count()).toBe(0);
+    expect((await db.mirror('sync_rejection').get('r-1'))?.dismissedAt).toBeNull();
+    expect(await db.deadletter.get('op-1')).toBeDefined();
+  });
+
   it('dismiss d’un rejet local : deadletter retirée, aucune op', async () => {
     const { repos, db } = await setup();
     await repos.rejections.dismiss('local:op-7');
@@ -104,6 +122,8 @@ describe('RejectionsRepo', () => {
     await createRepos({ ...services, sync: real }).rejections.dismiss('r-1');
     await until(() => real.getState().pending === 1);
     expect(real.getState().pending).toBe(1);
+    // r-1 en cours d'écartement (op en attente, copie à jour) et op-2 couvert par r-2 écarté : reste op-7.
+    expect(real.getState().rejected).toBe(1);
   });
 });
 

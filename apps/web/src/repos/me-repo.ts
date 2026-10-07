@@ -10,7 +10,7 @@ import {
 } from '@appsport/contracts';
 import { ApiError, NetworkRequiredError } from '../api/client';
 import type { AppServices } from '../app-services';
-import { getMeta, setMeta } from '../local-db/meta';
+import { deleteMeta, getMeta, setMeta } from '../local-db/meta';
 import { wipeUserData } from '../local-db/wipe';
 import { pendingCount } from '../sync/outbox';
 
@@ -49,35 +49,42 @@ export function createMeRepo(s: AppServices): MeRepo {
   }
 
   /**
-   * Session ouverte sous `me` (moteur déjà arrêté). Autre utilisateur que celui de l'appareil :
-   * données locales effacées, file comprise (P-AUT-6, l'écran a averti grâce à `deviceOwner`),
-   * puis meta.userId posé avant toute synchro sous le nouveau cookie. Le moteur est relancé
-   * (réarmé même après un 410) et une synchro manuelle demandée.
+   * Moteur arrêté pendant `fn` (aucun cycle ne part sous un cookie en train de changer), puis
+   * relancé quoi qu'il arrive : réarmé même après un 410, `connection` remis à zéro par le moteur
+   * quand meta.userId change.
+   */
+  async function withEngineStopped<T>(fn: () => Promise<T>): Promise<T> {
+    sync.stop();
+    try {
+      return await fn();
+    } finally {
+      sync.start();
+    }
+  }
+
+  /**
+   * Session ouverte sous `me`, moteur arrêté. Autre utilisateur que celui de l'appareil : données
+   * locales effacées, file comprise (P-AUT-6, l'écran a averti grâce à `deviceOwner`), puis
+   * meta.userId posé avant toute synchro sous le nouveau cookie. meta.userId est retiré en premier :
+   * si l'effacement échoue, le moteur relancé n'a aucun utilisateur et n'envoie rien.
    */
   async function adoptSession(me: MeResponse): Promise<void> {
     if ((await getMeta(db, 'userId')) !== me.id) {
+      await deleteMeta(db, 'userId');
       await wipeUserData(db, { keepOutbox: false });
       await setMeta(db, 'userId', me.id);
     }
     await rememberMe(me);
-    sync.start();
-    void sync.syncNow('manual');
   }
 
-  /**
-   * Le moteur est arrêté avant la requête : aucun cycle de l'ancien utilisateur ne part sous le
-   * cookie que la réponse pose. En cas d'échec, il est relancé tel quel.
-   */
+  /** Connexion : moteur arrêté avant la requête, session adoptée, puis synchro manuelle. */
   async function openSession(request: () => Promise<MeResponse>): Promise<MeResponse> {
-    sync.stop();
-    let me: MeResponse;
-    try {
-      me = await request();
-    } catch (error) {
-      sync.start();
-      throw error;
-    }
-    await adoptSession(me);
+    const me = await withEngineStopped(async () => {
+      const opened = await request();
+      await adoptSession(opened);
+      return opened;
+    });
+    void sync.syncNow('manual');
     return me;
   }
 
@@ -98,8 +105,8 @@ export function createMeRepo(s: AppServices): MeRepo {
         await rememberMe(me);
       } else {
         // Session d'un autre compte (ouverte ailleurs dans ce navigateur) : on l'adopte.
-        sync.stop();
-        await adoptSession(me);
+        await withEngineStopped(() => adoptSession(me));
+        void sync.syncNow('manual');
       }
       return me;
     },
@@ -127,15 +134,17 @@ export function createMeRepo(s: AppServices): MeRepo {
       await repo.refresh();
       void sync.syncNow('manual');
     },
-    async logout(mode) {
-      await api.send('POST', mode === 'all' ? '/api/auth/logout-all' : '/api/auth/logout');
-      await wipeUserData(db, { keepOutbox: false });
-    },
+    logout: (mode) =>
+      withEngineStopped(async () => {
+        await api.send('POST', mode === 'all' ? '/api/auth/logout-all' : '/api/auth/logout');
+        await wipeUserData(db, { keepOutbox: false });
+      }),
     exportData: () => api.get('/api/me/export', ExportV1),
-    async deleteAccount(password) {
-      await api.send('POST', '/api/me/delete', { password });
-      await wipeUserData(db, { keepOutbox: false });
-    },
+    deleteAccount: (password) =>
+      withEngineStopped(async () => {
+        await api.send('POST', '/api/me/delete', { password });
+        await wipeUserData(db, { keepOutbox: false });
+      }),
     async adultNotice() {
       const last = await getMeta(db, 'lastAgeBand');
       return last === 'minor' && (await current())?.ageBand === 'adult';

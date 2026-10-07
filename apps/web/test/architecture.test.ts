@@ -22,14 +22,19 @@ const isScreen = (path: string) =>
   path === 'App.tsx' ||
   (path.startsWith('sw/') && path.endsWith('.tsx'));
 
-const IMPORT = /(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
+/** `import … from 'x'`, `export … from 'x'`, `import('x')` et import pour effet de bord `import 'x'`. */
+const IMPORT =
+  /(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|import\s+['"]([^'"]+)['"]/g;
+
+/** Toute lecture de `onLine` : `navigator.onLine`, `navigator?.onLine`, `['onLine']`, déstructuration. */
+const ON_LINE = /\bonLine\b/;
 
 const withoutComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-function imports(file: string): string[] {
-  const text = readFileSync(file, 'utf8');
-  return [...text.matchAll(IMPORT)].map((m) => m[1] ?? m[2] ?? '');
-}
+const specifiers = (text: string): string[] =>
+  [...text.matchAll(IMPORT)].map((m) => m[1] ?? m[2] ?? m[3] ?? '');
+
+const imports = (file: string): string[] => specifiers(withoutComments(readFileSync(file, 'utf8')));
 
 describe('architecture', () => {
   const files = [...walk(SRC)].filter(code);
@@ -39,23 +44,39 @@ describe('architecture', () => {
     expect(screens.length).toBeGreaterThan(5);
     for (const file of screens) {
       for (const spec of imports(file)) {
-        expect(spec, rel(file)).not.toBe('dexie');
+        expect(spec, rel(file)).not.toMatch(/^dexie(\/|$)/);
         expect(spec, rel(file)).not.toMatch(/(^|\/)local-db(\/|$)/);
       }
     }
   });
 
-  it('aucun navigator.onLine dans le code de src/ (R-SYN-30, commentaires exclus)', () => {
+  it('aucune lecture de onLine dans le code de src/ (R-SYN-30, commentaires exclus)', () => {
     for (const file of files) {
-      expect(withoutComments(readFileSync(file, 'utf8')), rel(file)).not.toContain('navigator.onLine');
+      expect(withoutComments(readFileSync(file, 'utf8')), rel(file)).not.toMatch(ON_LINE);
     }
-    expect(withoutComments('// navigator.onLine\n/* navigator.onLine */ x')).not.toContain('navigator');
-    expect(withoutComments('const a = navigator.onLine;')).toContain('navigator.onLine');
   });
 
-  it('le motif détecte bien un import interdit', () => {
-    const sample = "import { getMeta } from '../../local-db/meta';\nimport Dexie from 'dexie';";
-    const found = [...sample.matchAll(IMPORT)].map((m) => m[1]);
-    expect(found).toEqual(['../../local-db/meta', 'dexie']);
+  it('le motif onLine voit toutes les formes, pas les commentaires', () => {
+    for (const sample of [
+      'const a = navigator.onLine;',
+      'const a = navigator?.onLine;',
+      "const a = navigator['onLine'];",
+      'const { onLine } = navigator;',
+    ]) {
+      expect(withoutComments(sample), sample).toMatch(ON_LINE);
+    }
+    expect(withoutComments('// navigator.onLine\n/* navigator.onLine */ x')).not.toMatch(ON_LINE);
+    expect('const online = true; window.ononline = f;').not.toMatch(ON_LINE);
+  });
+
+  it('le motif détecte bien un import interdit, effet de bord compris', () => {
+    const sample = [
+      "import { getMeta } from '../../local-db/meta';",
+      "import Dexie from 'dexie';",
+      "import 'dexie';",
+      "export { x } from './local-db/db';",
+      "const m = import('dexie');",
+    ].join('\n');
+    expect(specifiers(sample)).toEqual(['../../local-db/meta', 'dexie', 'dexie', './local-db/db', 'dexie']);
   });
 });
