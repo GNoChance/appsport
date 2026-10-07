@@ -129,11 +129,53 @@ describe('POST /api/me/delete (R-SUP-1 à R-SUP-6, P-DRT-3)', () => {
     expect(rest).toEqual([]);
     expect(event).toMatchObject({ actorId: lea.id, targetId: lea.id, details: null, outcome: 'success' });
     // le journal garde ses lignes antérieures
-    expect((await events('login_succeeded')).filter((e) => e.id === 'ev-before')).toHaveLength(1);
+    const kept = (await events('login_succeeded')).filter((e) => e.id === 'ev-before');
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ actorId: lea.id, targetId: lea.id });
 
     const gone = await ctx.request('/api/me', { cookie: other });
     expect(gone.status).toBe(410);
     expect(await gone.json()).toEqual({ error: 'account_deleted' });
+  });
+
+  it('détache les références non cascadées des miroirs avec une nouvelle révision (R-SUP-3)', async () => {
+    const { lea } = await setup();
+    const { db } = ctx.deps;
+    const cookie = await login(ctx, 'Léa', lea.password);
+    const gym = await insertFixtureRow(db, 'gym', { createdBy: lea.id, updatedBy: lea.id });
+    const equipment = await insertFixtureRow(db, 'gym_equipment', { gymId: gym.id, addedBy: lea.id });
+    const peer = await insertFixtureRow(db, 'user', { updatedBy: lea.id });
+    const revs = async () => ({
+      gym: await db
+        .selectFrom('gym')
+        .select(['createdBy', 'updatedBy', 'rev', 'updatedAt'])
+        .where('id', '=', gym.id as string)
+        .executeTakeFirstOrThrow(),
+      eq: await db
+        .selectFrom('gymEquipment')
+        .select(['addedBy', 'rev'])
+        .where('id', '=', equipment.id as string)
+        .executeTakeFirstOrThrow(),
+      peer: await db
+        .selectFrom('user')
+        .select(['updatedBy', 'rev'])
+        .where('id', '=', peer.id as string)
+        .executeTakeFirstOrThrow(),
+    });
+    const before = await revs();
+    expect((await del(cookie, { password: lea.password })).status).toBe(204);
+    const after = await revs();
+    expect(after.gym).toMatchObject({
+      createdBy: null,
+      updatedBy: null,
+      updatedAt: '2026-10-06T10:00:00.000Z',
+    });
+    expect(after.eq.addedBy).toBeNull();
+    expect(after.peer.updatedBy).toBeNull();
+    expect(after.gym.rev).toBeGreaterThan(before.gym.rev);
+    expect(after.eq.rev).toBeGreaterThan(before.eq.rev);
+    expect(after.peer.rev).toBeGreaterThan(before.peer.rev);
+    expect(await occurrences(lea.id)).toEqual([]);
   });
 
   it('la seule table anonymisée du registre est `session`', () => {

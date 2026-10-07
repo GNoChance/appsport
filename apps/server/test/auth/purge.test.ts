@@ -30,6 +30,7 @@ describe('authPurgeJob (03 §7)', () => {
     await mk({ revokedAt: LIM, revokedReason: 'logout' }); // purgée
     const revokedLim1 = await mk({ revokedAt: LIM1, revokedReason: 'logout' });
     await mk({ lastSeenAt: '2026-06-07T10:00:00.000Z' }); // inactive depuis plus de 120 jours : purgée
+    await mk({ lastSeenAt: '2026-06-08T10:00:00.000Z' }); // borne exacte : purgée
     const idleKept = await mk({ lastSeenAt: '2026-06-08T10:00:00.001Z' });
     const active = await mk({});
     await mk({ expiresAt: LIM }); // purgée
@@ -61,6 +62,7 @@ describe('authPurgeJob (03 §7)', () => {
     await mk({ usedAt: LIM }); // purgée
     const usedLim1 = await mk({ usedAt: LIM1 });
     await mk({ revokedAt: '2026-09-01T10:00:00.000Z' }); // purgée
+    await mk({ revokedAt: LIM }); // borne exacte : purgée
     await authPurgeJob.run(ctx.deps);
     expect(await ids('invitation')).toEqual([expired, pending, usedLim1].sort());
     const rows = await db.selectFrom('invitation').select(['id', 'birthDate']).execute();
