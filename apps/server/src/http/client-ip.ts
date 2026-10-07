@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import type { Context } from 'hono';
 import type { AppEnv } from '../app-env';
 
@@ -28,4 +29,10 @@ export function clientIp(c: Context<AppEnv>): string | null {
     if (first) return first;
   }
   return peer;
+}
+
+/** Adresse du client si elle est syntaxiquement valide (IPv4 ou IPv6), sinon null : jamais une clé de limiteur arbitraire. */
+export function validClientIp(c: Context<AppEnv>): string | null {
+  const ip = c.get('clientIp');
+  return ip !== null && isIP(ip) !== 0 ? ip : null;
 }
