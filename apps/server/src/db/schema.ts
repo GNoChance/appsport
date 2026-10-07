@@ -1,3 +1,4 @@
+import { snakeToCamel } from '@appsport/contracts';
 import type { Generated, Kysely, Transaction } from 'kysely';
 
 /** Gabarit +SYNC des tables à propriétaire (09 §0). */
@@ -254,5 +255,5 @@ export type DbExecutor = Kysely<Database> | Transaction<Database>;
 
 /** Nom de table SQL (snake_case) vers clé de `Database` (camelCase) : 'training_profile' → 'trainingProfile'. */
 export function tableKey(sqlTable: string): keyof Database {
-  return sqlTable.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase()) as keyof Database;
+  return snakeToCamel(sqlTable) as keyof Database;
 }
