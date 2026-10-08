@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvitationsPage } from '../../src/features/admin/InvitationsPage';
 import { buildInvitationShareMessage } from '../../src/features/admin/share-message';
-import { fill } from '../support/auth';
+import { fill, settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { makeMe, renderWithServices } from '../support/render';
 import { until } from '../support/wait';
@@ -153,6 +153,28 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     expect(screen.queryByText(CODE)).toBeNull();
     expect(screen.queryByText(link)).toBeNull();
     expect(screen.queryByTestId('share-message')).toBeNull();
+  });
+
+  it('double envoi du formulaire pendant la création : une seule invitation', async () => {
+    const reply = Promise.withResolvers<void>();
+    const link = `${window.location.origin}/invite#${CODE}`;
+    const api = createFakeApi().on('POST', '/api/admin/invitations', async () => {
+      await reply.promise;
+      return { status: 201, body: { invitation: invitation({ id: 'i-9' }), code: CODE, link } };
+    });
+    await renderInvitations({ api });
+    fill('Date de naissance', '2009-05-01');
+    const submit = screen.getByRole('button', { name: "Créer l'invitation" }) as HTMLButtonElement;
+    const form = submit.closest('form') as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await until(() => sent(api, 'POST', '/api/admin/invitations').length > 0);
+    await settle();
+    expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
+    expect(submit.disabled).toBe(true);
+    reply.resolve();
+    expect(await screen.findByText(CODE)).toBeTruthy();
+    expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
   });
 
   it('note vide : seule la date part', async () => {

@@ -220,6 +220,28 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     expect(screen.queryByText(CODE)).toBeNull();
   });
 
+  it('double clic sur « Générer » : une seule requête, rien ne ferme pendant l’envoi', async () => {
+    const reply = Promise.withResolvers<void>();
+    const api = createFakeApi().on('POST', '/api/admin/members/:id/reset-link', async () => {
+      await reply.promise;
+      return { status: 200, body: { code: CODE, link: LINK, expiresAt: '2026-10-07T12:00:00.000Z' } };
+    });
+    await renderMembers({ api });
+    open('lea', 'Lien de réinitialisation');
+    fireEvent.click(confirmButton('Générer'));
+    fireEvent.click(confirmButton('Générer'));
+    await until(() => sent(api, 'POST', '/api/admin/members/u-2/reset-link').length > 0);
+    await settle();
+    expect(sent(api, 'POST', '/api/admin/members/u-2/reset-link')).toHaveLength(1);
+    expect(confirmButton('Générer').disabled).toBe(true);
+    expect(confirmButton('Annuler').disabled).toBe(true);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    reply.resolve();
+    expect(await dialog().findByText(CODE)).toBeTruthy();
+    expect(sent(api, 'POST', '/api/admin/members/u-2/reset-link')).toHaveLength(1);
+  });
+
   it('403 reset_self_forbidden : commande admin:reset indiquée', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/reset-link', {
       status: 403,
@@ -465,5 +487,33 @@ describe('MembersPage : suppression (R-SUP-2, P-AUT-5, P-DRT-3)', () => {
     expect(await dialog().findByText('Mot de passe incorrect.')).toBeTruthy();
     expect(memberLoads(api)).toBe(1);
     expect(screen.getByRole('row', { name: 'lea' })).toBeTruthy();
+  });
+
+  it('envoi en cours : un second envoi ne part pas, boutons désactivés, Échap ne ferme pas ; la réponse ferme', async () => {
+    const reply = Promise.withResolvers<void>();
+    const api = createFakeApi().on('POST', '/api/admin/members/:id/delete', async () => {
+      await reply.promise;
+      return { status: 204 };
+    });
+    await renderMembers({ api });
+    open('lea', 'Supprimer');
+    fill('Tape le pseudo pour confirmer', 'lea');
+    fill('Ton mot de passe', PASSWORD);
+    // Deux envois du formulaire (Entrée deux fois, double clic) : le bouton désactivé n'y suffit pas.
+    const form = screen.getByRole('dialog').querySelector('form') as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await until(() => sent(api, 'POST', '/api/admin/members/u-2/delete').length > 0);
+    await settle();
+    expect(sent(api, 'POST', '/api/admin/members/u-2/delete')).toHaveLength(1);
+    expect(confirmButton('Supprimer définitivement').disabled).toBe(true);
+    expect(confirmButton('Annuler').disabled).toBe(true);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN] });
+    reply.resolve();
+    await until(() => screen.queryByRole('dialog') === null);
+    expect(sent(api, 'POST', '/api/admin/members/u-2/delete')).toHaveLength(1);
+    expect(screen.queryByRole('row', { name: 'lea' })).toBeNull();
   });
 });
