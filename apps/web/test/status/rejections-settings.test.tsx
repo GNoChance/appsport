@@ -11,24 +11,36 @@ import { seedMirror } from '../support/seed';
 import { until } from '../support/wait';
 
 const AT = '2026-10-06T10:00:00.000Z';
-const rejection = (id: string, opId: string, code = 'validation') => ({
+const INTRO = "Le serveur a refusé ces modifications : elles n'ont pas été enregistrées.";
+/** Rejet serveur au format de push.ts : `{ kind, fieldNames, reason }`, noms de champs seulement. */
+const rejection = (
+  id: string,
+  opId: string,
+  code = 'validation',
+  o: { entity?: string; kind?: string; fieldNames?: string[] } = {},
+) => ({
   id,
   ownerId: 'u-1',
   opId,
-  entity: 'place',
+  entity: o.entity ?? 'place',
   rowId: 'p-1',
   code,
-  detailJson: { field: 'name' },
+  detailJson: {
+    kind: o.kind ?? 'patch',
+    fieldNames: o.fieldNames ?? ['name', 'note'],
+    reason: 'sql_constraint',
+  },
   dismissedAt: null,
   createdAt: AT,
 });
-const dead = (opId: string, code: string): DeadletterEntry => ({
+/** Rejet local au format de push-results.ts : `{ kind, fieldNames }`. */
+const dead = (opId: string, code: string, detail: unknown = null): DeadletterEntry => ({
   opId,
   userId: 'u-1',
   entity: 'place',
   id: `row-${opId}`,
   code,
-  detail: null,
+  detail,
   receivedAt: '2026-10-06T11:00:00.000Z',
 });
 
@@ -80,6 +92,45 @@ describe('RejectionsPage (R-SYN-18)', () => {
     const list = screen.getByRole('list', { name: 'Éléments refusés' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
     expect(within(item('Données invalides')).getByRole('button', { name: 'Ignorer' })).toBeTruthy();
+    expect(screen.getByText(INTRO)).toBeTruthy();
+  });
+
+  it('chaque refus montre son détail : type de donnée, opération et champs (R-SYN-18)', async () => {
+    await renderRejections(async (db) => {
+      await seedMirror(db, 'sync_rejection', [rejection('r-1', 'op-1')]);
+      await db.deadletter.put(dead('op-7', 'parent_rejected', { kind: 'create', fieldNames: ['name'] }));
+      await db.deadletter.put(dead('op-8', 'forbidden'));
+    });
+    await screen.findByText('Données invalides');
+    expect(
+      within(item('Données invalides')).getByText('Lieu · modification · champs : name, note'),
+    ).toBeTruthy();
+    expect(within(item('Élément parent refusé')).getByText('Lieu · création · champ : name')).toBeTruthy();
+    // Détail absent (rejet local ancien) : le type de donnée seul.
+    expect(within(item('Action non autorisée')).getByText('Lieu')).toBeTruthy();
+  });
+
+  it('deux refus de même code : chaque « Ignorer » est décrit par son propre détail', async () => {
+    await renderRejections(async (db) => {
+      await seedMirror(db, 'sync_rejection', [
+        rejection('r-1', 'op-1', 'validation', { entity: 'place', kind: 'create', fieldNames: ['name'] }),
+        rejection('r-2', 'op-2', 'validation', { entity: 'gym', kind: 'patch', fieldNames: ['city'] }),
+        rejection('r-3', 'op-3', 'validation', { entity: 'quota', kind: 'delete', fieldNames: [] }),
+      ]);
+    });
+    await screen.findAllByText('Données invalides');
+    const descriptions = screen.getAllByRole('button', { name: 'Ignorer' }).map((b) =>
+      (b.getAttribute('aria-describedby') ?? '')
+        .split(' ')
+        .map((id) => document.getElementById(id)?.textContent ?? '')
+        .join(' '),
+    );
+    expect(descriptions).toHaveLength(3);
+    expect(descriptions[0]).toMatch(/^Données invalides Lieu · création · champ : name Refusé le /);
+    expect(descriptions[1]).toContain('Salle · modification · champ : city');
+    // Type de donnée inconnu : son nom tel quel.
+    expect(descriptions[2]).toContain('quota · suppression');
+    for (const d of descriptions) expect(d).toContain('Données invalides');
   });
 
   it("code inconnu : le code lui-même s'affiche", async () => {
@@ -125,6 +176,8 @@ describe('RejectionsPage (R-SYN-18)', () => {
     await renderRejections(async () => {});
     expect(await screen.findByText('Aucun refus.')).toBeTruthy();
     expect(screen.queryByRole('list', { name: 'Éléments refusés' })).toBeNull();
+    // Rien de refusé : pas de phrase « Le serveur a refusé… » qui contredirait « Aucun refus. ».
+    expect(screen.queryByText(INTRO)).toBeNull();
   });
 });
 
