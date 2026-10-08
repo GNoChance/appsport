@@ -415,14 +415,16 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
   async function checkKillSwitch(): Promise<boolean> {
     if (!(await killRequested())) return false;
     // R-PWA-6 : désenregistrement, caches shell-* et illustrations-* vidés (ni IndexedDB ni le marqueur),
-    // puis chaque fenêtre rechargée, depuis le réseau puisque plus aucun SW ne la sert.
+    // puis chaque fenêtre rechargée, depuis le réseau puisque plus aucun SW ne la sert. Une suppression
+    // refusée ou un `navigate` en échec, même levé tout de suite (absent d'un vieux WebKit), n'empêche
+    // pas de recharger les autres fenêtres : rester sur le build fautif est le pire cas.
     await scope.unregister();
     const doomed = (await scope.caches.keys()).filter(
       (name) => name.startsWith(SHELL_CACHE_PREFIX) || name.startsWith(ILLUSTRATIONS_CACHE_PREFIX),
     );
-    await Promise.all(doomed.map((name) => scope.caches.delete(name)));
+    await Promise.allSettled(doomed.map((name) => scope.caches.delete(name)));
     const windows = await scope.windowClients();
-    await Promise.allSettled(windows.map((client) => client.navigate(client.url)));
+    await Promise.allSettled(windows.map(async (client) => client.navigate(client.url)));
     return true;
   }
 

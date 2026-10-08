@@ -701,6 +701,9 @@ describe('checkKillSwitch (R-PWA-6, étapes 1 à 3 côté SW)', () => {
     const { s, h } = await activeA({ clientUrls: [`${ORIGIN}/profile`] });
     await (await s.caches.open('autre')).put('/x', new Response('x'));
     await (await s.caches.open(ILLUSTRATIONS_CACHE)).put(ILL(IA), new Response('a'));
+    // Caches d'autres builds et d'une ancienne version des illustrations : tous les shell-* et illustrations-*.
+    await (await s.caches.open('shell-bbbbbbbbbbbb')).put('/index.html', new Response('B-index'));
+    await (await s.caches.open('illustrations-v0')).put(ILL(IA), new Response('a0'));
     const inits: (RequestInit | undefined)[] = [];
     s.setNetwork((url, init) => {
       inits.push(init);
@@ -711,10 +714,48 @@ describe('checkKillSwitch (R-PWA-6, étapes 1 à 3 côté SW)', () => {
     // Le marqueur de base locale reste, comme la base qu'il décrit (ADR 0001 décision 5).
     expect(await cacheNames(s)).toEqual([LOCAL_DB_MARKER_CACHE, 'autre']);
     expect(s.navigations).toEqual([`${ORIGIN}/profile`]);
+    // R-PWA-6 dans l'ordre : désenregistré, caches vidés, puis seulement rechargé (depuis le réseau).
+    const doomed = ['illustrations-v0', ILLUSTRATIONS_CACHE, SHELL_A, 'shell-bbbbbbbbbbbb'];
+    const at = (event: string) => s.events.indexOf(event);
+    expect(s.events.filter((e) => e.startsWith('cache-deleted:')).sort()).toEqual(
+      doomed.map((name) => `cache-deleted:${name}`),
+    );
+    for (const name of doomed) {
+      expect(at('unregister'), name).toBeLessThan(at(`cache-delete:${name}`));
+      expect(at(`cache-deleted:${name}`), name).toBeLessThan(at(`navigate:${ORIGIN}/profile`));
+    }
+    expect(at('unregister')).toBeGreaterThanOrEqual(0);
     expect(s.fetchLog).toEqual([`${ORIGIN}/api/health`]);
     expect(inits[0]?.cache).toBe('no-store');
     expect(inits[0]?.signal).toBeDefined();
     expect(await getMeta(local, 'userId')).toBe('u1');
+  });
+
+  it('navigate en échec (même levé tout de suite) ou suppression refusée : les autres fenêtres sont rechargées', async () => {
+    const caches = createFakeCacheStorage({
+      failDelete: (name) => (name === ILLUSTRATIONS_CACHE ? new Error('suppression refusée') : undefined),
+    });
+    const { s, h } = await activeA({ caches });
+    s.windowClients = async () => [
+      {
+        url: `${ORIGIN}/a`,
+        navigate: () => {
+          throw new TypeError('navigate indisponible');
+        },
+      },
+      {
+        url: `${ORIGIN}/b`,
+        navigate: async (to: string) => {
+          s.navigations.push(to);
+          return null;
+        },
+      },
+    ];
+    s.setNetwork(health({ swKill: true }));
+    expect(await h.checkKillSwitch()).toBe(true);
+    expect(s.unregistered).toBe(true);
+    expect(await caches.has(SHELL_A)).toBe(false);
+    expect(s.navigations).toEqual([`${ORIGIN}/b`]);
   });
 
   it('503 avec swKill vrai : le JSON compte quel que soit le statut', async () => {

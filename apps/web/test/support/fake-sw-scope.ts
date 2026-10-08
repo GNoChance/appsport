@@ -139,9 +139,18 @@ export interface FakeSwScope extends SwScope {
   unregistered: boolean;
   /** URL de chaque `navigate` des fenêtres. */
   navigations: string[];
-  /** Effets dans l'ordre d'appel : 'unregister', 'cache-delete:<nom>', 'navigate:<url>'. */
+  /**
+   * Effets dans l'ordre : 'unregister' une fois fait, 'cache-delete:<nom>' à l'appel et 'cache-deleted:<nom>'
+   * une fois fait, 'navigate:<url>' à l'appel.
+   */
   events: string[];
 }
+
+/**
+ * Désenregistrement et suppression d'un cache se terminent à la tâche suivante, comme un aller-retour avec
+ * le navigateur : un effet lancé sans être attendu se voit dans l'ordre de `events`.
+ */
+const nextTask = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /** Réseau coupé par défaut (`TypeError`, comme `fetch`), jusqu'au premier `setNetwork`. */
 export function createFakeSwScope(
@@ -152,15 +161,18 @@ export function createFakeSwScope(
   let network: Network = () => Promise.reject(new TypeError('Failed to fetch'));
   const scope: FakeSwScope = {
     origin,
-    // Même stockage, suppressions journalisées dans `events` au moment de l'appel.
+    // Même stockage ; suppressions journalisées dans `events` à l'appel et une fois faites.
     caches: {
       open: (name) => storage.open(name),
       has: (name) => storage.has(name),
       keys: () => storage.keys(),
       match: (request, options) => storage.match(request, options),
-      delete: (name) => {
+      delete: async (name) => {
         scope.events.push(`cache-delete:${name}`);
-        return storage.delete(name);
+        await nextTask();
+        const deleted = await storage.delete(name);
+        scope.events.push(`cache-deleted:${name}`);
+        return deleted;
       },
     },
     fetchLog: [],
@@ -184,6 +196,7 @@ export function createFakeSwScope(
       scope.claimCalls++;
     },
     async unregister() {
+      await nextTask();
       scope.events.push('unregister');
       const wasRegistered = !scope.unregistered;
       scope.unregistered = true;
