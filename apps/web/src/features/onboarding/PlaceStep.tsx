@@ -16,6 +16,7 @@ import { EquipmentChecklist, sortEquipment } from '../places/EquipmentChecklist'
 import { GymPicker } from '../places/GymPicker';
 import styles from './onboarding.module.css';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { StepTitle } from './StepTitle';
 
 const HOME_PRESETS = PRESET_IDS.filter((id) => PRESETS[id].kind === 'home');
 
@@ -45,7 +46,7 @@ export function PlaceStep(p: StepProps & { kind: PlaceKind }) {
   if (!me || places === undefined) return null;
 
   const primary = places.find((pl) => pl.isPrimary);
-  const title = <h2>{(primary?.kind ?? p.kind) === 'gym' ? 'Ma salle' : 'Ma maison'}</h2>;
+  const title = <StepTitle>{(primary?.kind ?? p.kind) === 'gym' ? 'Ma salle' : 'Ma maison'}</StepTitle>;
 
   if (primary || created) {
     return (

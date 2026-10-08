@@ -19,6 +19,7 @@ import { useRepos } from '../../repos';
 import { Banner, Button, ChoiceList, Field, HealthWarning, useAction } from '../../ui';
 import styles from './onboarding.module.css';
 import { StepActions, type StepProps, saveLabel, saveStep } from './StepActions';
+import { StepTitle } from './StepTitle';
 
 const SELF_CHECK_TEXT =
   "Si l'une de ces situations te concerne, demande l'avis d'un médecin avant de commencer.";
@@ -370,7 +371,7 @@ export function HealthStep(p: StepProps) {
 
   return (
     <>
-      <h2>Santé et prudence</h2>
+      <StepTitle>Santé et prudence</StepTitle>
       {recording ? (
         <>
           <ScreeningQuestions record screening={screening} />

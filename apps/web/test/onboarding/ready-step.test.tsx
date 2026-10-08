@@ -17,6 +17,7 @@ import { until } from '../support/wait';
 
 const HOUR = 3_600_000;
 const COMPLETE = '/api/me/onboarding/complete';
+const INCOMPLETE = "Termine d'abord ta prise en main.";
 
 let events = 0;
 const count = () => {
@@ -71,14 +72,35 @@ describe('ReadyStep (E8, R-SYN-33)', () => {
     expect(api.calls.some((c) => c.path === COMPLETE)).toBe(false);
   });
 
-  it('409 onboarding_incomplete : retour au premier écran incomplet', async () => {
+  it('409 onboarding_incomplete : retour au premier écran incomplet, avec la raison', async () => {
     const { api, location } = await openReady(HOUR);
     api.on('POST', COMPLETE, { status: 409, body: { error: 'onboarding_incomplete', step: 'availability' } });
     window.addEventListener(ONBOARDING_COMPLETED_EVENT, count);
     await until(() => indicatorState() === 'ready');
     await until(() => !button('Commencer').disabled);
+    expect(screen.queryByText(INCOMPLETE)).toBeNull();
     fireEvent.click(button('Commencer'));
     await until(() => currentStep() === 'availability');
+    expect(screen.getByText(INCOMPLETE).closest('[role="status"]')).not.toBeNull();
+    expect(location()).toBe('/onboarding');
+    expect(events).toBe(0);
+    // Message affiché une fois : il disparaît à l'écran suivant.
+    fireEvent.click(await screen.findByRole('button', { name: 'Retour' }));
+    await until(() => currentStep() === 'experience');
+    expect(screen.queryByText(INCOMPLETE)).toBeNull();
+  });
+
+  it('409 sans étape lisible : écran recalculé depuis la base locale', async () => {
+    const { api, db, location } = await openReady(HOUR);
+    api.on('POST', COMPLETE, { status: 409, body: { error: 'onboarding_incomplete' } });
+    window.addEventListener(ONBOARDING_COMPLETED_EVENT, count);
+    await until(() => indicatorState() === 'ready');
+    await until(() => !button('Commencer').disabled);
+    // Disponibilité effacée depuis un autre appareil, sans nouveau pull : l'écran reste « C'est prêt ».
+    await seedProfile(db, { goal: 'muscle', experience: 'none', daysPerWeek: null, sessionMinutes: 45 });
+    fireEvent.click(button('Commencer'));
+    await until(() => currentStep() === 'availability');
+    expect(screen.getByText(INCOMPLETE)).toBeTruthy();
     expect(location()).toBe('/onboarding');
     expect(events).toBe(0);
   });

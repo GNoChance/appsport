@@ -9,6 +9,7 @@ import { Banner, Button, plural, useAction } from '../../ui';
 import { OfflineReadyIndicator } from '../status/OfflineReadyIndicator';
 import { useReadiness } from '../status/use-readiness';
 import styles from './onboarding.module.css';
+import { StepTitle } from './StepTitle';
 
 /**
  * E8 C'est prêt : récapitulatif et voyant « Prêt hors ligne ». « Commencer » termine l'onboarding
@@ -50,7 +51,7 @@ export function ReadyStep(p: { onBack(): void; onIncomplete(step: OnboardingStep
 
   return (
     <>
-      <h2>C'est prêt</h2>
+      <StepTitle>C'est prêt</StepTitle>
       {profile ? (
         <dl className={styles.summary}>
           {profile.goal ? (

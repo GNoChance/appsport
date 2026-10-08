@@ -6,6 +6,7 @@ import { useRepos } from '../../repos';
 import { ChoiceList } from '../../ui';
 import { SportStep } from './SportStep';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { StepTitle } from './StepTitle';
 
 /**
  * E1 Objectif : « Perdre du gras » n'est pas proposé à un mineur. En édition, choisir l'objectif
@@ -38,7 +39,7 @@ export function GoalStep(p: StepProps) {
 
   return (
     <>
-      <h2>Objectif</h2>
+      <StepTitle>Objectif</StepTitle>
       <ChoiceList<Goal>
         name="goal"
         legend="Quel est ton objectif principal ?"

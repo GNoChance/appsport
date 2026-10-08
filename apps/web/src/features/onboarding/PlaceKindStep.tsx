@@ -1,6 +1,7 @@
 import type { PlaceKind } from '@appsport/contracts';
 import { ChoiceList } from '../../ui';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { StepTitle } from './StepTitle';
 
 /**
  * E3 Lieu principal. Le type n'est pas stocké (c'est celui du lieu principal, créé à l'écran
@@ -10,7 +11,7 @@ export function PlaceKindStep(p: StepProps & { value: PlaceKind | null; onChange
   const save = useSaveStep(p, 'place_kind');
   return (
     <>
-      <h2>Lieu principal</h2>
+      <StepTitle>Lieu principal</StepTitle>
       <ChoiceList<PlaceKind>
         name="place-kind"
         legend="Où t'entraîneras-tu le plus souvent ?"

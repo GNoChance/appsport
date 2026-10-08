@@ -4,6 +4,7 @@ import { useLive } from '../../app-services';
 import { useRepos } from '../../repos';
 import { ChoiceList } from '../../ui';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { StepTitle } from './StepTitle';
 
 /** E5 Niveau. */
 export function ExperienceStep(p: StepProps) {
@@ -15,7 +16,7 @@ export function ExperienceStep(p: StepProps) {
   const value = choice ?? profile?.experience ?? null;
   return (
     <>
-      <h2>Niveau</h2>
+      <StepTitle>Niveau</StepTitle>
       <ChoiceList<Experience>
         name="experience"
         legend="Depuis combien de temps fais-tu de la musculation régulièrement (au moins une fois par semaine) ?"

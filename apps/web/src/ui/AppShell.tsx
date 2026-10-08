@@ -24,14 +24,22 @@ export function AppShell(p: { children: ReactNode }) {
   );
 }
 
-/** Cadre des pages publiques, lisibles sans session, et de l'onboarding : pas de navigation de compte. */
-export function PublicShell(p: { children: ReactNode }) {
+/**
+ * Cadre des pages publiques, lisibles sans session, et de l'onboarding : pas de navigation de
+ * compte. `homeLink` faux (onboarding) : la marque est un simple texte, l'accueil ramènerait à
+ * l'onboarding en perdant l'écran en cours.
+ */
+export function PublicShell(p: { children: ReactNode; homeLink?: boolean }) {
   return (
     <div className={styles.shell}>
       <header className={styles.header}>
-        <Link href="/" className={styles.brand}>
-          appsport
-        </Link>
+        {p.homeLink === false ? (
+          <span className={styles.brand}>appsport</span>
+        ) : (
+          <Link href="/" className={styles.brand}>
+            appsport
+          </Link>
+        )}
       </header>
       <main className={styles.main}>{p.children}</main>
       <PublicLinks />

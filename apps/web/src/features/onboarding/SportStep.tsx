@@ -12,6 +12,7 @@ import { useRepos } from '../../repos';
 import { ChoiceList, Field } from '../../ui';
 import styles from './onboarding.module.css';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { StepTitle } from './StepTitle';
 
 type Practice = 'yes' | 'no';
 
@@ -59,7 +60,7 @@ export function SportStep(p: StepProps & { pendingGoal?: Goal }) {
 
   return (
     <>
-      <h2>Autre sport</h2>
+      <StepTitle>Autre sport</StepTitle>
       <ChoiceList<Practice>
         name="sport-practice"
         legend="Pratiques-tu un autre sport régulièrement ?"

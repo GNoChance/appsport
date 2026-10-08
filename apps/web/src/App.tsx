@@ -127,7 +127,7 @@ export function App() {
       // L'onboarding n'a ni navigation de compte ni bandeau de mise à jour.
       if (route === '/onboarding') {
         return (
-          <PublicShell>
+          <PublicShell homeLink={false}>
             <OnboardingFlow />
           </PublicShell>
         );

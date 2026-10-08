@@ -1,6 +1,7 @@
 import { firstIncompleteStep } from '@appsport/domain';
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { shownStep } from '../../src/features/onboarding/OnboardingFlow';
 import { createRepos } from '../../src/repos';
 import { settle } from '../support/auth';
 import { createFakeApi } from '../support/fake-api';
@@ -29,6 +30,9 @@ async function openFlow(me = newcomer()) {
 }
 
 const progress = () => screen.getByText(/^Étape \d\/8$/).textContent;
+/** Le titre de l'écran, nommé avec l'indicateur d'étape, a le focus. */
+const hasFocus = (name: string) =>
+  screen.queryByRole('heading', { level: 2, name }) === document.activeElement;
 
 describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
   it("départ 'goal', « Étape 1/8 », hors de la coquille de l'appli", async () => {
@@ -38,6 +42,21 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(progress()).toBe('Étape 1/8');
     expect(location()).toBe('/onboarding');
     expect(screen.queryByRole('navigation', { name: 'Navigation principale' })).toBeNull();
+    // La marque ne mène pas hors de l'onboarding (la garde y ramènerait en perdant l'écran).
+    expect(screen.getByText('appsport')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'appsport' })).toBeNull();
+  });
+
+  it('changement d’écran : le titre, nommé avec « Étape n/8 », reçoit le focus ; pas au premier affichage', async () => {
+    const t = await openFlow();
+    await t.render();
+    await screen.findByRole('heading', { level: 2, name: 'Étape 1/8 Objectif' });
+    expect(document.activeElement).toBe(document.body);
+    choose('Prendre du muscle');
+    fireEvent.click(button('Suivant'));
+    await until(() => hasFocus('Étape 2/8 Autre sport'));
+    fireEvent.click(button('Retour'));
+    await until(() => hasFocus('Étape 1/8 Objectif'));
   });
 
   it('reprise au premier écran incomplet (firstIncompleteStep)', async () => {
@@ -105,7 +124,7 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(t.server.patches).toHaveLength(1);
   });
 
-  it("étape 'place' sans type de lieu connu → 'place_kind' (le choix n'est pas gardé)", async () => {
+  it("reprise sans lieu principal : 'place_kind', aucun type coché (le choix n'est pas gardé)", async () => {
     const t = await openFlow(newcomer({ onboardingStep: 'place_kind' }));
     await seedProfile(t.db, { goal: 'muscle' });
     await t.render();
@@ -113,6 +132,12 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(radio('À la salle').checked).toBe(false);
     expect(radio('À la maison').checked).toBe(false);
     expect(progress()).toBe('Étape 3/8');
+  });
+
+  it("shownStep : 'place' sans type de lieu connu → 'place_kind' ; avec un type → 'place'", () => {
+    expect(shownStep({ step: 'place', kind: null })).toBe('place_kind');
+    expect(shownStep({ step: 'place', kind: 'gym' })).toBe('place');
+    expect(shownStep({ step: 'experience', kind: null })).toBe('experience');
   });
 
   it('retour depuis le niveau : le lieu principal existant est affiché, rien n’est recréé', async () => {

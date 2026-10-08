@@ -4,6 +4,7 @@ import { useLive } from '../../app-services';
 import { useRepos } from '../../repos';
 import { ChoiceList } from '../../ui';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { StepTitle } from './StepTitle';
 
 type Days = (typeof DAYS_PER_WEEK)[number];
 type Minutes = (typeof SESSION_MINUTES)[number];
@@ -20,7 +21,7 @@ export function AvailabilityStep(p: StepProps) {
   const minutesValue = minutes ?? profile?.sessionMinutes ?? null;
   return (
     <>
-      <h2>Disponibilité</h2>
+      <StepTitle>Disponibilité</StepTitle>
       <ChoiceList<Days>
         name="days-per-week"
         legend="Séances par semaine"
