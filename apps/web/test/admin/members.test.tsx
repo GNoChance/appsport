@@ -410,6 +410,17 @@ describe('MembersPage : sessions et statut (R-AUTH-7, R-ADM-1, R-ROLE-2)', () =>
 });
 
 describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
+  it('même action ouverte sur un autre membre : dialogue neuf, mot de passe saisi oublié', async () => {
+    await renderMembers();
+    open('lea', 'Promouvoir administrateur');
+    fill('Ton mot de passe', PASSWORD);
+    // Le fond reste dans le DOM : un clic (ou un clavier sorti du dialogue) ouvre l'action d'un autre.
+    open('bastien', 'Rétrograder');
+    expect(screen.getByRole('dialog', { name: 'Rétrograder bastien' })).toBeTruthy();
+    expect((dialog().getByLabelText('Ton mot de passe') as HTMLInputElement).value).toBe('');
+    expect(confirmButton('Rétrograder').disabled).toBe(true);
+  });
+
   it('« Promouvoir administrateur » exige « Ton mot de passe » → POST role { role, password }', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/role', { status: 204 });
     await renderMembers({ api });

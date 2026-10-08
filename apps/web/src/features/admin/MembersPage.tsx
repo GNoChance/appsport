@@ -93,6 +93,8 @@ export function MembersPage() {
       ) : null}
       {action ? (
         <MemberDialog
+          // Une autre action ou un autre membre : dialogue neuf (rien de la saisie précédente).
+          key={`${action.kind}:${action.member.id}`}
           kind={action.kind}
           member={action.member}
           reload={reload}

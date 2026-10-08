@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Banner, Dialog, Field, HEALTH_WARNING_TEXT, HealthWarning } from '../../src/ui';
 
@@ -32,6 +32,50 @@ describe('ui', () => {
       </Dialog>,
     );
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('Dialog : Tab et Maj+Tab restent dans le dialogue (fenêtre modale)', () => {
+    render(
+      <>
+        <button type="button">Dehors</button>
+        <Dialog
+          open
+          title="Modifier"
+          onClose={() => {}}
+          actions={
+            <>
+              <button type="button">Annuler</button>
+              <button type="button" disabled>
+                Inactif
+              </button>
+              <button type="button">Enregistrer</button>
+            </>
+          }
+        >
+          <input aria-label="Nom" />
+        </Dialog>
+      </>,
+    );
+    const dialog = screen.getByRole('dialog');
+    const field = screen.getByLabelText('Nom');
+    const save = screen.getByRole('button', { name: 'Enregistrer' });
+    // Dernier élément → premier ; le bouton désactivé ne compte pas.
+    save.focus();
+    expect(fireEvent.keyDown(save, { key: 'Tab' })).toBe(false);
+    expect(document.activeElement).toBe(field);
+    // Premier élément, ou le dialogue lui-même (focus à l'ouverture) → dernier.
+    expect(fireEvent.keyDown(field, { key: 'Tab', shiftKey: true })).toBe(false);
+    expect(document.activeElement).toBe(save);
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(save);
+    // Focus sorti du dialogue : Tab y revient.
+    const outside = screen.getByRole('button', { name: 'Dehors' });
+    outside.focus();
+    fireEvent.keyDown(outside, { key: 'Tab' });
+    expect(document.activeElement).toBe(field);
+    // Au milieu : le navigateur avance seul.
+    expect(fireEvent.keyDown(field, { key: 'Tab' })).toBe(true);
   });
 
   it('Banner : role alert pour une erreur, status sinon', () => {
