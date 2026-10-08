@@ -308,6 +308,18 @@ describe('ExperienceStep (E5)', () => {
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ experience: '6_to_24_months', onboardingStep: 'experience' }]);
   });
+
+  it('niveau enregistré : coché, « Suivant » actif (R-ONB-2, R-ONB-3)', async () => {
+    const t = await renderStep((onNext) => <ExperienceStep mode="onboarding" onNext={onNext} />, {
+      me: newcomer({ onboardingStep: 'experience' }),
+      profile: { experience: '6_to_24_months' },
+    });
+    await until(() => isChecked('6 mois à 2 ans'));
+    expect(button('Suivant').disabled).toBe(false);
+    fireEvent.click(button('Suivant'));
+    await until(() => t.onNext.mock.calls.length === 1);
+    expect(t.patches).toEqual([{ experience: '6_to_24_months', onboardingStep: 'experience' }]);
+  });
 });
 
 describe('AvailabilityStep (E6)', () => {

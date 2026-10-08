@@ -1,5 +1,5 @@
 import type { OnboardingStep, TrainingProfilePatch } from '@appsport/contracts';
-import { useRepos } from '../../repos';
+import { type Repos, useRepos } from '../../repos';
 import { Banner, Button, useAction } from '../../ui';
 import styles from './onboarding.module.css';
 
@@ -17,13 +17,21 @@ export const saveLabel = (mode: StepProps['mode']) => (mode === 'onboarding' ? '
  * Enregistrement d'un écran au clic (R-ONB-2) : PATCH du profil, avec `onboardingStep` pendant
  * l'onboarding (rien n'est envoyé en édition si rien n'a changé), puis `onNext`.
  */
+export async function saveStep(
+  repos: Repos,
+  p: StepProps,
+  step: OnboardingStep,
+  patch: TrainingProfilePatch = {},
+): Promise<void> {
+  const body = p.mode === 'onboarding' ? { ...patch, onboardingStep: step } : patch;
+  if (Object.keys(body).length > 0) await repos.profile.update(body);
+  p.onNext();
+}
+
+/** `saveStep` en action d'écran (en cours, erreur traduite). */
 export function useSaveStep(p: StepProps, step: OnboardingStep) {
   const repos = useRepos();
-  return useAction(async (patch: TrainingProfilePatch = {}) => {
-    const body = p.mode === 'onboarding' ? { ...patch, onboardingStep: step } : patch;
-    if (Object.keys(body).length > 0) await repos.profile.update(body);
-    p.onNext();
-  });
+  return useAction((patch: TrainingProfilePatch = {}) => saveStep(repos, p, step, patch));
 }
 
 /** Erreur de l'écran, « Retour » et bouton principal. */
