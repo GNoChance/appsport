@@ -152,16 +152,25 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
     if (marker !== null && marker > manifest.localDbVersion) {
       throw new Error(`localDbVersion ${manifest.localDbVersion} inférieure au marqueur ${marker}`);
     }
-    // Tout télécharger avant d'écrire : un fichier en échec ne laisse pas de coquille partielle.
+    // Tout télécharger, corps compris, avant d'écrire : un fichier en échec, même au milieu de son corps,
+    // ne laisse pas de coquille partielle. La copie perd aussi `redirected`, refusé pour une navigation.
     const responses = await Promise.all(
       manifest.files.map(async (file) => {
         const res = await scope.fetch(file, { cache: 'reload' });
         if (!res.ok) throw new Error(`précache de ${file} : HTTP ${res.status}`);
-        return { file, res };
+        return { file, res: new Response(await res.arrayBuffer(), res) };
       }),
     );
+    // Un SW qui ne change que sw.js garde le buildHash : son cache est alors celui du SW actif, qu'une
+    // écriture en échec ne doit jamais supprimer. Seul un cache créé par cette installation est retiré.
+    const created = !(await scope.caches.has(shellCache));
     const cache = await scope.caches.open(shellCache);
-    await Promise.all(responses.map(({ file, res }) => cache.put(file, res)));
+    const writes = await Promise.allSettled(responses.map(({ file, res }) => cache.put(file, res)));
+    const failed = writes.find((w) => w.status === 'rejected');
+    if (failed) {
+      if (created) await scope.caches.delete(shellCache);
+      throw failed.reason;
+    }
     // Mode prompt (R-PWA-2) : pas de skipWaiting ici, seulement sur le message SKIP_WAITING.
   }
 

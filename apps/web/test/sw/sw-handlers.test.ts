@@ -148,12 +148,68 @@ describe('install', () => {
     expect(s.skipWaitingCalls).toBe(0);
   });
 
-  it('un fichier en 404 : install rejette et ne laisse pas de coquille partielle', async () => {
+  it('un fichier en 404 (le dernier du manifeste) : install rejette et ne laisse pas de coquille partielle', async () => {
     const s = createFakeSwScope();
-    s.setNetwork(staticNetwork({ '/index.html': 'A-index' }));
-    await expect(createSwHandlers(s, A).install()).rejects.toThrow(/\/assets\/app-1\.js/);
+    s.setNetwork(staticNetwork({ '/assets/app-1.js': 'A-app' }));
+    await expect(createSwHandlers(s, A).install()).rejects.toThrow(/\/index\.html/);
     expect(await s.caches.has(SHELL_A)).toBe(false);
     expect(s.skipWaitingCalls).toBe(0);
+  });
+
+  it('corps coupé en cours de lecture : install rejette sans coquille partielle', async () => {
+    const s = createFakeSwScope();
+    s.setNetwork(async (url) => {
+      if (!url.endsWith('/index.html')) return staticNetwork(A_FILES)(url);
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.error(new TypeError('network error'));
+        },
+      });
+      return new Response(body);
+    });
+    await expect(createSwHandlers(s, A).install()).rejects.toThrow(/network error/);
+    expect(await s.caches.has(SHELL_A)).toBe(false);
+  });
+
+  it('stockage plein pendant les écritures : install rejette sans coquille partielle', async () => {
+    const caches = createFakeCacheStorage({
+      failPut: (_, url) => (url === `${ORIGIN}/index.html` ? quotaExceeded() : undefined),
+    });
+    const s = createFakeSwScope({ caches });
+    s.setNetwork(staticNetwork(A_FILES));
+    await expect(createSwHandlers(s, A).install()).rejects.toThrow(/Quota/);
+    expect(await s.caches.has(SHELL_A)).toBe(false);
+  });
+
+  describe('SW qui ne change que sw.js : même buildHash, donc même cache que le SW actif', () => {
+    const servesActiveShell = async (s: FakeSwScope, h: SwHandlers) => {
+      s.setNetwork(offline);
+      expect(await bodyOf(h.handleFetch(nav('/')))).toBe('A-index');
+      expect(await bodyOf(h.handleFetch(get('/assets/app-1.js')))).toBe('A-app');
+    };
+
+    it('dernier fichier en 503 : install rejette, la coquille du SW actif reste intacte', async () => {
+      const { s, h } = await activeA();
+      s.setNetwork((url) =>
+        url.endsWith('/index.html')
+          ? Promise.resolve(new Response('', { status: 503 }))
+          : staticNetwork({ '/assets/app-1.js': 'A2-app' })(url),
+      );
+      await expect(createSwHandlers(s, A).install()).rejects.toThrow(/\/index\.html/);
+      await servesActiveShell(s, h);
+    });
+
+    it('stockage plein pendant les écritures : install rejette, la coquille du SW actif reste', async () => {
+      let full = false;
+      const caches = createFakeCacheStorage({
+        failPut: (_, url) => (full && url === `${ORIGIN}/index.html` ? quotaExceeded() : undefined),
+      });
+      const { s, h } = await activeA({ caches });
+      s.setNetwork(staticNetwork(A_FILES));
+      full = true;
+      await expect(createSwHandlers(s, A).install()).rejects.toThrow(/Quota/);
+      await servesActiveShell(s, h);
+    });
   });
 });
 
