@@ -5,7 +5,7 @@ import { ProfilePage } from '../../src/features/profile/ProfilePage';
 import { fill, settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
-import { button, choose, isChecked, seedProfile, serveProfile } from '../support/onboarding';
+import { button, choose, isChecked, PROFILE_PATH, seedProfile, serveProfile } from '../support/onboarding';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
 import { until } from '../support/wait';
 
@@ -34,6 +34,21 @@ const calls = (api: FakeApi, method: string, path: string) =>
   api.calls.filter((c) => c.method === method && c.path === path);
 const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 const heading = (name: string) => screen.queryByRole('heading', { level: 2, name });
+/** Textes qui décrivent un champ (aide, erreur), via aria-describedby. */
+const description = (el: Element) =>
+  (el.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ');
+
+/** Erreur locale liée au champ `label` (aria-invalid, description), focus sur le champ, pas d'alerte. */
+async function expectFieldError(label: string, message: string) {
+  const field = input(label);
+  await until(() => field.getAttribute('aria-invalid') === 'true');
+  expect(description(field)).toContain(message);
+  expect(document.activeElement).toBe(field);
+  expect(screen.queryByRole('alert')).toBeNull();
+}
 
 function changePassword(current = OLD_PASSWORD, next = NEW_PASSWORD, confirm = next) {
   fill('Mot de passe actuel', current);
@@ -64,11 +79,11 @@ describe('ProfilePage › Compte (02 §11, R-CPT-3)', () => {
     expect(sync.pullCount).toBe(1);
   });
 
-  it('pseudo invalide : message local, aucune requête', async () => {
+  it('pseudo invalide : message local lié au champ, aucune requête', async () => {
     const { api } = await renderProfile();
     fill('Pseudo', 'le');
     fireEvent.click(button('Enregistrer le pseudo'));
-    expect((await screen.findByRole('alert')).textContent).toBe('3 à 24 caractères.');
+    await expectFieldError('Pseudo', '3 à 24 caractères.');
     expect(calls(api, 'PATCH', '/api/me')).toHaveLength(0);
   });
 
@@ -78,6 +93,7 @@ describe('ProfilePage › Compte (02 §11, R-CPT-3)', () => {
     fill('Pseudo', 'leo');
     fireEvent.click(button('Enregistrer le pseudo'));
     expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    expect(input('Pseudo').value).toBe('leo');
   });
 
   it('409 username_taken : « Ce pseudo est déjà pris. »', async () => {
@@ -135,12 +151,17 @@ describe('ProfilePage › Mot de passe (R-MDP-6)', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Mot de passe actuel incorrect.');
   });
 
-  it('confirmation différente : message local, aucune requête', async () => {
+  it('confirmation différente : message local lié à « Confirmation », aucune requête', async () => {
     const { api } = await renderProfile();
     changePassword(OLD_PASSWORD, NEW_PASSWORD, 'autre chose encore');
-    expect((await screen.findByRole('alert')).textContent).toBe(
-      'Les deux mots de passe ne correspondent pas.',
-    );
+    await expectFieldError('Confirmation', 'Les deux mots de passe ne correspondent pas.');
+    expect(calls(api, 'POST', '/api/auth/password')).toHaveLength(0);
+  });
+
+  it('mot de passe actuel vide : message local lié au champ, aucune requête', async () => {
+    const { api } = await renderProfile();
+    changePassword('');
+    await expectFieldError('Mot de passe actuel', 'Saisis ton mot de passe actuel.');
     expect(calls(api, 'POST', '/api/auth/password')).toHaveLength(0);
   });
 
@@ -160,17 +181,33 @@ describe('ProfilePage › Mot de passe (R-MDP-6)', () => {
 
     changePassword();
     await until(() => screen.queryByText(FORCED_BANNER) === null);
-    expect(screen.getByText(CHANGED)).toBeTruthy();
+    expect(await screen.findByText(CHANGED)).toBeTruthy();
     expect(heading('Compte')).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 2, name: 'Entraînement' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Lieux' })).toBeTruthy();
     expect(sync.triggers).toContain('manual');
   });
 
+  it('mustChangePassword : GET /api/me en échec après le changement réussi, le bandeau disparaît quand même', async () => {
+    const admin = makeMe({ role: 'admin', mustChangePassword: true });
+    const api = createFakeApi();
+    // Le réseau tombe juste après la réponse du serveur.
+    api.on('POST', '/api/auth/password', () => {
+      api.setOffline('reject');
+      return { status: 204 };
+    });
+    await renderProfile({ me: admin, api });
+    changePassword();
+    await until(() => screen.queryByText(FORCED_BANNER) === null);
+    expect(await screen.findByText(CHANGED)).toBeTruthy();
+    expect(calls(api, 'GET', '/api/me')).toHaveLength(1);
+    expect(heading('Compte')).toBeTruthy();
+  });
+
   it('administrateur : 13 caractères refusés localement (R-MDP-1)', async () => {
     const { api } = await renderProfile({ me: makeMe({ role: 'admin' }) });
     changePassword(OLD_PASSWORD, 'cheval agrafe', 'cheval agrafe');
-    expect((await screen.findByRole('alert')).textContent).toBe('14 caractères au moins.');
+    await expectFieldError('Nouveau mot de passe', '14 caractères au moins.');
     expect(calls(api, 'POST', '/api/auth/password')).toHaveLength(0);
   });
 });
@@ -207,6 +244,19 @@ describe('ProfilePage › Entraînement (R-ONB-3)', () => {
     fireEvent.click(button('Enregistrer'));
     await screen.findByRole('button', { name: "Modifier l'objectif" });
     expect(t.patches).toEqual([{ goal: 'sport_support', sportCode: 'running', sportOtherLabel: null }]);
+  });
+
+  it("objectif sportif sans sport : le focus va au titre du sport, puis revient à l'objectif avec « Retour »", async () => {
+    await renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: "Modifier l'objectif" }));
+    await until(() => isChecked('Prendre du muscle'));
+    choose('Me renforcer pour mon sport');
+    fireEvent.click(button('Suivant'));
+    await screen.findByRole('radio', { name: 'Course à pied' });
+    expect(document.activeElement?.textContent).toBe('Autre sport');
+    fireEvent.click(button('Retour'));
+    await screen.findByRole('radio', { name: 'Me renforcer pour mon sport' });
+    expect(document.activeElement?.textContent).toBe('Objectif');
   });
 
   it('« Modifier le sport » → SportStep en édition → PATCH { sportCode, sportOtherLabel }', async () => {
@@ -254,12 +304,29 @@ describe('ProfilePage › Entraînement (R-ONB-3)', () => {
     expect(t.patches).toEqual([]);
   });
 
-  it('mode prudent → PATCH { cautiousMode: true }', async () => {
+  it('mode prudent → PATCH { cautiousMode: true } ; le miroir relu fait foi', async () => {
     const t = await renderProfile();
     fireEvent.click(await screen.findByRole('switch', { name: CAUTIOUS }));
     await until(() => t.patches.length === 1);
     expect(t.patches).toEqual([{ cautiousMode: true }]);
-    await until(() => (screen.getByRole('switch', { name: CAUTIOUS }) as HTMLInputElement).checked);
+    const toggle = () => screen.getByRole('switch', { name: CAUTIOUS }) as HTMLInputElement;
+    await settle(); // réponse reçue, miroir écrit par le faux serveur
+    expect(toggle().checked).toBe(true);
+    // Un autre appareil remet le mode prudent à non : la relecture du profil le montre.
+    await seedProfile(t.db, { ...TRAINING, cautiousMode: false });
+    await until(() => !toggle().checked);
+  });
+
+  it("mode prudent : l'interrupteur est désactivé pendant l'envoi, pas de deuxième PATCH", async () => {
+    const { api } = await renderProfile();
+    const toggle = (await screen.findByRole('switch', { name: CAUTIOUS })) as HTMLInputElement;
+    api.setOffline('hang');
+    fireEvent.click(toggle);
+    await until(() => calls(api, 'PATCH', PROFILE_PATH).length === 1);
+    expect(toggle.disabled).toBe(true);
+    fireEvent.click(toggle);
+    await settle();
+    expect(calls(api, 'PATCH', PROFILE_PATH)).toHaveLength(1);
   });
 
   it("mode prudent hors ligne : « Nécessite le réseau », l'interrupteur revient", async () => {

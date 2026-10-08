@@ -7,7 +7,13 @@ import { useLive, useMe } from '../../app-services';
 import { type TrainingProfileView, useRepos } from '../../repos';
 import { Banner, Button, Field, formatDate, Page, plural, useAction } from '../../ui';
 import { LogoutDialog } from '../auth/LogoutDialog';
-import { accessErrorMessage, checkNewPassword, loginErrorMessage, USERNAME_MESSAGES } from '../auth/messages';
+import {
+  accessErrorMessage,
+  checkNewPassword,
+  loginErrorMessage,
+  PASSWORD_MISMATCH_MESSAGE,
+  USERNAME_MESSAGES,
+} from '../auth/messages';
 import { PasswordFields } from '../auth/PasswordFields';
 import { AvailabilityStep } from '../onboarding/AvailabilityStep';
 import { ExperienceStep } from '../onboarding/ExperienceStep';
@@ -80,26 +86,33 @@ function AccountSection(p: { me: MeResponse }) {
   );
 }
 
-/** Pseudo : contrôlé ici (R-CPT-2), puis PATCH /api/me ; le refus du serveur garde la saisie. */
+/**
+ * Pseudo : contrôlé ici (R-CPT-2), message lié au champ, qui prend le focus ; puis PATCH /api/me.
+ * Le refus du serveur (ou le réseau) s'affiche en alerte et garde la saisie.
+ */
 function UsernameForm(p: { me: MeResponse }) {
   const repos = useRepos();
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const value = draft ?? p.me.username;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy || value === p.me.username) return;
     setSaved(false);
+    setError(null);
     const check = validateUsername(value);
     if (!check.ok) {
-      setError(USERNAME_MESSAGES[check.reason]);
+      setFieldError(USERNAME_MESSAGES[check.reason]);
+      inputRef.current?.focus();
       return;
     }
+    setFieldError(null);
     setBusy(true);
-    setError(null);
     try {
       await repos.me.updateUsername(value);
       setDraft(null);
@@ -114,8 +127,9 @@ function UsernameForm(p: { me: MeResponse }) {
 
   return (
     <form className={styles.form} noValidate onSubmit={(e) => void submit(e)}>
-      <Field label="Pseudo">
+      <Field label="Pseudo" error={fieldError}>
         <input
+          ref={inputRef}
           type="text"
           value={value}
           autoComplete="username"
@@ -144,32 +158,45 @@ function passwordChangeError(e: unknown, role: Role): string {
   return accessErrorMessage(e, role);
 }
 
+type PasswordFieldErrors = { current?: string; password?: string; confirm?: string };
+
 /**
  * Mot de passe (R-MDP-6) : l'actuel, puis le nouveau contrôlé ici (`checkNewPassword`, 14
- * caractères pour un admin). Réussite : champs vidés et autres appareils déconnectés.
+ * caractères pour un admin) ; un refus local est lié à son champ, qui prend le focus. Le refus du
+ * serveur ou le réseau s'affichent en alerte. Réussite : champs vidés, autres appareils déconnectés.
  */
 function PasswordSection(p: { me: MeResponse }) {
   const repos = useRepos();
   const [current, setCurrent] = useState('');
   const [passwords, setPasswords] = useState({ password: '', confirm: '' });
   const [busy, setBusy] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<PasswordFieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Refus local : le champ en cause (marqué aria-invalid au rendu) prend le focus.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chaque refus local relance la recherche
+  useEffect(() => {
+    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [fieldErrors]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
     setDone(false);
-    const problem =
-      current === ''
-        ? CURRENT_PASSWORD_REQUIRED
-        : checkNewPassword({ ...passwords, username: p.me.username, role: p.me.role });
-    if (problem) {
-      setError(problem);
+    setError(null);
+    if (current === '') {
+      setFieldErrors({ current: CURRENT_PASSWORD_REQUIRED });
       return;
     }
+    const problem = checkNewPassword({ ...passwords, username: p.me.username, role: p.me.role });
+    if (problem) {
+      setFieldErrors(problem === PASSWORD_MISMATCH_MESSAGE ? { confirm: problem } : { password: problem });
+      return;
+    }
+    setFieldErrors({});
     setBusy(true);
-    setError(null);
     try {
       await repos.me.changePassword({ currentPassword: current, newPassword: passwords.password });
       setCurrent('');
@@ -184,8 +211,8 @@ function PasswordSection(p: { me: MeResponse }) {
 
   return (
     <Section title="Mot de passe">
-      <form className={styles.form} noValidate onSubmit={(e) => void submit(e)}>
-        <Field label="Mot de passe actuel">
+      <form ref={formRef} className={styles.form} noValidate onSubmit={(e) => void submit(e)}>
+        <Field label="Mot de passe actuel" error={fieldErrors.current}>
           <input
             type="password"
             autoComplete="current-password"
@@ -199,6 +226,7 @@ function PasswordSection(p: { me: MeResponse }) {
           {...passwords}
           onChange={setPasswords}
           label="Nouveau mot de passe"
+          errors={fieldErrors}
         />
         {error ? <Banner tone="error">{error}</Banner> : null}
         {done ? <Banner tone="info">{PASSWORD_CHANGED_TEXT}</Banner> : null}
@@ -244,7 +272,9 @@ function summaryValue(key: Editor, profile: TrainingProfileView | null): string 
 /**
  * Entraînement (R-ONB-3) : chaque réponse se modifie avec l'écran de l'onboarding en édition, à la
  * place du résumé. Le titre de l'écran prend le focus à l'ouverture (« Entraînement <titre> ») ; à la
- * fermeture, le focus revient au bouton « Modifier … ». Mode prudent envoyé au changement.
+ * fermeture, le focus revient au bouton « Modifier … ». Mode prudent envoyé au changement,
+ * interrupteur désactivé pendant l'envoi (deux envois croisés laisseraient un état ou une erreur
+ * périmés).
  */
 function TrainingSection(p: { me: MeResponse }) {
   const repos = useRepos();
@@ -317,6 +347,7 @@ function TrainingSection(p: { me: MeResponse }) {
       <CautiousModeToggle
         value={cautiousDraft ?? profile?.cautiousMode ?? false}
         minor={p.me.ageBand === 'minor'}
+        disabled={cautious.pending}
         onChange={(v) => void changeCautious(v)}
       />
       {cautious.error ? <Banner tone="error">{cautious.error}</Banner> : null}

@@ -7,7 +7,7 @@ export const PASSWORD_HINT =
 /**
  * Mot de passe et confirmation (R-MDP-2). Les règles se contrôlent à l'envoi, par le formulaire
  * (`checkNewPassword` avec le même `username` et le même `role`) : un seul message à la fois,
- * pas d'erreur en double.
+ * pas d'erreur en double. `errors` : message lié au champ en cause (aria-invalid, description).
  */
 export function PasswordFields(p: {
   username: string;
@@ -16,10 +16,11 @@ export function PasswordFields(p: {
   confirm: string;
   onChange(v: { password: string; confirm: string }): void;
   label?: string;
+  errors?: { password?: string | null; confirm?: string | null };
 }) {
   return (
     <>
-      <Field label={p.label ?? 'Mot de passe'} hint={PASSWORD_HINT}>
+      <Field label={p.label ?? 'Mot de passe'} hint={PASSWORD_HINT} error={p.errors?.password}>
         <input
           type="password"
           autoComplete="new-password"
@@ -27,7 +28,7 @@ export function PasswordFields(p: {
           onChange={(e) => p.onChange({ password: e.target.value, confirm: p.confirm })}
         />
       </Field>
-      <Field label="Confirmation">
+      <Field label="Confirmation" error={p.errors?.confirm}>
         <input
           type="password"
           autoComplete="new-password"

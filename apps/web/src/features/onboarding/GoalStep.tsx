@@ -1,16 +1,17 @@
 import { GOAL_LABELS, type Goal } from '@appsport/contracts';
 import { availableGoals } from '@appsport/domain';
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
 import { ChoiceList } from '../../ui';
 import { SportStep } from './SportStep';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
-import { StepTitle } from './StepTitle';
+import { StepTitle, StepTitleContext } from './StepTitle';
 
 /**
  * E1 Objectif : « Perdre du gras » n'est pas proposé à un mineur. En édition, choisir l'objectif
- * sportif sans sport enregistré mène d'abord au sport, puis un seul PATCH (R-ONB-3).
+ * sportif sans sport enregistré mène d'abord au sport, puis un seul PATCH (R-ONB-3) ; le titre de
+ * l'écran affiché (sport, ou objectif au retour) prend alors le focus.
  */
 export function GoalStep(p: StepProps) {
   const repos = useRepos();
@@ -18,6 +19,7 @@ export function GoalStep(p: StepProps) {
   const profile = useLive(() => repos.profile.get(), [repos]);
   const [choice, setChoice] = useState<Goal | null>(null);
   const [askSport, setAskSport] = useState(false);
+  const titles = useContext(StepTitleContext);
   const save = useSaveStep(p, 'goal');
   if (!me || profile === undefined) return null;
 
@@ -26,14 +28,14 @@ export function GoalStep(p: StepProps) {
   const value = choice ?? (saved !== null && goals.includes(saved) ? saved : null);
   const needsSport = p.mode === 'edit' && value === 'sport_support' && !profile?.sportCode;
 
+  function showSport(show: boolean) {
+    if (titles) titles.focusNext.current = true;
+    setAskSport(show);
+  }
+
   if (askSport) {
     return (
-      <SportStep
-        mode="edit"
-        pendingGoal="sport_support"
-        onNext={p.onNext}
-        onBack={() => setAskSport(false)}
-      />
+      <SportStep mode="edit" pendingGoal="sport_support" onNext={p.onNext} onBack={() => showSport(false)} />
     );
   }
 
@@ -56,7 +58,7 @@ export function GoalStep(p: StepProps) {
           disabled: value === null,
           onClick: () => {
             if (value === null) return;
-            if (needsSport) setAskSport(true);
+            if (needsSport) showSport(true);
             else void save.run({ goal: value });
           },
         }}

@@ -37,7 +37,10 @@ export interface MeRepo {
   checkReset(code: string): Promise<ResetCheckResponse>;
   resetPassword(r: ResetPasswordRequest): Promise<MeResponse>;
   updateUsername(u: string): Promise<MeResponse>;
-  /** 204 → refresh() puis synchro manuelle (débloquée après R-MDP-1). */
+  /**
+   * 204 → meta.me sans `mustChangePassword` (même si la relecture échoue ensuite), refresh() puis
+   * synchro manuelle (débloquée après R-MDP-1).
+   */
   changePassword(r: ChangePasswordRequest): Promise<void>;
   logout(mode: 'current' | 'all'): Promise<void>;
   exportData(): Promise<ExportV1>;
@@ -144,6 +147,9 @@ export function createMeRepo(s: AppServices): MeRepo {
     },
     async changePassword(r) {
       await api.send('POST', '/api/auth/password', r);
+      // Le serveur a levé l'obligation (R-MDP-1) : hors ligne, refresh() rendrait l'ancien meta.me.
+      const cached = await current();
+      if (cached?.mustChangePassword) await rememberMe({ ...cached, mustChangePassword: false });
       await repo.refresh();
       void sync.syncNow('manual');
     },

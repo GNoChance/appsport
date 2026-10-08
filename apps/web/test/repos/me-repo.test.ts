@@ -221,6 +221,19 @@ describe('MeRepo : changement de compte (P-AUT-6)', () => {
     expect((await getMeta(db, 'me'))?.mustChangePassword).toBe(false);
     expect(sync.triggers).toContain('manual');
   });
+
+  it('changePassword : GET /api/me hors ligne après le 204 → meta.me sans mustChangePassword (R-MDP-1)', async () => {
+    const { services, api, db } = await createTestServices({
+      me: { ...lea, mustChangePassword: true },
+    });
+    api.on('POST', '/api/auth/password', () => {
+      api.setOffline('reject');
+      return { status: 204 };
+    });
+    await createRepos(services).me.changePassword({ currentPassword: 'a', newPassword: 'b' });
+    expect(api.calls.map((c) => `${c.method} ${c.path}`)).toEqual(['POST /api/auth/password', 'GET /api/me']);
+    expect((await getMeta(db, 'me'))?.mustChangePassword).toBe(false);
+  });
 });
 
 describe('MeRepo : session ouverte, état de connexion remis à zéro (R-AUTH-8, P-DRT-4)', () => {

@@ -301,7 +301,13 @@ export function LimitationsEditor(p: { draft?: LimitationDraft } = {}) {
 }
 
 /** Mode prudent (E7.5, C1) : proposé à tous ; affiché imposé pour un mineur (R-CST-7). */
-export function CautiousModeToggle(p: { value: boolean; minor: boolean; onChange(v: boolean): void }) {
+export function CautiousModeToggle(p: {
+  value: boolean;
+  minor: boolean;
+  /** Envoi en cours (Profil) : pas de nouveau choix avant la réponse. */
+  disabled?: boolean;
+  onChange(v: boolean): void;
+}) {
   const hintId = useId();
   const noteId = useId();
   return (
@@ -312,7 +318,7 @@ export function CautiousModeToggle(p: { value: boolean; minor: boolean; onChange
           role="switch"
           aria-checked={p.minor || p.value}
           checked={p.minor || p.value}
-          disabled={p.minor}
+          disabled={p.minor || p.disabled}
           aria-describedby={p.minor ? `${hintId} ${noteId}` : noteId}
           onChange={(e) => p.onChange(e.target.checked)}
         />
