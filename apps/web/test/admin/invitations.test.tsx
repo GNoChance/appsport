@@ -216,7 +216,24 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     create('2009-05-01');
     fireEvent.click(await screen.findByRole('button', { name: 'Partager' }));
     await until(() => share.mock.calls.length === 1);
+    // Le refus du partage arrive après le clic : on le laisse aboutir avant de regarder.
+    await settle();
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText(CODE)).toBeTruthy();
+  });
+
+  it('partage refusé (autre qu’une annulation) : « Partage impossible : copie le message. », message gardé', async () => {
+    const share = vi.fn().mockRejectedValue(new DOMException('refusé', 'NotAllowedError'));
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true, writable: true });
+    const { api, link } = createdApi();
+    await renderInvitations({ api });
+    create('2009-05-01');
+    fireEvent.click(await screen.findByRole('button', { name: 'Partager' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Partage impossible : copie le message.');
+    expect(screen.getByTestId('share-message').textContent).toBe(
+      buildInvitationShareMessage(window.location.origin, link, CODE),
+    );
+    expect(screen.getByRole('button', { name: 'Copier le message' })).toBeTruthy();
   });
 
   it('sans navigator.share : « Copier le message » copie le message', async () => {
