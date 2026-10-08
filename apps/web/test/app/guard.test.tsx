@@ -39,6 +39,10 @@ const ROWS: Row[] = [
   ['/login', true, makeMe(), 'online', to('/')],
   ['/admin/members', true, makeMe(), 'online', { kind: 'not_found' }],
   ['/admin/members', true, admin(), 'online', RENDER],
+  // wouter compare les chemins sans tenir compte de la casse : la garde aussi.
+  ['/Admin/members', true, makeMe(), 'online', { kind: 'not_found' }],
+  ['/ADMIN/health', true, makeMe(), 'online', { kind: 'not_found' }],
+  ['/ADMIN', true, makeMe(), 'online', { kind: 'not_found' }],
   ['/privacy/', false, null, 'online', RENDER],
   ['/help/', true, null, 'offline', RENDER],
   ['/login/', true, makeMe(), 'online', to('/')],

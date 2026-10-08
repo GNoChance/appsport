@@ -137,6 +137,16 @@ describe('MembersPage : tableau des membres (02 §6, P-ADM-1)', () => {
     expect(api.calls.filter((c) => c.path.startsWith('/api/admin'))).toEqual([]);
   });
 
+  it.each(['/Admin/members', '/ADMIN/health', '/admin/Invitations'])(
+    'un membre sur %s (casse différente, que wouter accepte) : « Page introuvable », aucune requête admin',
+    async (path) => {
+      const { api } = await renderApp({ path, me: makeMe({ role: 'member' }) });
+      expect(await screen.findByRole('heading', { level: 1, name: 'Page introuvable' })).toBeTruthy();
+      await settle();
+      expect(api.calls.filter((c) => c.path.toLowerCase().startsWith('/api/admin'))).toEqual([]);
+    },
+  );
+
   it('routes admin et navigation Membres · Invitations · Salles · État du serveur', async () => {
     const api = createFakeApi()
       .on('GET', '/api/admin/members', { status: 200, body: [BASTIEN] })

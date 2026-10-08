@@ -41,7 +41,11 @@ export type GuardResult =
 
 const LOST_SESSION: readonly ConnectionState[] = ['unauthenticated', 'account_deleted'];
 
-const isAdminPath = (path: string) => path === '/admin' || path.startsWith('/admin/');
+/** Sans tenir compte de la casse, comme les routes de wouter : `/Admin/members` est une page admin. */
+const isAdminPath = (path: string) => {
+  const p = path.toLowerCase();
+  return p === '/admin' || p.startsWith('/admin/');
+};
 
 /** Chemin sans barre finale (`/privacy/` → `/privacy`), `/` gardé. */
 export const normalizePath = (path: string): string => path.replace(/\/+$/, '') || '/';
