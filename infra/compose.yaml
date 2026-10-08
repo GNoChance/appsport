@@ -1,0 +1,31 @@
+# Service de production (08 §4), lancé depuis /opt/appsport avec --env-file /srv/appsport/deploy.env,
+# qui fixe APPSPORT_VERSION=vX.Y.Z (R-DEP-3).
+name: appsport
+
+services:
+  app:
+    image: "ghcr.io/gnochance/appsport:${APPSPORT_VERSION:?APPSPORT_VERSION absent de deploy.env}"
+    # Boucle locale seulement : Docker contourne ufw ; tailscale serve publie le 443.
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - /srv/appsport/data:/data
+    env_file: /srv/appsport/secrets/app.env
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "1000"
+    mem_limit: 512m
+    restart: unless-stopped
+    stop_grace_period: 10s
+    # Même sonde que le HEALTHCHECK de l'image : node:24-slim n'a pas curl.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
