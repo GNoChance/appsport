@@ -2,6 +2,10 @@ import type { MeResponse } from '@appsport/contracts';
 import { useEffect, useRef } from 'react';
 import { Redirect, Route, Switch, useLocation } from 'wouter';
 import { useMeState, useSyncState } from './app-services';
+import { AdminGymsPage } from './features/admin/AdminGymsPage';
+import { InvitationsPage } from './features/admin/InvitationsPage';
+import { MembersPage } from './features/admin/MembersPage';
+import { ServerHealthPage } from './features/admin/ServerHealthPage';
 import { InvitePage } from './features/auth/InvitePage';
 import { LoginPage } from './features/auth/LoginPage';
 import { ResetPage } from './features/auth/ResetPage';
@@ -91,6 +95,10 @@ function ConnectedRoutes() {
       <Route path="/profile/places" component={PlacesPage} />
       <Route path="/profile/places/:id" component={PlaceDetail} />
       <Route path="/gyms/:id" component={GymPage} />
+      <Route path="/admin/members" component={MembersPage} />
+      <Route path="/admin/invitations" component={InvitationsPage} />
+      <Route path="/admin/gyms" component={AdminGymsPage} />
+      <Route path="/admin/health" component={ServerHealthPage} />
       <Route component={NotFound} />
     </Switch>
   );
