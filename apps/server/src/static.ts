@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
-import { join, posix, resolve, sep } from 'node:path';
+import { join, type PlatformPath, posix, resolve, sep } from 'node:path';
 import { ILLUSTRATION_FILE_RE } from '@appsport/contracts';
 import type { Context, Hono } from 'hono';
 import { compress } from 'hono/compress';
@@ -34,11 +34,25 @@ async function readIfFile(path: string): Promise<Bytes | null> {
   }
 }
 
-/** `pathname` résolu sous `root` (traversée et octet nul refusés), puis lu s'il désigne un fichier. */
+/**
+ * Fichier que `pathname` désigne sous `root` (chemin déjà résolu), ou null : octet nul, barre finale (un
+ * dossier, jamais un fichier) ou chemin résolu hors de `root`. `path` : les tests passent aussi `win32`, où
+ * `\` sépare les segments comme `/`.
+ */
+export function resolveUnder(
+  root: string,
+  pathname: string,
+  path: Pick<PlatformPath, 'resolve' | 'sep'> = { resolve, sep },
+): string | null {
+  if (pathname.includes('\0') || pathname.endsWith('/')) return null;
+  const full = path.resolve(root, `.${pathname}`);
+  return full.startsWith(root + path.sep) ? full : null;
+}
+
+/** `pathname` résolu sous `root` (resolveUnder), puis lu s'il désigne un fichier. */
 async function readUnder(root: string, pathname: string): Promise<Bytes | null> {
-  const full = resolve(root, `.${pathname}`);
-  if (pathname.includes('\0') || !full.startsWith(root + sep)) return null;
-  return readIfFile(full);
+  const full = resolveUnder(root, pathname);
+  return full ? readIfFile(full) : null;
 }
 
 function sendPublicFile(c: Context<AppEnv>, pathname: string, body: Bytes): Response {

@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { SECURITY_HEADERS } from '../../src/http/security-headers';
-import { cacheControlFor, ILLUSTRATION_CSP, IMMUTABLE_CACHE } from '../../src/static';
+import { cacheControlFor, ILLUSTRATION_CSP, IMMUTABLE_CACHE, resolveUnder } from '../../src/static';
 import { createTestContext, type TestContext, type TestRequestInit } from '../support';
 
 const INDEX = '<!doctype html><html lang="fr"><head><title>appsport</title></head></html>';
@@ -67,9 +67,11 @@ async function expectIndex(res: Response, path: string): Promise<void> {
   expect(await res.text(), path).toBe(INDEX);
 }
 
+/** Un 404 ne porte aucun Cache-Control : un fichier absent un instant (déploiement) n'est jamais figé un an. */
 async function expectNotFound(res: Response, path: string): Promise<void> {
   expect(res.status, path).toBe(404);
   expect(await res.json(), path).toEqual({ error: 'not_found' });
+  expect(res.headers.get('Cache-Control'), path).toBeNull();
   expectSecurityHeaders(res);
 }
 
@@ -101,13 +103,27 @@ describe('mountWebApp : fichiers de publicDir', () => {
   });
 
   it('repli SPA : un chemin sans extension sert index.html en no-cache', async () => {
-    for (const path of ['/profile/places/abc', '/invite', '/admin/members']) {
+    for (const path of ['/profile/places/abc', '/invite', '/admin/members', '/admin/members/']) {
       await expectIndex(await get(path), path);
     }
   });
 
-  it('404 not_found : fichier absent avec extension, traversée de chemin', async () => {
-    for (const path of ['/assets/missing-zzz.js', '/..%2f..%2fpackage.json', '/..%5c..%5cpackage.json']) {
+  it('404 not_found : fichier absent avec extension, chemin qui ne peut pas désigner un fichier', async () => {
+    for (const path of [
+      '/assets/missing-zzz.js',
+      // %2f n'est pas décodé (decodeURI de Hono) : nom de fichier littéral et absent, pas une traversée.
+      '/..%2f..%2fpackage.json',
+      // %5c devient « \ », séparateur sous Windows seulement : la traversée est couverte par resolveUnder (win32).
+      '/..%5c..%5cpackage.json',
+      // Octet nul refusé avant stat, qui lèverait ERR_INVALID_ARG_VALUE (500).
+      '/a%00.js',
+      // ENOTDIR et ENAMETOOLONG sous Linux (ENOENT sous Windows) : un fichier absent, pas un 500.
+      '/index.html/x.js',
+      `/${'a'.repeat(300)}.js`,
+      // Barre finale : un dossier, jamais un fichier (sinon servi en application/octet-stream).
+      '/index.html/',
+      '/assets/index-abc123.js/',
+    ]) {
       await expectNotFound(await get(path), path);
     }
   });
@@ -147,10 +163,16 @@ describe('mountWebApp : illustrations', () => {
   });
 
   it('404 : empreinte fausse, fichier absent, traversée, nom sans empreinte', async () => {
+    // La cible des traversées a bien l'empreinte HASH8 : seule la validation du nom peut la refuser.
+    const secret = readFileSync(join(contentDir, 'secret.svg'));
+    expect(createHash('sha256').update(secret).digest('hex').slice(0, 8)).toBe(HASH8);
     for (const path of [
       '/illustrations/squat-start.00000000.svg',
       '/illustrations/absent.12345678.svg',
       '/illustrations/..%2f..%2fsecret.svg',
+      // Le paramètre décodé vaut ../../secret.<HASH8>.svg (ou ..\..\…) : contentDir/secret.svg s'il passait.
+      `/illustrations/..%2f..%2fsecret.${HASH8}.svg`,
+      `/illustrations/..%5c..%5csecret.${HASH8}.svg`,
       '/illustrations/squat-start.svg',
     ]) {
       await expectNotFound(await get(path), path);
@@ -168,6 +190,27 @@ describe('mountWebApp : illustrations', () => {
     const again = await get(ILLUSTRATION);
     expect(again.status).toBe(200);
     expect(await again.text()).toBe(SVG);
+  });
+});
+
+describe('resolveUnder', () => {
+  it('posix : fichier sous la racine ; traversée, préfixe voisin, octet nul et barre finale refusés', () => {
+    const root = '/srv/public';
+    expect(resolveUnder(root, '/index.html', posix)).toBe('/srv/public/index.html');
+    expect(resolveUnder(root, '/assets/index-abc123.js', posix)).toBe('/srv/public/assets/index-abc123.js');
+    for (const path of ['/../package.json', '/../public-evil/x.js', '/a\0b.js', '/index.html/', '/assets/']) {
+      expect(resolveUnder(root, path, posix), JSON.stringify(path)).toBeNull();
+    }
+  });
+
+  it('win32 : « \\ » sépare aussi les segments, la traversée reste refusée', () => {
+    const root = 'C:\\srv\\public';
+    expect(resolveUnder(root, '/assets/index-abc123.js', win32)).toBe(
+      'C:\\srv\\public\\assets\\index-abc123.js',
+    );
+    for (const path of ['/..\\..\\x', '/..\\package.json', '/..\\public-evil\\x.js', '/a\0b.js']) {
+      expect(resolveUnder(root, path, win32), JSON.stringify(path)).toBeNull();
+    }
   });
 });
 
