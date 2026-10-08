@@ -54,12 +54,13 @@ describe('manifeste PWA', () => {
       scope: '/',
       lang: 'fr',
     });
+    // Orientation libre (WCAG 2.1 SC 1.3.4, arbitrage du propriétaire du 2026-10-08) : aucun verrou.
+    expect(m).not.toHaveProperty('orientation');
     // Identité de l'appli installée fixée, indépendante de start_url (R-PWA-7).
     expect(m.id).toBe('/');
     expect(m).toMatchObject({
       description: 'Suivi de musculation entre proches',
       dir: 'ltr',
-      orientation: 'portrait',
       background_color: '#ffffff',
       theme_color: '#0f766e',
     });
