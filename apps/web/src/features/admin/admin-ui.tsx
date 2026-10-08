@@ -44,12 +44,13 @@ export function adminErrorMessage(e: unknown, overrides?: Overrides): string {
  * Données lues en ligne (classe E) : la dernière lecture lancée l'emporte ; un échec garde les
  * données déjà affichées, sauf un refus (403) : les droits d'administration ont été retirés
  * (R-ROLE-4), rien de l'ancienne liste ne reste et le profil est relu pour que la garde des routes
- * réponde « Page introuvable ». `load` doit être stable (`useCallback`) : la lecture repart quand il
- * change.
+ * réponde « Page introuvable ». `loading` : première lecture en cours, ni données ni échec.
+ * `load` doit être stable (`useCallback`) : la lecture repart quand il change.
  */
 export function useServerData<T>(load: () => Promise<T>): {
   data: T | null;
   error: string | null;
+  loading: boolean;
   reload(): Promise<void>;
 } {
   const repos = useRepos();
@@ -80,7 +81,16 @@ export function useServerData<T>(load: () => Promise<T>): {
     };
   }, [reload]);
 
-  return { ...state, reload };
+  return { ...state, loading: state.data === null && state.error === null, reload };
+}
+
+/** Lecture en cours, annoncée poliment (rien d'autre à l'écran ne le dirait). */
+export function Loading() {
+  return (
+    <p role="status" className={styles.meta}>
+      Chargement…
+    </p>
+  );
 }
 
 /** Lecture impossible (hors ligne : « Nécessite le réseau ») et « Réessayer ». */

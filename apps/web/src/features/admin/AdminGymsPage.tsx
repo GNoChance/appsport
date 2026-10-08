@@ -12,7 +12,7 @@ import { useRepos } from '../../repos';
 import { Button, Field, Page, plural } from '../../ui';
 import { AdminNav } from './AdminNav';
 import styles from './admin.module.css';
-import { ActionDialog, LoadFailure, useServerData } from './admin-ui';
+import { ActionDialog, LoadFailure, Loading, useServerData } from './admin-ui';
 
 export const GYM_IN_USE_MESSAGE =
   'Des membres ont encore cette salle parmi leurs lieux : elle ne peut pas être supprimée.';
@@ -29,7 +29,7 @@ export function AdminGymsPage() {
   const repos = useRepos();
   const [query, setQuery] = useState('');
   const load = useCallback(() => repos.gyms.search(query.trim()), [repos, query]);
-  const { data: gyms, error, reload } = useServerData(load);
+  const { data: gyms, error, loading, reload } = useServerData(load);
   const [editing, setEditing] = useState<GymSummary | null>(null);
   const [deleting, setDeleting] = useState<GymSummary | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -40,6 +40,7 @@ export function AdminGymsPage() {
       <Field label="Rechercher une salle">
         <input ref={searchRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
       </Field>
+      {loading ? <Loading /> : null}
       {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
       {gyms && gyms.length === 0 ? <p>Aucune salle trouvée.</p> : null}
       {gyms && gyms.length > 0 ? (

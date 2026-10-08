@@ -119,11 +119,25 @@ describe('MembersPage : tableau des membres (02 §6, P-ADM-1)', () => {
     expect(row('bastien').getByRole('button', { name: 'Rétrograder' })).toBeTruthy();
   });
 
+  it('lecture en cours : « Chargement… » annoncé poliment, puis le tableau', async () => {
+    const reply = Promise.withResolvers<void>();
+    const api = createFakeApi().on('GET', '/api/admin/members', async () => {
+      await reply.promise;
+      return { status: 200, body: [BASTIEN, LEA] };
+    });
+    await renderWithServices(<MembersPage />, { api, me: ADMIN });
+    expect((await screen.findByText('Chargement…')).getAttribute('role')).toBe('status');
+    reply.resolve();
+    expect(await screen.findByRole('row', { name: 'lea' })).toBeTruthy();
+    expect(screen.queryByText('Chargement…')).toBeNull();
+  });
+
   it('liste illisible hors ligne : « Nécessite le réseau » puis « Réessayer »', async () => {
     const api = createFakeApi();
     api.setOffline('reject');
     await renderWithServices(<MembersPage />, { api, me: ADMIN });
     expect(await screen.findByText('Nécessite le réseau')).toBeTruthy();
+    expect(screen.queryByText('Chargement…')).toBeNull();
     api.setOffline(false);
     api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN, LEA] });
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));

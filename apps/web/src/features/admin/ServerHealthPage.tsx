@@ -5,7 +5,7 @@ import { useRepos } from '../../repos';
 import { Banner, formatAge, formatDate, Page } from '../../ui';
 import { AdminNav } from './AdminNav';
 import styles from './admin.module.css';
-import { LoadFailure, useServerData } from './admin-ui';
+import { LoadFailure, Loading, useServerData } from './admin-ui';
 
 const HOUR_MS = 3_600_000;
 /** [décision plan] période de 24 h + 2 h de grâce du contrôle `backup` (08 §9). */
@@ -39,10 +39,11 @@ const doneFeminine = (ok: boolean) => (ok ? 'réussie' : 'échouée');
 export function ServerHealthPage() {
   const repos = useRepos();
   const load = useCallback(() => repos.admin.opsStatus(), [repos]);
-  const { data, error, reload } = useServerData(load);
+  const { data, error, loading, reload } = useServerData(load);
   return (
     <Page title="État du serveur">
       <AdminNav />
+      {loading ? <Loading /> : null}
       {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
       {data ? <HealthReport status={data} /> : null}
     </Page>

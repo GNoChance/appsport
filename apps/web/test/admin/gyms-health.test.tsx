@@ -49,6 +49,19 @@ describe('AdminGymsPage (02 §6, R-SAL-4, R-SAL-7)', () => {
     await until(() => searches(api).includes('basic'));
   });
 
+  it('lecture en cours : « Chargement… », puis la liste', async () => {
+    const reply = Promise.withResolvers<void>();
+    const api = createFakeApi().on('GET', '/api/gyms', async () => {
+      await reply.promise;
+      return { status: 200, body: GYMS };
+    });
+    await renderWithServices(<AdminGymsPage />, { api, me: ADMIN });
+    expect((await screen.findByText('Chargement…')).getAttribute('role')).toBe('status');
+    reply.resolve();
+    expect(await screen.findByRole('list', { name: 'Salles' })).toBeTruthy();
+    expect(screen.queryByText('Chargement…')).toBeNull();
+  });
+
   it('« Modifier » → PATCH /api/gyms/g-1 { city } (champs changés seulement) puis liste relue', async () => {
     const api = createFakeApi().on('PATCH', '/api/gyms/:id', { status: 204 });
     await renderGyms(api);
@@ -240,6 +253,19 @@ describe('ServerHealthPage (08 §9)', () => {
     expect(screen.getByText('Dernière sauvegarde : aucune')).toBeTruthy();
     expect(screen.getByText('Dernier test de restauration : aucun')).toBeTruthy();
     expect(screen.getByText("Dernier contrôle de l'hôte : aucun")).toBeTruthy();
+  });
+
+  it('lecture en cours : « Chargement… », puis l’état', async () => {
+    const reply = Promise.withResolvers<void>();
+    const api = createFakeApi().on('GET', '/api/admin/ops-status', async () => {
+      await reply.promise;
+      return { status: 200, body: { version: 'v1.2.3', opsStatus: OPS } };
+    });
+    await renderWithServices(<ServerHealthPage />, { api, me: ADMIN });
+    expect((await screen.findByText('Chargement…')).getAttribute('role')).toBe('status');
+    reply.resolve();
+    expect(await screen.findByText('Version en service : v1.2.3')).toBeTruthy();
+    expect(screen.queryByText('Chargement…')).toBeNull();
   });
 
   it('opsStatus null → aucun état d’exploitation disponible', async () => {

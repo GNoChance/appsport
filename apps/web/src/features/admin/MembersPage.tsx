@@ -16,6 +16,7 @@ import {
   ActionDialog,
   isStaleError,
   LoadFailure,
+  Loading,
   SECRET_SHOWN_ONCE,
   useRestoreFocus,
   useServerData,
@@ -50,7 +51,7 @@ const yesNo = (v: boolean) => (v ? 'oui' : 'non');
 export function MembersPage() {
   const repos = useRepos();
   const load = useCallback(() => repos.admin.members(), [repos]);
-  const { data: members, error, reload } = useServerData(load);
+  const { data: members, error, loading, reload } = useServerData(load);
   const [action, setAction] = useState<{ kind: MemberAction; member: MemberSummary } | null>(null);
   const tableRef = useRef<HTMLElement>(null);
   const captionId = useId();
@@ -58,6 +59,7 @@ export function MembersPage() {
   return (
     <Page title="Membres">
       <AdminNav />
+      {loading ? <Loading /> : null}
       {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
       {members ? (
         <section

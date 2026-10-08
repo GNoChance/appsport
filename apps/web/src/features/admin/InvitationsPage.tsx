@@ -8,7 +8,7 @@ import { useRepos } from '../../repos';
 import { Banner, Button, CopyButton, Field, formatDate, formatDateTime, Page, useAction } from '../../ui';
 import { AdminNav } from './AdminNav';
 import styles from './admin.module.css';
-import { ActionDialog, LoadFailure, SECRET_SHOWN_ONCE, useServerData } from './admin-ui';
+import { ActionDialog, LoadFailure, Loading, SECRET_SHOWN_ONCE, useServerData } from './admin-ui';
 import { buildInvitationShareMessage } from './share-message';
 
 const BIRTH_DATE_REQUIRED = 'Saisis la date de naissance.';
@@ -38,7 +38,7 @@ export function invitationStateText(i: InvitationSummary): string {
 export function InvitationsPage() {
   const repos = useRepos();
   const load = useCallback(() => repos.admin.invitations(), [repos]);
-  const { data: invitations, error, reload } = useServerData(load);
+  const { data: invitations, error, loading, reload } = useServerData(load);
   const [created, setCreated] = useState<CreateInvitationResponse | null>(null);
   const [revoking, setRevoking] = useState<InvitationSummary | null>(null);
   const newHeadingId = useId();
@@ -76,6 +76,7 @@ export function InvitationsPage() {
         <h2 id={listHeadingId} ref={listRef} tabIndex={-1}>
           Invitations envoyées
         </h2>
+        {loading ? <Loading /> : null}
         {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
         {invitations && invitations.length === 0 ? <p>Aucune invitation pour l'instant.</p> : null}
         {invitations && invitations.length > 0 ? (

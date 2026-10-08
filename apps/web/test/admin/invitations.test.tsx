@@ -110,6 +110,19 @@ describe('InvitationsPage : liste (R-INV-7)', () => {
     for (const i of [1, 2, 3, 4]) expect(item(i).queryByRole('button', { name: 'Révoquer' })).toBeNull();
   });
 
+  it('lecture en cours : « Chargement… » plutôt qu’une liste vide', async () => {
+    const reply = Promise.withResolvers<void>();
+    const api = createFakeApi().on('GET', '/api/admin/invitations', async () => {
+      await reply.promise;
+      return { status: 200, body: [] };
+    });
+    await renderWithServices(<InvitationsPage />, { api, me: ADMIN });
+    expect((await screen.findByText('Chargement…')).getAttribute('role')).toBe('status');
+    reply.resolve();
+    expect(await screen.findByText("Aucune invitation pour l'instant.")).toBeTruthy();
+    expect(screen.queryByText('Chargement…')).toBeNull();
+  });
+
   it('aucune invitation : « Aucune invitation pour l’instant. »', async () => {
     const api = createFakeApi().on('GET', '/api/admin/invitations', { status: 200, body: [] });
     await renderWithServices(<InvitationsPage />, { api, me: ADMIN });
