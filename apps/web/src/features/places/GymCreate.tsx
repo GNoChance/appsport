@@ -9,7 +9,7 @@ import {
   PRESETS,
   type PresetId,
 } from '@appsport/contracts';
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useRepos } from '../../repos';
 import { Banner, Button, ChoiceList, ERROR_MESSAGES, Field, plural, useAction } from '../../ui';
@@ -30,13 +30,15 @@ type Stage = 'info' | 'similar' | 'equipment';
 /**
  * Création d'une salle (R-SAL-2, R-SAL-3) : nom et ville, salles proches à écarter, préréglage,
  * puis validation de la liste pré-cochée. Une salle existante (proche ou doublon) se choisit à la
- * place par `onPickExisting`.
+ * place par `onPickExisting`. `visibility` (réglage de « Qui va à cette salle ») est rendu après la
+ * ville, avant tout bouton qui enregistre (R-VIS-3).
  */
 export function GymCreate(p: {
   isPrimary: boolean;
   visibleAtGym: boolean;
   onDone(): void;
   onPickExisting(gymId: string): void;
+  visibility?: ReactNode;
 }) {
   const repos = useRepos();
   const uid = useId();
@@ -51,9 +53,13 @@ export function GymCreate(p: {
   const [preset, setPreset] = useState<PresetId | null>(null);
   const [equipment, setEquipment] = useState<EquipmentCode[]>([]);
   const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
+  // Modifications du nom ou de la ville : une réponse arrivée après l'une d'elles est périmée.
+  const edits = useRef(0);
 
   const check = useAction(async (n: string, c: string) => {
+    const at = edits.current;
     const found = await repos.gyms.similar(n, c);
+    if (edits.current !== at) return;
     setSimilar(found);
     setStage(found.length > 0 ? 'similar' : 'equipment');
   });
@@ -79,6 +85,7 @@ export function GymCreate(p: {
 
   /** Nom ou ville modifiés : les salles proches sont à revoir. */
   const edit = (set: (v: string) => void) => (v: string) => {
+    edits.current += 1;
     set(v);
     setStage('info');
     setDuplicateOf(null);
@@ -119,6 +126,7 @@ export function GymCreate(p: {
           onChange={(e) => edit(setCity)(e.target.value)}
         />
       </Field>
+      {p.visibility}
       {check.error ? <Banner tone="error">{check.error}</Banner> : null}
       {stage === 'info' ? (
         <Button onClick={submitInfo} disabled={check.pending}>

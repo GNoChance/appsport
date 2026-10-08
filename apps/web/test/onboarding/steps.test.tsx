@@ -278,6 +278,35 @@ describe('PlaceStep (E4)', () => {
     });
   });
 
+  it('salle, mineur : case de visibilité décochée avec la raison ; « Valider » → visibleAtGym: false (P-MIN-6)', async () => {
+    const me = newcomer({ ageBand: 'minor', onboardingStep: 'place_kind' });
+    const db = createTestLocalDb();
+    const api = createFakeApi()
+      .on('GET', '/api/gyms', {
+        status: 200,
+        body: [{ id: 'g-1', name: 'Basic Fit', city: 'Lyon', visibleMemberCount: 2 }],
+      })
+      .on('POST', '/api/places', { status: 201, body: { id: 'p-1' } });
+    await seedProfile(db, { goal: 'muscle' });
+    serveProfile(api, db, me);
+    await renderApp({ path: '/onboarding', me, db, api });
+    await until(() => currentStep() === 'place_kind');
+    choose('À la salle');
+    fireEvent.click(button('Suivant'));
+    await screen.findByRole('radio', { name: 'Basic Fit · Lyon · 2 membres visibles' });
+    expect(checkbox('Apparaître dans « Qui va à cette salle »').checked).toBe(false);
+    expect(screen.getByText('Désactivé par défaut pour les moins de 18 ans.')).toBeTruthy();
+    choose('Basic Fit · Lyon · 2 membres visibles');
+    fireEvent.click(button('Valider'));
+    await until(() => currentStep() === 'experience');
+    expect(api.calls.find((c) => c.path === '/api/places')?.body).toEqual({
+      kind: 'gym',
+      gymId: 'g-1',
+      isPrimary: true,
+      visibleAtGym: false,
+    });
+  });
+
   it('lieu principal existant : « Ton lieu principal : Basic Fit », aucun POST', async () => {
     const me = newcomer({ onboardingStep: 'place_kind' });
     const db = createTestLocalDb();

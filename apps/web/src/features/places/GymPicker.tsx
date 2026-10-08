@@ -1,20 +1,24 @@
 import type { GymSummary } from '@appsport/contracts';
 import { useEffect, useId, useState } from 'react';
 import { useRepos } from '../../repos';
-import { Banner, Button, ChoiceList, errorMessage, Field, useAction } from '../../ui';
+import { Banner, Button, ChoiceList, errorMessage, Field, plural, useAction } from '../../ui';
 import { GymCreate, gymLabel } from './GymCreate';
 import styles from './places.module.css';
 
 export const VISIBILITY_LABEL = 'Apparaître dans « Qui va à cette salle »';
 export const MINOR_VISIBILITY_HINT = 'Désactivé par défaut pour les moins de 18 ans.';
 
-/** Salles du serveur pour `query` ; la dernière recherche lancée l'emporte. */
-function useGymSearch(query: string): { gyms: GymSummary[] | null; error: string | null } {
+/**
+ * Salles du serveur pour `query` ; la dernière recherche lancée l'emporte. Changer `reload` relance
+ * la même recherche (« Réessayer » après un échec).
+ */
+function useGymSearch(query: string, reload: number): { gyms: GymSummary[] | null; error: string | null } {
   const repos = useRepos();
   const [state, setState] = useState<{ gyms: GymSummary[] | null; error: string | null }>({
     gyms: null,
     error: null,
   });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `reload` relance la recherche
   useEffect(() => {
     let current = true;
     repos.gyms.search(query.trim()).then(
@@ -28,7 +32,7 @@ function useGymSearch(query: string): { gyms: GymSummary[] | null; error: string
     return () => {
       current = false;
     };
-  }, [repos, query]);
+  }, [repos, query, reload]);
   return state;
 }
 
@@ -44,7 +48,8 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
   const [selected, setSelected] = useState<string | null>(null);
   const [visible, setVisible] = useState(p.defaultVisible);
   const [creating, setCreating] = useState(false);
-  const { gyms, error } = useGymSearch(query);
+  const [reload, setReload] = useState(0);
+  const { gyms, error } = useGymSearch(query, reload);
   // Une salle choisie puis écartée par la recherche n'est plus validable.
   const chosen = gyms?.some((g) => g.id === selected) ? selected : null;
 
@@ -78,10 +83,10 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
         <GymCreate
           isPrimary={p.isPrimary}
           visibleAtGym={visible}
+          visibility={visibility}
           onDone={p.onDone}
           onPickExisting={(gymId) => void pick.run(gymId)}
         />
-        {visibility}
         {pick.error ? <Banner tone="error">{pick.error}</Banner> : null}
         <Button variant="secondary" onClick={() => setCreating(false)}>
           Revenir à la liste
@@ -95,8 +100,21 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
       <Field label="Rechercher une salle">
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
       </Field>
-      {error ? <Banner tone="error">{error}</Banner> : null}
-      {gyms !== null && gyms.length === 0 ? <p className={styles.hint}>Aucune salle trouvée.</p> : null}
+      {error ? (
+        <>
+          <Banner tone="error">{error}</Banner>
+          <Button variant="secondary" onClick={() => setReload((n) => n + 1)}>
+            Réessayer
+          </Button>
+        </>
+      ) : null}
+      {gyms !== null ? (
+        <p role="status" className={styles.hint}>
+          {gyms.length === 0
+            ? 'Aucune salle trouvée.'
+            : `${gyms.length} ${plural(gyms.length, 'salle trouvée', 'salles trouvées')}.`}
+        </p>
+      ) : null}
       {gyms !== null && gyms.length > 0 ? (
         <ChoiceList<string>
           name="gym"
