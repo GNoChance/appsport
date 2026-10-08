@@ -42,6 +42,10 @@ export interface MeRepo {
    * synchro manuelle (débloquée après R-MDP-1).
    */
   changePassword(r: ChangePasswordRequest): Promise<void>;
+  /**
+   * Résolu une fois la base effacée et la garde sans utilisateur : l'écran navigue ensuite vers
+   * /login sans être renvoyé vers l'ancien compte (mot de passe à changer compris).
+   */
   logout(mode: 'current' | 'all'): Promise<void>;
   exportData(): Promise<ExportV1>;
   deleteAccount(password: string): Promise<void>;
@@ -164,9 +168,11 @@ export function createMeRepo(s: AppServices): MeRepo {
           if (!(error instanceof ApiError) || !SESSION_GONE.includes(error.code)) throw error;
           await wipeUserData(db, { keepOutbox: false });
           if (error.code === 'account_deleted') throw error;
+          await whenSignedOut(db);
           return;
         }
         await wipeUserData(db, { keepOutbox: false });
+        await whenSignedOut(db);
       }),
     exportData: () => api.get('/api/me/export', ExportV1),
     deleteAccount: (password) =>

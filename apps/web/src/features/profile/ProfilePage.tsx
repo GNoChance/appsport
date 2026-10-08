@@ -1,6 +1,15 @@
 import { EXPERIENCE_LABELS, GOAL_LABELS, type MeResponse, type Role, SPORTS } from '@appsport/contracts';
 import { validateUsername } from '@appsport/domain';
-import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link } from 'wouter';
 import { ApiError } from '../../api/client';
 import { useLive, useMe } from '../../app-services';
@@ -33,9 +42,10 @@ const NOT_SET = 'Non renseigné';
 
 /**
  * Profil (02 §11) : Compte, Mot de passe, Entraînement et liens vers Lieux, Santé, Confidentialité
- * et Réglages. Mot de passe à changer (R-MDP-1) : bandeau et section du mot de passe seulement ; le
- * bandeau suit `useMe()` et disparaît au `refresh()` qui suit le changement. Les sections gardent
- * leur place dans l'arbre : le formulaire du mot de passe reste monté, avec son message de réussite.
+ * et Réglages. Mot de passe à changer (R-MDP-1) : bandeau, section du mot de passe et « Se
+ * déconnecter » seulement ; le bandeau suit `useMe()` et disparaît au `refresh()` qui suit le
+ * changement. Les sections gardent leur place dans l'arbre : le formulaire du mot de passe reste
+ * monté, avec son message de réussite.
  */
 export function ProfilePage() {
   const me = useMe();
@@ -46,6 +56,7 @@ export function ProfilePage() {
       {forced ? <Banner tone="warning">{FORCED_PASSWORD_CHANGE_TEXT}</Banner> : null}
       {forced ? null : <AccountSection me={me} />}
       <PasswordSection me={me} />
+      {forced ? <ForcedLogout /> : null}
       {forced ? null : <TrainingSection me={me} />}
       {forced ? null : <ProfileLinks />}
     </Page>
@@ -83,6 +94,30 @@ function AccountSection(p: { me: MeResponse }) {
       </div>
       <LogoutDialog mode={logout ?? 'current'} open={logout !== null} onClose={() => setLogout(null)} />
     </Section>
+  );
+}
+
+/**
+ * Mot de passe à changer (R-MDP-1) : seule autre issue, la déconnexion de cet appareil, que le
+ * serveur accepte dans cet état (R-AUTH-9 : même avertissement, puis données locales effacées).
+ * « Déconnecter tous mes appareils » reste masqué. `close` est stable : le dialogue reprend le focus
+ * à chaque nouvelle fonction de fermeture, donc à chaque relecture du compte sinon. À la fermeture,
+ * le focus revient au bouton.
+ */
+function ForcedLogout() {
+  const [open, setOpen] = useState(false);
+  const openerId = useId();
+  const close = useCallback(() => {
+    setOpen(false);
+    document.getElementById(openerId)?.focus();
+  }, [openerId]);
+  return (
+    <div className={styles.actions}>
+      <Button id={openerId} variant="secondary" onClick={() => setOpen(true)}>
+        Se déconnecter
+      </Button>
+      <LogoutDialog mode="current" open={open} onClose={close} />
+    </div>
   );
 }
 

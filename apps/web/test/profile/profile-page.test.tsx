@@ -1,12 +1,15 @@
 import type { MeResponse } from '@appsport/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { pendingWarning } from '../../src/features/auth/messages';
 import { ProfilePage } from '../../src/features/profile/ProfilePage';
+import { getMeta, setMeta } from '../../src/local-db/meta';
 import { fill, settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
 import { button, choose, isChecked, PROFILE_PATH, seedProfile, serveProfile } from '../support/onboarding';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
+import { seedOutbox } from '../support/seed';
 import { until } from '../support/wait';
 
 const TRAINING = { goal: 'muscle', experience: 'none', daysPerWeek: 3, sessionMinutes: 45 } as const;
@@ -177,12 +180,16 @@ describe('ProfilePage › Mot de passe (R-MDP-6)', () => {
     expect(heading('Entraînement')).toBeNull();
     expect(screen.queryByLabelText('Pseudo')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Lieux' })).toBeNull();
+    expect(button('Se déconnecter')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Déconnecter tous mes appareils' })).toBeNull();
 
     changePassword();
     await until(() => screen.queryByText(FORCED_BANNER) === null);
     expect(await screen.findByText(CHANGED)).toBeTruthy();
     expect(heading('Compte')).toBeTruthy();
+    // Un seul « Se déconnecter » : celui de « Compte », avec « Déconnecter tous mes appareils ».
+    expect(screen.getAllByRole('button', { name: 'Se déconnecter' })).toHaveLength(1);
+    expect(button('Déconnecter tous mes appareils')).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 2, name: 'Entraînement' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Lieux' })).toBeTruthy();
     expect(sync.triggers).toContain('manual');
@@ -209,6 +216,80 @@ describe('ProfilePage › Mot de passe (R-MDP-6)', () => {
     changePassword(OLD_PASSWORD, 'cheval agrafe', 'cheval agrafe');
     await expectFieldError('Nouveau mot de passe', '14 caractères au moins.');
     expect(calls(api, 'POST', '/api/auth/password')).toHaveLength(0);
+  });
+});
+
+describe('ProfilePage › mot de passe à changer : se déconnecter (R-MDP-1, R-AUTH-9)', () => {
+  const forced = makeMe({ role: 'admin', mustChangePassword: true });
+  const logoutApi = () =>
+    createFakeApi()
+      .on('POST', '/api/auth/logout', { status: 204 })
+      .on('POST', '/api/auth/logout-all', { status: 204 });
+  const logoutCalls = (api: FakeApi) => api.calls.filter((c) => c.path.startsWith('/api/auth/logout'));
+
+  it('« Se déconnecter » sous le formulaire → POST /api/auth/logout, données locales effacées, connexion', async () => {
+    const api = logoutApi();
+    const { db, location } = await renderProfile({ me: forced, api });
+    const logout = button('Se déconnecter');
+    const following = button('Changer le mot de passe').compareDocumentPosition(logout);
+    expect(following & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Déconnecter tous mes appareils' })).toBeNull();
+    fireEvent.click(logout);
+    const dialog = within(await screen.findByRole('dialog', { name: 'Se déconnecter de cet appareil ?' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Se déconnecter' }));
+    await until(() => location() === '/login');
+    expect(logoutCalls(api).map((c) => [c.method, c.path, c.body])).toEqual([
+      ['POST', '/api/auth/logout', {}],
+    ]);
+    expect(await getMeta(db, 'me')).toBeUndefined();
+    expect(await getMeta(db, 'userId')).toBeUndefined();
+    expect(await db.mirror('training_profile').count()).toBe(0);
+  });
+
+  it('données non envoyées : même avertissement, « Se déconnecter quand même » → file effacée', async () => {
+    const api = logoutApi();
+    const { db, location } = await renderProfile({ me: forced, api });
+    await seedOutbox(db, 'u-1', 2);
+    fireEvent.click(button('Se déconnecter'));
+    const dialog = await screen.findByRole('dialog', { name: 'Données non envoyées' });
+    expect(dialog.textContent).toContain(pendingWarning(2, 'lea'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Se déconnecter quand même' }));
+    await until(() => location() === '/login');
+    expect(logoutCalls(api).map((c) => c.path)).toEqual(['/api/auth/logout']);
+    expect(await db.outbox.count()).toBe(0);
+    expect(await getMeta(db, 'me')).toBeUndefined();
+  });
+
+  it('« Annuler » : rien envoyé, le focus revient à « Se déconnecter »', async () => {
+    const api = logoutApi();
+    const { location } = await renderProfile({ me: forced, api });
+    fireEvent.click(button('Se déconnecter'));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+    await until(() => screen.queryByRole('dialog') === null);
+    expect(document.activeElement).toBe(button('Se déconnecter'));
+    expect(logoutCalls(api)).toHaveLength(0);
+    expect(location()).toBe('/profile');
+  });
+
+  it('dialogue ouvert : une relecture du compte ne reprend pas le focus', async () => {
+    const { db } = await renderProfile({ me: forced, api: logoutApi() });
+    fireEvent.click(button('Se déconnecter'));
+    const cancel = within(await screen.findByRole('dialog')).getByRole('button', { name: 'Annuler' });
+    cancel.focus();
+    await setMeta(db, 'me', { ...forced });
+    await settle();
+    expect(document.activeElement).toBe(cancel);
+  });
+
+  it("dans l'appli : la garde laisse l'écran de connexion s'afficher après la déconnexion", async () => {
+    const api = logoutApi();
+    await renderApp({ path: '/profile', me: forced, api });
+    fireEvent.click(await screen.findByRole('button', { name: 'Se déconnecter' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Se déconnecter' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Connexion' })).toBeTruthy();
+    expect(logoutCalls(api).map((c) => c.path)).toEqual(['/api/auth/logout']);
   });
 });
 

@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { useMe, whenSignedOut } from '../../src/app-services';
 import { setMeta } from '../../src/local-db/meta';
 import { wipeUserData } from '../../src/local-db/wipe';
+import { createRepos } from '../../src/repos';
 import { settle } from '../support/auth';
+import { createFakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
 import { makeMe, renderWithServices } from '../support/render';
 
@@ -30,6 +32,18 @@ describe('whenSignedOut', () => {
     expect(resolved).toBe(false);
     await wipeUserData(db, { keepOutbox: false });
     await waiting;
+    expect(screen.getByText('personne')).toBeTruthy();
+  });
+
+  it.each([
+    ['204', { status: 204 }],
+    ['401', { status: 401, body: { error: 'unauthenticated' } }],
+  ])("MeRepo.logout (%s) : résolu une fois que la garde ne voit plus l'utilisateur", async (_, reply) => {
+    const api = createFakeApi().on('POST', '/api/auth/logout', reply);
+    const { services } = await renderWithServices(<Who />, { api });
+    await screen.findByText('lea');
+    await createRepos(services).me.logout('current');
+    // L'écran navigue alors vers /login : la garde ne doit plus le renvoyer vers l'ancien compte.
     expect(screen.getByText('personne')).toBeTruthy();
   });
 
