@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import { ApiError } from '../../api/client';
+import { useRepos } from '../../repos';
 import { Banner, Button, Dialog, errorMessage } from '../../ui';
 import { loginErrorMessage } from '../auth/messages';
 import styles from './admin.module.css';
@@ -33,13 +34,17 @@ export function adminErrorMessage(e: unknown, overrides?: Overrides): string {
 
 /**
  * Données lues en ligne (classe E) : la dernière lecture lancée l'emporte ; un échec garde les
- * données déjà affichées. `load` doit être stable (`useCallback`) : la lecture repart quand il change.
+ * données déjà affichées, sauf un refus (403) : les droits d'administration ont été retirés
+ * (R-ROLE-4), rien de l'ancienne liste ne reste et le profil est relu pour que la garde des routes
+ * réponde « Page introuvable ». `load` doit être stable (`useCallback`) : la lecture repart quand il
+ * change.
  */
 export function useServerData<T>(load: () => Promise<T>): {
   data: T | null;
   error: string | null;
   reload(): Promise<void>;
 } {
+  const repos = useRepos();
   const [state, setState] = useState<{ data: T | null; error: string | null }>({ data: null, error: null });
   const latest = useRef(0);
 
@@ -49,9 +54,15 @@ export function useServerData<T>(load: () => Promise<T>): {
       const data = await load();
       if (id === latest.current) setState({ data, error: null });
     } catch (e) {
-      if (id === latest.current) setState((s) => ({ data: s.data, error: errorMessage(e) }));
+      if (id !== latest.current) return;
+      if (e instanceof ApiError && e.code === 'forbidden') {
+        setState({ data: null, error: errorMessage(e) });
+        await repos.me.refresh().catch(() => null);
+        return;
+      }
+      setState((s) => ({ data: s.data, error: errorMessage(e) }));
     }
-  }, [load]);
+  }, [load, repos]);
 
   useEffect(() => {
     void reload();

@@ -7,6 +7,7 @@ import {
 } from '@appsport/contracts';
 import { usernameKey } from '@appsport/domain';
 import { type RefObject, useCallback, useId, useRef, useState } from 'react';
+import { useMe } from '../../app-services';
 import { useRepos } from '../../repos';
 import { Banner, Button, CopyButton, Dialog, Field, formatDateTime, Page, plural, useAction } from '../../ui';
 import { AdminNav } from './AdminNav';
@@ -294,12 +295,18 @@ function StatusDialog(p: DialogProps) {
   );
 }
 
-/** Promotion et rétrogradation : mot de passe de l'admin ressaisi (P-AUT-5), dernier admin gardé (R-ROLE-2). */
+/**
+ * Promotion et rétrogradation : mot de passe de l'admin ressaisi (P-AUT-5), dernier admin gardé
+ * (R-ROLE-2). Se rétrograder soi-même retire tout droit d'administration : le profil est relu (la
+ * liste serait refusée) et la garde des routes répond « Page introuvable ».
+ */
 function RoleDialog(p: DialogProps) {
   const repos = useRepos();
+  const me = useMe();
   const [password, setPassword] = useState('');
   const name = p.member.username;
   const promoting = p.member.role === 'member';
+  const self = p.member.id === me?.id;
   return (
     <ActionDialog
       title={promoting ? `Promouvoir ${name} administrateur` : `Rétrograder ${name}`}
@@ -310,7 +317,8 @@ function RoleDialog(p: DialogProps) {
       onClose={p.onClose}
       onConfirm={async () => {
         await repos.admin.setRole(p.member.id, promoting ? 'admin' : 'member', password);
-        await p.reload();
+        if (self) await repos.me.refresh();
+        else await p.reload();
       }}
     >
       {promoting ? (

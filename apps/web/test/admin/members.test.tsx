@@ -320,6 +320,55 @@ describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
     expect(memberLoads(api)).toBe(1);
   });
 
+  it('se rétrograder soi-même (un autre admin reste) : profil relu, « Page introuvable », plus de tableau', async () => {
+    let role: 'admin' | 'member' = 'admin';
+    const api = createFakeApi()
+      .on('GET', '/api/me', () => ({ status: 200, body: { ...ADMIN, role } }))
+      .on('GET', '/api/admin/members', () =>
+        role === 'admin'
+          ? { status: 200, body: [BASTIEN, { ...LEA, role: 'admin' }] }
+          : { status: 403, body: { error: 'forbidden' } },
+      )
+      .on('POST', '/api/admin/members/:id/role', () => {
+        role = 'member';
+        return { status: 204 };
+      });
+    await renderApp({ path: '/admin/members', me: ADMIN, api });
+    await screen.findByRole('row', { name: 'bastien' });
+    open('bastien', 'Rétrograder');
+    fill('Ton mot de passe', PASSWORD);
+    fireEvent.click(confirmButton('Rétrograder'));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page introuvable' })).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByText("Cette action n'est pas autorisée.")).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull();
+    expect(sent(api, 'POST', '/api/admin/members/u-1/role')).toEqual([
+      { role: 'member', password: PASSWORD },
+    ]);
+    // Plus de droits : la liste n'est pas relue (elle serait refusée).
+    expect(memberLoads(api)).toBe(1);
+  });
+
+  it('droits retirés ailleurs : liste refusée (403) → tableau retiré et profil relu', async () => {
+    let forbidden = false;
+    const api = createFakeApi()
+      .on('GET', '/api/admin/members', () =>
+        forbidden ? { status: 403, body: { error: 'forbidden' } } : { status: 200, body: [BASTIEN, LEA] },
+      )
+      .on('POST', '/api/admin/members/:id/revoke-sessions', () => {
+        // Un autre admin vient de rétrograder bastien.
+        forbidden = true;
+        return { status: 204 };
+      });
+    await renderWithServices(<MembersPage />, { api, me: ADMIN });
+    await screen.findByRole('row', { name: 'lea' });
+    open('lea', 'Fermer les sessions');
+    fireEvent.click(confirmButton('Fermer les sessions'));
+    expect(await screen.findByText("Cette action n'est pas autorisée.")).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    await until(() => api.calls.some((c) => c.method === 'GET' && c.path === '/api/me'));
+  });
+
   it('401 invalid_credentials → « Mot de passe incorrect. » ; 429 rate_limited → attente en minutes', async () => {
     let reply: FakeReply = { status: 401, body: { error: 'invalid_credentials' } };
     const api = createFakeApi().on('POST', '/api/admin/members/:id/role', () => reply);
