@@ -240,6 +240,26 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     expect(screen.queryByText(hintText)).toBeNull();
   });
 
+  it('code ni gardé ni journalisé : absent après remontage, rien en stockage du navigateur, en base locale ni en console', async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m));
+    const { api, link } = createdApi();
+    const { unmount, db } = await renderInvitations({ api });
+    create('2009-05-01', 'pour Léa');
+    await screen.findByText(CODE);
+    await until(() => loads(api) === 2);
+    unmount();
+    await renderWithServices(<InvitationsPage />, { api, me: ADMIN, db });
+    await screen.findByRole('list', { name: 'Invitations envoyées' });
+    expect(screen.queryByText(CODE)).toBeNull();
+    expect(screen.queryByText(link)).toBeNull();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+    expect(JSON.stringify(await Promise.all(db.tables.map((t) => t.toArray())))).not.toContain(CODE);
+    expect(logs.flatMap((spy) => spy.mock.calls.flat().map(String)).join(' ')).not.toContain(CODE);
+  });
+
   it('note vide : seule la date part', async () => {
     const { api } = createdApi();
     await renderInvitations({ api });

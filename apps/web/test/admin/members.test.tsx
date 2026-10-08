@@ -249,6 +249,26 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     },
   );
 
+  it('lien et code ni gardés ni journalisés : rien en stockage du navigateur, en base locale ni en console', async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m));
+    const api = createFakeApi().on('POST', '/api/admin/members/:id/reset-link', {
+      status: 200,
+      body: { code: CODE, link: LINK, expiresAt: '2026-10-07T12:00:00.000Z' },
+    });
+    const { db } = await renderMembers({ api });
+    fireEvent.click(open('lea', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
+    await dialog().findByText(CODE);
+    await until(() => memberLoads(api) === 2);
+    fireEvent.click(dialog().getByRole('button', { name: "J'ai transmis le lien" }));
+    expect(screen.queryByText(CODE)).toBeNull();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+    expect(JSON.stringify(await Promise.all(db.tables.map((t) => t.toArray())))).not.toContain(CODE);
+    expect(logs.flatMap((spy) => spy.mock.calls.flat().map(String)).join(' ')).not.toContain(CODE);
+  });
+
   it('Échap après la génération efface aussi le code', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/reset-link', {
       status: 200,
