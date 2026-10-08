@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useId, useRef } from 'react';
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef } from 'react';
+import { inertOutside } from './inert-outside';
 import styles from './ui.module.css';
 
 const FOCUSABLE =
@@ -25,7 +26,10 @@ function keepFocusInside(root: HTMLElement, e: KeyboardEvent): void {
 
 /**
  * Fenêtre modale nommée par son titre ; Échap la ferme ; le focus y entre à l'ouverture et n'en
- * sort pas au clavier.
+ * sort pas au clavier. `inertOutside` : le reste de la page est aussi inerte et caché aux lecteurs
+ * d'écran tant qu'elle est ouverte (porte de réacceptation, retrait de l'accord santé). Sous un
+ * dialogue inerte de la sorte, elle lui laisse le clavier. Plus haute que l'écran (téléphone en
+ * paysage, texte agrandi), son contenu défile entre le titre et les actions, qui restent visibles.
  */
 export function Dialog(p: {
   open: boolean;
@@ -33,17 +37,26 @@ export function Dialog(p: {
   onClose(): void;
   actions: ReactNode;
   children: ReactNode;
+  inertOutside?: boolean;
 }) {
   const titleId = useId();
+  const backdrop = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const { open, onClose } = p;
+  const { open, onClose, inertOutside: strict = false } = p;
+
+  // Avant les effets : à la fermeture, l'écran redevient atteignable avant que le focus y revienne.
+  useLayoutEffect(() => {
+    if (!open || !strict || !backdrop.current) return;
+    return inertOutside(backdrop.current);
+  }, [open, strict]);
 
   useEffect(() => {
     if (!open) return;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
+      if (!ref.current || ref.current.closest('[inert]')) return;
       if (e.key === 'Escape') onClose();
-      else if (e.key === 'Tab' && ref.current) keepFocusInside(ref.current, e);
+      else if (e.key === 'Tab') keepFocusInside(ref.current, e);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -51,7 +64,7 @@ export function Dialog(p: {
 
   if (!open) return null;
   return (
-    <div className={styles.backdrop}>
+    <div ref={backdrop} className={styles.backdrop}>
       <div
         ref={ref}
         role="dialog"
@@ -61,7 +74,7 @@ export function Dialog(p: {
         className={styles.dialog}
       >
         <h2 id={titleId}>{p.title}</h2>
-        <div>{p.children}</div>
+        <div className={styles.dialogBody}>{p.children}</div>
         <div className={styles.actions}>{p.actions}</div>
       </div>
     </div>

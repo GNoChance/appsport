@@ -1,10 +1,10 @@
 import { HEALTH_CONSENT_TEXT, type MeResponse } from '@appsport/contracts';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { AppDb } from '../../src/local-db/db';
 import { getMeta } from '../../src/local-db/meta';
 import { fill, settle } from '../support/auth';
-import { createFakeApi, type FakeApi } from '../support/fake-api';
+import { createFakeApi, createFakeSyncEngine, type FakeApi, type FakeSyncEngine } from '../support/fake-api';
 import { createTestLocalDb, dumpLocalDb } from '../support/local-db';
 import { newcomer } from '../support/onboarding';
 import { makeMe, renderApp } from '../support/render';
@@ -173,11 +173,80 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
 });
 
 describe('HealthReconsentGate (R-CST-6, P-CST-1)', () => {
-  async function renderGate(me: MeResponse, api = createFakeApi(), path = '/') {
+  async function renderGate(me: MeResponse, api = createFakeApi(), path = '/', sync?: FakeSyncEngine) {
     const db = createTestLocalDb();
     await seedHealth(db);
-    return renderApp({ path, me, db, api });
+    return renderApp({ path, me, db, api, sync });
   }
+
+  it("hors ligne à l'ouverture : pas de porte, l'appli reste utilisable ; elle se lève une fois en ligne", async () => {
+    const sync = createFakeSyncEngine({ connection: 'offline' });
+    await renderGate(consented('0.9'), createFakeApi(), '/profile/health', sync);
+    await screen.findByRole('heading', { level: 1, name: 'Santé' });
+    await settle();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ajouter une limitation' })).toBeTruthy();
+    act(() => sync.set({ connection: 'unknown' }));
+    await settle();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    act(() => sync.set({ connection: 'online' }));
+    expect(await screen.findByRole('dialog', { name: GATE })).toBeTruthy();
+  });
+
+  it('porte levée puis réseau perdu : elle reste, « Nécessite le réseau » affiché et ses deux boutons désactivés', async () => {
+    const sync = createFakeSyncEngine();
+    await renderGate(consented('0.9'), createFakeApi(), '/', sync);
+    const gate = within(await screen.findByRole('dialog', { name: GATE }));
+    fireEvent.click(gate.getByRole('checkbox', { name: HEALTH_CONSENT_TEXT.text }));
+    act(() => sync.set({ connection: 'offline' }));
+    await settle();
+    expect(screen.getByRole('dialog', { name: GATE })).toBeTruthy();
+    expect(gate.getByRole('status').textContent).toBe('Nécessite le réseau');
+    const disabled = () =>
+      gate.getAllByRole('button').map((b) => [b.textContent, (b as HTMLButtonElement).disabled]);
+    expect(disabled()).toEqual([
+      ['Je refuse', true],
+      ["J'accepte", true],
+    ]);
+    act(() => sync.set({ connection: 'online' }));
+    await settle();
+    expect(gate.queryByRole('status')).toBeNull();
+    expect(disabled()).toEqual([
+      ['Je refuse', false],
+      ["J'accepte", false],
+    ]);
+  });
+
+  it("« J'accepte » sans réseau (requête échouée) : « Nécessite le réseau » dans la porte, qui reste, accord inchangé", async () => {
+    const api = createFakeApi().on('POST', '/api/me/consents', { status: 200, body: consented('1.0') });
+    const { db } = await renderGate(consented('0.9'), api);
+    const gate = within(await screen.findByRole('dialog', { name: GATE }));
+    api.setOffline('reject');
+    fireEvent.click(gate.getByRole('checkbox', { name: HEALTH_CONSENT_TEXT.text }));
+    fireEvent.click(gate.getByRole('button', { name: "J'accepte" }));
+    expect((await gate.findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    await settle();
+    expect(screen.getByRole('dialog', { name: GATE })).toBeTruthy();
+    expect((await getMeta(db, 'me'))?.consents.health.textVersion).toBe('0.9');
+  });
+
+  it('modale pour de vrai : le reste de la page est inerte et caché tant que la porte est là', async () => {
+    const api = createFakeApi().on('POST', '/api/me/consents', { status: 200, body: consented('1.0') });
+    await renderGate(consented('0.9'), api, '/profile/health');
+    const gate = within(await screen.findByRole('dialog', { name: GATE }));
+    expect(screen.getByText('Ajouter une limitation').closest('[inert]')).not.toBeNull();
+    expect(screen.getByText('Accueil').closest('[inert][aria-hidden="true"]')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ajouter une limitation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Répondre de nouveau' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Navigation principale' })).toBeNull();
+    fireEvent.click(gate.getByRole('checkbox', { name: HEALTH_CONSENT_TEXT.text }));
+    fireEvent.click(gate.getByRole('button', { name: "J'accepte" }));
+    await until(() => screen.queryByRole('dialog') === null);
+    expect(screen.getByText('Ajouter une limitation').closest('[inert]')).toBeNull();
+    expect(document.querySelector('[inert]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ajouter une limitation' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Navigation principale' })).toBeTruthy();
+  });
 
   it("textVersion '0.9' → « Le texte de l'accord santé a changé », texte en vigueur, case décochée, sans fermeture", async () => {
     await renderGate(consented('0.9'));

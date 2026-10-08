@@ -78,6 +78,92 @@ describe('ui', () => {
     expect(fireEvent.keyDown(field, { key: 'Tab' })).toBe(true);
   });
 
+  it('Dialog inertOutside : reste de la page inerte et caché, rendu à la fermeture', () => {
+    const page = (open: boolean) => (
+      <>
+        <header>
+          <a href="/">Accueil</a>
+        </header>
+        <main>
+          <p aria-hidden="true">Décor</p>
+          <button type="button">Dehors</button>
+          <Dialog open={open} inertOutside title="Porte" onClose={() => {}} actions={null}>
+            <p>Contenu</p>
+          </Dialog>
+        </main>
+      </>
+    );
+    const { rerender } = render(page(true));
+    expect(screen.getByText('Accueil').closest('header')?.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByText('Accueil').closest('header')?.hasAttribute('inert')).toBe(true);
+    expect(screen.getByText('Dehors').hasAttribute('inert')).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Dehors' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Accueil' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Porte' })).toBeTruthy();
+    // Déjà caché par la page : pas touché.
+    expect(screen.getByText('Décor').hasAttribute('inert')).toBe(false);
+    rerender(page(false));
+    expect(document.querySelector('[inert]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Dehors' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Accueil' })).toBeTruthy();
+    expect(screen.getByText('Décor').getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it("Dialog inertOutside par-dessus un autre dialogue : il garde le clavier, l'autre le reprend après", () => {
+    const closed: string[] = [];
+    const page = (top: boolean) => (
+      <main>
+        <section>
+          <Dialog open title="Dessous" onClose={() => closed.push('dessous')} actions={null}>
+            <input aria-label="Nom" />
+          </Dialog>
+        </section>
+        <Dialog open={top} inertOutside title="Dessus" onClose={() => closed.push('dessus')} actions={null}>
+          <button type="button">Choix</button>
+        </Dialog>
+      </main>
+    );
+    const { rerender } = render(page(true));
+    expect(screen.getByLabelText('Nom').closest('[inert]')).not.toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Dessous' })).toBeNull();
+    const choice = screen.getByRole('button', { name: 'Choix' });
+    choice.focus();
+    fireEvent.keyDown(choice, { key: 'Escape' });
+    expect(closed).toEqual(['dessus']);
+    // Tab : seul le dialogue du dessus garde le focus.
+    expect(fireEvent.keyDown(choice, { key: 'Tab' })).toBe(false);
+    expect(document.activeElement).toBe(choice);
+    rerender(page(false));
+    expect(document.querySelector('[inert]')).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(closed).toEqual(['dessus', 'dessous']);
+  });
+
+  it('Dialog inertOutside empilés : un élément reste inerte tant qu’un dialogue le tient', () => {
+    const page = (second: boolean) => (
+      <>
+        <header>Haut</header>
+        <main>
+          <Dialog open inertOutside title="Premier" onClose={() => {}} actions={null}>
+            <p>Un</p>
+          </Dialog>
+          <Dialog open={second} inertOutside title="Second" onClose={() => {}} actions={null}>
+            <p>Deux</p>
+          </Dialog>
+        </main>
+      </>
+    );
+    const { rerender, unmount } = render(page(true));
+    const header = screen.getByText('Haut');
+    expect(header.hasAttribute('inert')).toBe(true);
+    rerender(page(false));
+    expect(header.hasAttribute('inert')).toBe(true);
+    expect(header.getAttribute('aria-hidden')).toBe('true');
+    unmount();
+    expect(header.hasAttribute('inert')).toBe(false);
+    expect(header.hasAttribute('aria-hidden')).toBe(false);
+  });
+
   it('Banner : role alert pour une erreur, status sinon', () => {
     render(
       <>

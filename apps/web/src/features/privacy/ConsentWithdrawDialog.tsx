@@ -12,7 +12,8 @@ type WithdrawProps = { open: boolean; onClose(): void; onWithdrawn?(): void };
  * Retrait de l'accord santé (R-CST-5, P-CST-3) : export proposé, liste de ce qui sera effacé, mot
  * de passe ressaisi (P-AUT-5). Le serveur répond le nouveau profil (meta.me), puis les données de
  * santé locales sont purgées (`withdrawHealth`). Le dialogue reste ouvert sur le message de
- * réussite jusqu'à « Fermer ». Fermé, rien n'est monté : chaque ouverture repart vide.
+ * réussite jusqu'à « Fermer ». Fermé, rien n'est monté : chaque ouverture repart vide. L'écran
+ * derrière est inerte, comme sous la porte de réacceptation qui l'ouvre aussi.
  */
 export function ConsentWithdrawDialog(p: WithdrawProps) {
   return p.open ? <OpenWithdrawDialog {...p} /> : null;
@@ -60,6 +61,7 @@ function OpenWithdrawDialog(p: WithdrawProps) {
       <Dialog
         key="done"
         open
+        inertOutside
         title="Retirer l'accord santé"
         onClose={close}
         actions={<Button onClick={close}>Fermer</Button>}
@@ -73,6 +75,7 @@ function OpenWithdrawDialog(p: WithdrawProps) {
     <Dialog
       key="form"
       open
+      inertOutside
       title="Retirer l'accord santé"
       onClose={close}
       actions={

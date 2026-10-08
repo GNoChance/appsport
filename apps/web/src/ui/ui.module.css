@@ -225,9 +225,14 @@
   background: rgb(0 0 0 / 0.45);
 }
 
+/*
+ * Jamais plus haut que l'écran (téléphone en paysage, texte agrandi, clavier ouvert) : le titre et
+ * les actions restent visibles, le contenu défile entre les deux.
+ */
 .dialog {
   width: 100%;
   max-width: 28rem;
+  max-height: 100%;
   padding: var(--space-6);
   border-radius: var(--radius);
   background: var(--color-surface);
@@ -237,11 +242,23 @@
 }
 
 .dialog h2 {
+  flex: none;
   margin: 0;
   font-size: 1.25rem;
 }
 
+/* Marge rendue au contour du focus des champs, que le défilement rognerait sinon. */
+.dialogBody {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: calc(-1 * var(--space-1));
+  padding: var(--space-1);
+}
+
+/* Actions d'un dialogue : jamais réduites, toujours visibles sous le contenu qui défile. */
 .actions {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;

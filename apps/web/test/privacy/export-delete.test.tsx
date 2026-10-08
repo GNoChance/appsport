@@ -194,6 +194,22 @@ describe('DeleteAccountDialog (R-SUP-1, R-SUP-4, R-SUP-5, P-DRT-3, P-DRT-6)', ()
     expect(location()).toBe('/profile/privacy');
   });
 
+  it('hors ligne → « Nécessite le réseau » : rien effacé, file gardée, pas de navigation, moteur relancé', async () => {
+    const api = createFakeApi().on('POST', DELETE, { status: 204 });
+    const { db, location, sync } = await renderPrivacy({ api, pending: 2 });
+    const dialog = await openDelete();
+    api.setOffline('reject');
+    fill('Mot de passe', PASSWORD);
+    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer définitivement' }));
+    expect((await dialog.findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    await settle();
+    expect(await db.outbox.count()).toBe(2);
+    expect(await getMeta(db, 'me')).toBeDefined();
+    expect(location()).toBe('/profile/privacy');
+    expect(screen.getByRole('dialog', { name: 'Supprimer ton compte ?' })).toBeTruthy();
+    expect(sync.started).toBe(true);
+  });
+
   it('401 → « Mot de passe incorrect. », rien effacé', async () => {
     const api = createFakeApi().on('POST', DELETE, { status: 401, body: { error: 'invalid_credentials' } });
     const { db } = await renderPrivacy({ api });
