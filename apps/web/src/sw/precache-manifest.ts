@@ -19,3 +19,11 @@ export const PRECACHE_GLOBAL = '__APPSPORT_PRECACHE__';
 // Noms des caches ici et non dans sw.ts : la page les lit sans embarquer le code du SW.
 export const SHELL_CACHE_PREFIX = 'shell-';
 export const ILLUSTRATIONS_CACHE = 'illustrations-v1';
+
+/**
+ * Marqueur de la plus haute version de base locale connue de l'appareil (ADR 0001 décision 5) : réponse
+ * synthétique dont le corps est l'entier, jamais abaissée, écrite par la page après l'ouverture de Dexie et
+ * par l'`activate` du SW. Ni la purge à l'activation ni l'interrupteur d'urgence ne la suppriment.
+ */
+export const LOCAL_DB_MARKER_CACHE = 'appsport-meta';
+export const LOCAL_DB_MARKER_KEY = '/__sw/local-db-version';
