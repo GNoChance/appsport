@@ -2,6 +2,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LOCAL_DB_VERSION } from '../../src/local-db/db';
 import {
@@ -55,8 +56,18 @@ describe('generateServiceWorker', () => {
     expect(m.localDbVersion).toBe(1);
     const sw = await readFile(join(dist, 'sw.js'), 'utf8');
     expect(sw.split('\n')[0]).toBe(`self.__APPSPORT_PRECACHE__ = ${JSON.stringify(m)};`);
-    expect(sw.slice(sw.indexOf('\n') + 1)).toBe(SW_CODE);
+    expect(sw.slice(sw.indexOf('\n') + 1)).toBe(`(()=>{"use strict";${SW_CODE.trimEnd()}\n})();\n`);
     expect(PRECACHE_GLOBAL).toBe('__APPSPORT_PRECACHE__');
+  });
+
+  it('le code du SW reste en mode strict sous la ligne du manifeste', async () => {
+    // Sortie d'esbuild (tsconfig strict) : la directive ouvre le script, la ligne du manifeste la précède.
+    const swCode = '"use strict";(()=>{self.strict=function(){return this===undefined}()})();\n';
+    await generateServiceWorker({ distDir: dist, swCode, localDbVersion: 1 });
+    const self: Record<string, unknown> = {};
+    runInNewContext(await readFile(join(dist, 'sw.js'), 'utf8'), { self });
+    expect(self.__APPSPORT_PRECACHE__).toMatchObject({ files: FILES, localDbVersion: 1 });
+    expect(self.strict).toBe(true);
   });
 
   it('régénération : même buildHash ; un octet changé : buildHash différent', async () => {
@@ -99,6 +110,20 @@ describe('computeBuildHash', () => {
       computeBuildHash([{ path: '/a', content: enc('b') }]),
     );
   });
+
+  it('la taille délimite le contenu : un fichier ne peut pas en imiter deux', () => {
+    const two = computeBuildHash([
+      { path: '/a', content: enc('x') },
+      { path: '/b', content: enc('y') },
+    ]);
+    // Sans la taille et son séparateur, puis sans la taille seule, ces flux seraient identiques à `two`.
+    expect(computeBuildHash([{ path: '/a', content: enc('x/b\0y') }])).not.toBe(two);
+    expect(computeBuildHash([{ path: '/a', content: enc('x/b\0\0y') }])).not.toBe(two);
+  });
+
+  it('valeur connue : sha256("/a\\0" + "1" + "\\0" + "b"), 12 premiers hex', () => {
+    expect(computeBuildHash([{ path: '/a', content: enc('b') }])).toBe('1de646e4bbe5');
+  });
 });
 
 describe('readLocalDbVersion', () => {
@@ -124,12 +149,25 @@ describe('bundleServiceWorker', () => {
     await writeFile(join(tmp, 'marker.ts'), "export const MARKER: string = 'MARQUEUR_SW';\n");
     await writeFile(
       join(tmp, 'sw.ts'),
-      "import { MARKER } from './marker';\n(globalThis as { marker?: string }).marker = MARKER;\nexport {};\n",
+      [
+        "import { MARKER } from './marker';",
+        'const g = globalThis as { marker?: string; box?: { v?: string } };',
+        'g.marker = g.box?.v ?? MARKER;',
+        'export {};',
+        '',
+      ].join('\n'),
     );
     const code = await bundleServiceWorker(join(tmp, 'sw.ts'));
     expect(code).toContain('MARQUEUR_SW');
     expect(code).not.toMatch(/\bexport\b/);
     expect(code).not.toMatch(/\bimport\b/);
+    // Script classique : une iife (ni esm ni cjs, dont module.exports lèverait ReferenceError dans le SW).
+    expect(code).toMatch(/^(?:"use strict";)?\(\(\)=>\{[\s\S]*\}\)\(\);\n?$/);
+    expect(code).not.toMatch(/module\.exports|require\(/);
+    // Minifié : une seule ligne ; cible es2022 : `?.` et `??` gardés tels quels.
+    expect(code.trimEnd().split('\n')).toHaveLength(1);
+    expect(code).toContain('?.');
+    expect(code).toContain('??');
   });
 });
 

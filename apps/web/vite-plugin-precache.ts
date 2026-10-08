@@ -50,7 +50,16 @@ export async function readLocalDbVersion(dbModulePath: string): Promise<number> 
   return Number(match[1]);
 }
 
-/** Écrit `distDir/sw.js` : le manifeste sur la première ligne, puis le code du SW. */
+/**
+ * Le code du SW dans une fonction ouverte par "use strict" : sous la ligne du manifeste, la directive
+ * qu'esbuild place en tête du script n'en serait plus une, et tout le SW tournerait en mode non strict.
+ * Le saut de ligne avant `})();` le protège d'un commentaire de fin de ligne.
+ */
+function strictBody(swCode: string): string {
+  return `(()=>{"use strict";${swCode.replace(/^"use strict";/, '').trimEnd()}\n})();\n`;
+}
+
+/** Écrit `distDir/sw.js` : le manifeste sur la première ligne, puis le code du SW, en mode strict. */
 export async function generateServiceWorker(o: {
   distDir: string;
   swCode: string;
@@ -63,7 +72,7 @@ export async function generateServiceWorker(o: {
     localDbVersion: o.localDbVersion,
   };
   const header = `self.${PRECACHE_GLOBAL} = ${JSON.stringify(manifest)};`;
-  await writeFile(join(o.distDir, 'sw.js'), `${header}\n${o.swCode}`);
+  await writeFile(join(o.distDir, 'sw.js'), `${header}\n${strictBody(o.swCode)}`);
   return manifest;
 }
 
