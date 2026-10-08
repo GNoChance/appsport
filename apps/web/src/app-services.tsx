@@ -52,11 +52,60 @@ export function useLive<T>(query: () => Promise<T>, deps: readonly unknown[]): T
   return value;
 }
 
+export interface MeState {
+  loaded: boolean;
+  me: MeResponse | null;
+}
+
+const ME_NOT_LOADED: MeState = { loaded: false, me: null };
+
+interface MeStore {
+  subscribe(onChange: () => void): () => void;
+  get(): MeState;
+}
+
+const meStores = new WeakMap<AppDb, MeStore>();
+
+/**
+ * Une seule requête observée sur `meta.me` par base : la garde et les écrans voient le même
+ * utilisateur au même rendu (un écran qui navigue dès qu'il voit la nouvelle session ne devance
+ * jamais la garde). Arrêtée avec son dernier abonné.
+ */
+function meStore(db: AppDb): MeStore {
+  const known = meStores.get(db);
+  if (known) return known;
+  let snapshot = ME_NOT_LOADED;
+  const listeners = new Set<() => void>();
+  let subscription: { unsubscribe(): void } | null = null;
+  const store: MeStore = {
+    subscribe(onChange) {
+      listeners.add(onChange);
+      subscription ??= liveQuery(async () => (await getMeta(db, 'me')) ?? null).subscribe({
+        next: (me) => {
+          snapshot = { loaded: true, me };
+          for (const fn of listeners) fn();
+        },
+        error: () => {},
+      });
+      return () => {
+        listeners.delete(onChange);
+        if (listeners.size > 0) return;
+        subscription?.unsubscribe();
+        subscription = null;
+        snapshot = ME_NOT_LOADED;
+      };
+    },
+    get: () => snapshot,
+  };
+  meStores.set(db, store);
+  return store;
+}
+
 /** Utilisateur connu de l'appareil (`meta.me`) ; `loaded` faux tant que la base n'a pas répondu. */
-export function useMeState(): { loaded: boolean; me: MeResponse | null } {
+export function useMeState(): MeState {
   const { db } = useServices();
-  const state = useLive(async () => ({ me: (await getMeta(db, 'me')) ?? null }), [db]);
-  return state ? { loaded: true, me: state.me } : { loaded: false, me: null };
+  const store = meStore(db);
+  return useSyncExternalStore(store.subscribe, store.get);
 }
 
 export function useMe(): MeResponse | null {

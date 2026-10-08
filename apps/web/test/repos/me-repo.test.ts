@@ -1,8 +1,9 @@
 import type { MeResponse } from '@appsport/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getMeta, setMeta } from '../../src/local-db/meta';
-import { createRepos } from '../../src/repos';
+import { createRepos, type Repos } from '../../src/repos';
 import { createSyncEngine, type SyncEngine } from '../../src/sync/engine';
+import { createFakeSyncEngine } from '../support/fake-api';
 import { createTestServices, DEFAULT_NOW, makeMe } from '../support/render';
 import { seedOutbox } from '../support/seed';
 import { until } from '../support/wait';
@@ -184,7 +185,101 @@ describe('MeRepo : changement de compte (P-AUT-6)', () => {
   });
 });
 
+describe('MeRepo : session ouverte, état de connexion remis à zéro (R-AUTH-8, P-DRT-4)', () => {
+  const CODE = 'ABCDEFGHJKMNPQRS';
+  const opens: [string, string, (r: Repos) => Promise<MeResponse>][] = [
+    ['login', '/api/auth/login', (r) => r.me.login({ username: 'lea', password: 'pw' })],
+    [
+      'acceptInvitation',
+      '/api/invitations/accept',
+      (r) => r.me.acceptInvitation({ code: CODE, username: 'lea', password: 'pw', termsVersion: '1.0' }),
+    ],
+    ['resetPassword', '/api/auth/reset', (r) => r.me.resetPassword({ code: CODE, newPassword: 'pw' })],
+  ];
+
+  it.each(opens)(
+    '%s réussi : connexion « unknown » avant la relance du moteur et avant la fin',
+    async (_, path, open) => {
+      const sync = createFakeSyncEngine({ connection: 'unauthenticated' });
+      const { services, api } = await createTestServices({ me: lea, sync });
+      api.on('POST', path, ok(lea));
+      const order: string[] = [];
+      const { start, sessionOpened } = sync;
+      sync.start = () => {
+        order.push('start');
+        start();
+      };
+      sync.sessionOpened = () => {
+        order.push(`sessionOpened:${sync.started}`);
+        sessionOpened();
+      };
+      await open(createRepos(services));
+      expect(sync.getState().connection).toBe('unknown');
+      expect(order).toEqual(['sessionOpened:false', 'start']);
+    },
+  );
+
+  it.each(opens)(
+    "%s refusé : connexion inchangée, la pause d'après le 401 continue",
+    async (_, path, open) => {
+      const sync = createFakeSyncEngine({ connection: 'unauthenticated' });
+      const { services, api } = await createTestServices({ me: lea, sync });
+      api.on('POST', path, { status: 401, body: { error: 'invalid_credentials' } });
+      await expect(open(createRepos(services))).rejects.toMatchObject({ code: 'invalid_credentials' });
+      expect(sync.sessionsOpened).toBe(0);
+      expect(sync.getState().connection).toBe('unauthenticated');
+      expect(sync.started).toBe(true);
+    },
+  );
+
+  it("session d'un autre compte adoptée par refresh : connexion remise à zéro", async () => {
+    const sync = createFakeSyncEngine({ connection: 'unauthenticated' });
+    const { services, api } = await createTestServices({ me: lea, sync });
+    api.on('GET', '/api/me', ok(max));
+    await createRepos(services).me.refresh();
+    expect(sync.sessionsOpened).toBe(1);
+    expect(sync.getState().connection).toBe('unknown');
+  });
+});
+
 describe('MeRepo avec le moteur réel', () => {
+  it('après un 401, la reconnexion du même utilisateur relance un cycle complet', async () => {
+    const { services, api, db } = await createTestServices({ me: lea });
+    await seedOutbox(db, 'u-A', 1);
+    const unauthenticated = { status: 401, body: { error: 'unauthenticated' } };
+    api.on('GET', '/api/health', ok({}));
+    api.on('POST', '/api/sync/push', unauthenticated);
+    engine = createSyncEngine({
+      db,
+      transport: api.transport,
+      now: () => DEFAULT_NOW,
+      triggers: () => () => {},
+    });
+    engine.start();
+    const real = engine;
+    await until(() => real.getState().connection === 'unauthenticated');
+
+    api.on('POST', '/api/sync/push', (req) => {
+      const ops = (req.body as { ops: { opId: string }[] }).ops;
+      return ok({ results: ops.map((o) => ({ opId: o.opId, status: 'applied', rev: 1 })) });
+    });
+    api.on('GET', '/api/sync/pull', ok(EMPTY_PULL));
+    api.on('POST', '/api/auth/login', ok(lea));
+    const before = api.calls.length;
+    await createRepos({ ...services, sync: real }).me.login({ username: 'lea', password: 'pw' });
+    expect(real.getState().connection).toBe('unknown');
+    await until(() => api.calls.slice(before).some((c) => c.path === '/api/sync/pull'));
+    await until(() => !real.getState().syncing);
+    expect(api.calls.slice(before).map((c) => `${c.method} ${c.path}`)).toEqual([
+      'POST /api/auth/login',
+      'GET /api/health',
+      'POST /api/sync/push',
+      'GET /api/sync/pull',
+    ]);
+    expect(real.getState().connection).toBe('online');
+    expect(await db.outbox.count()).toBe(0);
+  });
+
   it('après un 410 account_deleted, la connexion de u-B relance un cycle complet', async () => {
     const { services, api, db } = await createTestServices({ me: lea });
     api.on('GET', '/api/health', { status: 410, body: { error: 'account_deleted' } });

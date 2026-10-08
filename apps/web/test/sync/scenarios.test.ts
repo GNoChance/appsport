@@ -152,7 +152,12 @@ describe('scénarios de synchro ciblés (deux appareils, vrai serveur)', () => {
     expect(await pendingCount(a.db, user.id)).toBe(3);
     expect(serverRows('fixture_note')).toHaveLength(0);
 
+    // Synchro en pause après le 401 (R-SYN-12) ; tant qu'aucune session n'est ouverte, rien ne part.
+    await a.engine.syncNow('manual');
+    expect(a.engine.getState().connection).toBe('unauthenticated');
     a.cookie = await login(ctx, user.username, user.password, IP);
+    // Comme MeRepo après la connexion.
+    a.engine.sessionOpened();
     await a.engine.syncNow('manual');
     expect(a.engine.getState().connection).toBe('online');
     expect(await pendingCount(a.db, user.id)).toBe(0);

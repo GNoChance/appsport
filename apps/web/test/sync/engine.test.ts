@@ -315,10 +315,12 @@ describe('erreurs', () => {
     await engine.syncNow('manual');
     expect(server.log).toHaveLength(1);
 
+    // Nouvelle session (MeRepo : connexion, création du compte, réinitialisation).
     server.on('GET /api/health', undefined);
     const seen: SyncState['connection'][] = [];
     engine.subscribe((s) => seen.push(s.connection));
     await setMeta(db, 'userId', 'u2');
+    engine.sessionOpened();
     await engine.syncNow('manual');
     expect(server.paths()[1]).toBe('GET /api/health');
     expect(seen).toContain('unknown');
@@ -393,6 +395,104 @@ describe('erreurs', () => {
 
   it('retryDelayMs : 2 s doublé, 5 min au plus', () => {
     expect([1, 2, 3, 8, 9, 20].map(retryDelayMs)).toEqual([2000, 4000, 8000, 256000, 300000, 300000]);
+  });
+});
+
+describe('session perdue : synchro en pause jusqu’à une nouvelle session (R-SYN-12, P-DRT-4)', () => {
+  const unauthenticated = () => server.json(401, { error: 'unauthenticated' });
+  const connections = () => {
+    const seen: SyncState['connection'][] = [];
+    engine.subscribe((s) => seen.push(s.connection));
+    return seen;
+  };
+
+  it('après un 401, aucun déclencheur ne relance de cycle ; jamais « online » entre-temps', async () => {
+    await createNote();
+    server.on('POST /api/sync/push', unauthenticated);
+    makeEngine().start();
+    await idle();
+    expect(engine.getState().connection).toBe('unauthenticated');
+    const seen = connections();
+
+    await engine.syncNow('foreground');
+    await engine.syncNow('online');
+    await engine.syncNow('interval');
+    await engine.syncNow('manual');
+    await engine.pullNow();
+    await engine.flushBefore(100);
+    const debounced = engine.syncNow('set_logged');
+    await vi.advanceTimersByTimeAsync(2000);
+    await debounced;
+    // Le relancement de `withEngineStopped` après un échec de connexion ne relance rien non plus.
+    engine.stop();
+    engine.start();
+    await vi.advanceTimersByTimeAsync(600_000);
+    await idle();
+
+    expect(count('GET /api/health')).toBe(1);
+    expect(seen).not.toContain('online');
+    expect(engine.getState().connection).toBe('unauthenticated');
+    expect(await db.outbox.count()).toBe(1);
+  });
+
+  it('le cycle programmé pendant celui qui reçoit le 401 ne part pas', async () => {
+    let release: () => void = () => {};
+    server.on('GET /api/health', () =>
+      count('GET /api/health') > 1
+        ? unauthenticated()
+        : new Promise<Response>((resolve) => {
+            release = () => resolve(unauthenticated());
+          }),
+    );
+    makeEngine();
+    const first = engine.syncNow('manual');
+    await until(() => count('GET /api/health') === 1);
+    const queued = engine.syncNow('foreground');
+    release();
+    await first;
+    await queued;
+    await idle();
+    expect(count('GET /api/health')).toBe(1);
+    expect(engine.getState().connection).toBe('unauthenticated');
+  });
+
+  it('sessionOpened() : « unknown » tout de suite, puis la synchro repart sous la nouvelle session', async () => {
+    await createNote();
+    server.on('POST /api/sync/push', unauthenticated);
+    makeEngine().start();
+    await idle();
+    expect(engine.getState().connection).toBe('unauthenticated');
+
+    server.on('POST /api/sync/push', undefined);
+    engine.sessionOpened();
+    expect(engine.getState().connection).toBe('unknown');
+    await engine.syncNow('manual');
+    expect(count('GET /api/health')).toBe(2);
+    expect(engine.getState().connection).toBe('online');
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('sessionOpened() remet les reprises à zéro', async () => {
+    server.fault = 'offline';
+    makeEngine().start();
+    await idle();
+    // Trois échecs : la prochaine reprise attendrait 8 s.
+    await vi.advanceTimersByTimeAsync(2000);
+    await until(() => count('GET /api/health') === 2);
+    await idle();
+    await vi.advanceTimersByTimeAsync(4000);
+    await until(() => count('GET /api/health') === 3);
+    await idle();
+
+    engine.stop();
+    engine.sessionOpened();
+    engine.start();
+    await until(() => count('GET /api/health') === 4);
+    await idle();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(count('GET /api/health')).toBe(4);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(() => count('GET /api/health') === 5);
   });
 });
 

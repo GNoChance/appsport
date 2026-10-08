@@ -4,17 +4,24 @@ import { LogoutDialog } from '../../src/features/auth/LogoutDialog';
 import { PASSWORD_MESSAGES, pendingWarning } from '../../src/features/auth/messages';
 import { ResetPage } from '../../src/features/auth/ResetPage';
 import { getMeta } from '../../src/local-db/meta';
-import { click, fill, openUrl } from '../support/auth';
+import type { SyncEngine } from '../../src/sync/engine';
+import { click, fill, lostSessionApi, openUrl, settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
 import { seedOutbox } from '../support/seed';
+import { until } from '../support/wait';
 
 const reply = (body?: unknown, status = 200) => ({ status, body });
 const callsTo = (api: FakeApi, path: string) => api.calls.filter((c) => c.path === path);
 const lea = makeMe({ id: 'u-1', username: 'lea' });
 
-afterEach(() => openUrl('/'));
+let engine: SyncEngine | null = null;
+afterEach(() => {
+  engine?.stop();
+  engine = null;
+  openUrl('/');
+});
 
 describe('LogoutDialog (R-AUTH-9, R-SYN-14)', () => {
   async function renderDialog(mode: 'current' | 'all', pending: number, open = true) {
@@ -221,6 +228,30 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
     click('Suivant');
     await screen.findByLabelText('Nouveau mot de passe pour lea');
     expect(callsTo(api, CHECK)[0]?.body).toEqual({ code: CODE });
+  });
+
+  it('session perdue puis réinitialisation : accueil sans passer par /login (garde et moteur réels)', async () => {
+    openUrl('/reset#abcd-efgh-jkmn-pqrs');
+    const api = lostSessionApi('unauthenticated');
+    api.on('POST', CHECK, memberCheck).on('POST', RESET, () => {
+      api.open();
+      return reply(lea);
+    });
+    const view = await renderApp({ path: '/reset', me: lea, api, realSync: true });
+    const real = view.engine;
+    engine = real;
+    real.start();
+    await until(() => real.getState().connection === 'unauthenticated');
+    await screen.findByLabelText('Nouveau mot de passe pour lea');
+    await settle();
+    const mark = view.visits().length;
+    fill('Nouveau mot de passe pour lea', PHRASE);
+    fill('Confirmation', PHRASE);
+    click('Changer le mot de passe');
+    await screen.findByText('Bonjour lea');
+    await until(() => real.getState().connection === 'online' && !real.getState().syncing);
+    expect(view.visits().slice(mark)).toEqual(['/']);
+    expect(screen.queryByText('Ta session a expiré. Reconnecte-toi.')).toBeNull();
   });
 
   it("route /reset de l'appli, sans session", async () => {

@@ -97,9 +97,14 @@ export type FakeSyncEngine = SyncEngine & {
   triggers: SyncTrigger[];
   pullCount: number;
   started: boolean;
+  /** Appels à `sessionOpened()`. */
+  sessionsOpened: number;
 };
 
-/** Moteur de synchro factice : enregistre les déclencheurs, état modifiable par `set`. */
+/**
+ * Moteur de synchro factice : enregistre les déclencheurs, état modifiable par `set`.
+ * `sessionOpened()` remet `connection` à 'unknown', comme le moteur réel.
+ */
 export function createFakeSyncEngine(initial: Partial<SyncState> = {}): FakeSyncEngine {
   let state: SyncState = {
     connection: 'online',
@@ -115,6 +120,7 @@ export function createFakeSyncEngine(initial: Partial<SyncState> = {}): FakeSync
     triggers: [],
     pullCount: 0,
     started: false,
+    sessionsOpened: 0,
     set(p) {
       state = { ...state, ...p };
       for (const fn of listeners) fn(state);
@@ -141,6 +147,10 @@ export function createFakeSyncEngine(initial: Partial<SyncState> = {}): FakeSync
     },
     stop() {
       engine.started = false;
+    },
+    sessionOpened() {
+      engine.sessionsOpened += 1;
+      engine.set({ connection: 'unknown' });
     },
   };
   return engine;

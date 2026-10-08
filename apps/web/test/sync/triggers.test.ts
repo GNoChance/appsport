@@ -29,6 +29,7 @@ beforeEach(() => {
     subscribe: () => () => {},
     start: () => {},
     stop: () => {},
+    sessionOpened: () => {},
   };
 });
 afterEach(() => {

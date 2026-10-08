@@ -10,6 +10,7 @@ import { type AppServices, handleAccountDeleted, ServicesProvider } from '../../
 import type { AppDb } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
 import type { SwStatus } from '../../src/sw/protocol';
+import { createSyncEngine, type SyncEngine } from '../../src/sync/engine';
 import { createFakeApi, createFakeSyncEngine, type FakeApi, type FakeSyncEngine } from './fake-api';
 import { createTestLocalDb } from './local-db';
 
@@ -48,6 +49,11 @@ export interface RenderAppOptions {
   now?: number;
   /** Réponse du service worker ; absent : coquille et illustrations en cache. */
   swStatus?: SwStatus | null;
+  /**
+   * Moteur de synchro réel branché sur `api` (déclencheurs du document compris) au lieu du faux
+   * `sync` ; le test le démarre (`engine.start()`, comme `bootApp`) et l'arrête.
+   */
+  realSync?: boolean;
 }
 
 export const DEFAULT_SW_STATUS: SwStatus = {
@@ -61,16 +67,23 @@ export interface RenderAppResult extends RenderResult {
   services: AppServices;
   api: FakeApi;
   sync: FakeSyncEngine;
+  /** Moteur en service : le faux `sync`, ou le moteur réel avec `realSync`. */
+  engine: SyncEngine;
   db: AppDb;
   location(): string;
+  /** Chaque adresse visitée, remplacements compris (l'historique de wouter les écrase). */
+  visits(): string[];
 }
 
 export interface TestServices {
   services: AppServices;
   api: FakeApi;
   sync: FakeSyncEngine;
+  engine: SyncEngine;
   db: AppDb;
   memory: ReturnType<typeof memoryLocation>;
+  /** Adresses visitées depuis le chemin de départ, remplacements compris. */
+  visits: string[];
 }
 
 /** Services de test sans rendu (dépôts testés seuls) ; `me` posé dans meta comme une session. */
@@ -85,14 +98,29 @@ export async function createTestServices(opts: RenderAppOptions = {}): Promise<T
     await setMeta(db, 'me', me);
   }
   const swStatus = opts.swStatus === undefined ? DEFAULT_SW_STATUS : opts.swStatus;
-  const memory = memoryLocation({ path: opts.path ?? '/', record: true });
+  const path = opts.path ?? '/';
+  const memory = memoryLocation({ path, record: true });
+  const visits = [path];
+  const go = (to: string, replace = false) => {
+    visits.push(to);
+    memory.navigate(to, { replace });
+  };
+  // Comme main.tsx : le moteur réel renvoie vers la connexion après un 410 account_deleted.
+  const engine: SyncEngine = opts.realSync
+    ? createSyncEngine({
+        db,
+        transport: api.transport,
+        now: () => nowMs,
+        onAccountDeleted: () => go('/login?reason=account_deleted', true),
+      })
+    : sync;
   const services: AppServices = {
     db,
     api: createApiClient(api.transport, {
-      onUnauthenticated: () => void sync.syncNow('manual'),
-      onAccountDeleted: () => void handleAccountDeleted(db, memory.navigate),
+      onUnauthenticated: () => void engine.syncNow('manual'),
+      onAccountDeleted: () => void handleAccountDeleted(db, (to) => go(to)),
     }),
-    sync,
+    sync: engine,
     transport: api.transport,
     now: () => nowMs,
     newOpId: createMonotonicUuidV7(
@@ -101,7 +129,7 @@ export async function createTestServices(opts: RenderAppOptions = {}): Promise<T
     ),
     swStatus: async () => swStatus,
   };
-  return { services, api, sync, db, memory };
+  return { services, api, sync, engine, db, memory, visits };
 }
 
 /** Rend `ui` avec des services de test, dans un routeur en mémoire (wouter). */
@@ -109,9 +137,16 @@ export async function renderWithServices(
   ui: ReactElement,
   opts: RenderAppOptions = {},
 ): Promise<RenderAppResult> {
-  const { services, api, sync, db, memory } = await createTestServices(opts);
+  const { services, api, sync, engine, db, memory, visits } = await createTestServices(opts);
   const result = render(
-    <Router hook={memory.hook} searchHook={memory.searchHook}>
+    <Router
+      hook={memory.hook}
+      searchHook={memory.searchHook}
+      aroundNav={(navigate, to, options) => {
+        visits.push(to);
+        navigate(to, options);
+      }}
+    >
       <ServicesProvider services={services}>{ui}</ServicesProvider>
     </Router>,
   );
@@ -120,8 +155,10 @@ export async function renderWithServices(
     services,
     api,
     sync,
+    engine,
     db,
     location: () => memory.history.at(-1) ?? '',
+    visits: () => [...visits],
   };
 }
 

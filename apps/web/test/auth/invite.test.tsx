@@ -9,12 +9,14 @@ import {
   fill,
   IPHONE_UA,
   openUrl,
+  settle,
   stubDisplayMode,
   stubUserAgent,
   WINDOWS_UA,
 } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
+import { until } from '../support/wait';
 
 const CODE = 'ABCDEFGHJKMNPQR0';
 const OTHER_CODE = 'ABCDEFGHJKMNPQRS';
@@ -125,6 +127,22 @@ describe("lien d'invitation dans l'appli installée (R-ARR-1, R-INV-4)", () => {
       termsVersion: '1.0',
     });
     expect((await db.meta.get('userId'))?.value).toBe('u-9');
+  });
+
+  it("création dans l'appli : l'onboarding sans passer par /login (garde de l'appli)", async () => {
+    stubDisplayMode(true);
+    openUrl(LINK);
+    const api = createFakeApi()
+      .on('POST', CHECK, memberCheck)
+      .on('POST', ACCEPT, reply(makeMe({ id: 'u-9', username: 'lea', onboardingCompletedAt: null })));
+    const { location, visits } = await renderApp({ path: '/invite', me: null, api });
+    await screen.findByLabelText('Date de naissance');
+    fireEvent.click(screen.getByLabelText("J'ai lu la page Confidentialité et règles"));
+    const mark = visits().length;
+    submitWith('lea', PHRASE);
+    await until(() => location() === '/onboarding');
+    await settle();
+    expect(visits().slice(mark)).toEqual(['/onboarding']);
   });
 
   it("invitation d'amorçage (admin) : 13 caractères refusés sans requête, 14 acceptés", async () => {

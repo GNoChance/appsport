@@ -50,8 +50,8 @@ export function createMeRepo(s: AppServices): MeRepo {
 
   /**
    * Moteur arrêté pendant `fn` (aucun cycle ne part sous un cookie en train de changer), puis
-   * relancé quoi qu'il arrive : réarmé même après un 410, `connection` remis à zéro par le moteur
-   * quand meta.userId change.
+   * relancé quoi qu'il arrive. Après un échec, la pause d'une session perdue continue : seule une
+   * session adoptée (`adoptSession`) la lève.
    */
   async function withEngineStopped<T>(fn: () => Promise<T>): Promise<T> {
     sync.stop();
@@ -66,7 +66,8 @@ export function createMeRepo(s: AppServices): MeRepo {
    * Session ouverte sous `me`, moteur arrêté. Autre utilisateur que celui de l'appareil : données
    * locales effacées, file comprise (P-AUT-6, l'écran a averti grâce à `deviceOwner`), puis
    * meta.userId posé avant toute synchro sous le nouveau cookie. meta.userId est retiré en premier :
-   * si l'effacement échoue, le moteur relancé n'a aucun utilisateur et n'envoie rien.
+   * si l'effacement échoue, le moteur relancé n'a aucun utilisateur et n'envoie rien. Enfin,
+   * l'état de connexion de l'ancienne session (401, 410) est oublié avant que l'écran ne navigue.
    */
   async function adoptSession(me: MeResponse): Promise<void> {
     if ((await getMeta(db, 'userId')) !== me.id) {
@@ -75,6 +76,7 @@ export function createMeRepo(s: AppServices): MeRepo {
       await setMeta(db, 'userId', me.id);
     }
     await rememberMe(me);
+    sync.sessionOpened();
   }
 
   /** Connexion : moteur arrêté avant la requête, session adoptée, puis synchro manuelle. */

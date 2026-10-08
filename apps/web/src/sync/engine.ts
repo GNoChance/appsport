@@ -68,6 +68,11 @@ export interface SyncEngine {
   subscribe(fn: (s: SyncState) => void): () => void;
   start(): void;
   stop(): void;
+  /**
+   * Session ouverte (connexion, création du compte, réinitialisation) : connexion remise à
+   * 'unknown' tout de suite, reprises à zéro, et fin de la pause d'après un 401 ou un 410.
+   */
+  sessionOpened(): void;
 }
 
 export interface SyncEngineDeps {
@@ -85,6 +90,9 @@ export interface SyncEngineDeps {
 export function retryDelayMs(failures: number): number {
   return Math.min(SYNC_RETRY_MAX_MS, SYNC_RETRY_MIN_MS * 2 ** (Math.max(1, failures) - 1));
 }
+
+/** Session refusée par le serveur : la synchro reste en pause jusqu'à `sessionOpened()` (R-SYN-12). */
+const SESSION_LOST: readonly ConnectionState[] = ['unauthenticated', 'account_deleted'];
 
 /** Fin de cycle sans échec : utilisateur changé, ou cycle d'avant un stop(). */
 class CycleEnd extends Error {}
@@ -137,6 +145,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   let debounceWaiters: (() => void)[] = [];
   let running = false;
   let next: Queued | null = null;
+
+  const sessionLost = () => SESSION_LOST.includes(state.connection);
 
   function setState(patch: Partial<SyncState>): void {
     const updated = { ...state, ...patch };
@@ -415,7 +425,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       .finally(() => {
         const queued = next;
         next = null;
-        if (queued && !stopped) {
+        if (queued && !stopped && !sessionLost()) {
           void launch(queued.kind).then(queued.resolve);
           return;
         }
@@ -425,9 +435,12 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       });
   }
 
-  /** File unique : un cycle en vol, au plus un autre programmé (complet s'il est demandé une fois). */
+  /**
+   * File unique : un cycle en vol, au plus un autre programmé (complet s'il est demandé une fois).
+   * Moteur arrêté ou session perdue : rien ne part, quel que soit le déclencheur.
+   */
   function enqueue(kind: CycleKind): Promise<void> {
-    if (stopped) return Promise.resolve();
+    if (stopped || sessionLost()) return Promise.resolve();
     if (next) {
       if (kind === 'full') next.kind = 'full';
       return next.promise;
@@ -442,7 +455,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   }
 
   function debounced(): Promise<void> {
-    if (stopped) return Promise.resolve();
+    if (stopped || sessionLost()) return Promise.resolve();
     clearTimeout(debounceTimer);
     const done = new Promise<void>((resolve) => debounceWaiters.push(resolve));
     debounceTimer = setTimeout(() => {
@@ -504,6 +517,11 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       const waiters = debounceWaiters;
       debounceWaiters = [];
       for (const w of waiters) w();
+    },
+    sessionOpened() {
+      lastUserId = null;
+      failures = 0;
+      setState({ connection: 'unknown' });
     },
   };
   return engine;

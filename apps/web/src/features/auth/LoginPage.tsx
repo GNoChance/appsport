@@ -1,16 +1,19 @@
 import { usernameKey } from '@appsport/domain';
 import { type FormEvent, useCallback, useState } from 'react';
-import { Link, useLocation, useSearch } from 'wouter';
+import { Link, useSearch } from 'wouter';
 import { useSyncState } from '../../app-services';
 import { useRepos } from '../../repos';
 import { Banner, Button, Dialog, ERROR_MESSAGES, Field, Page } from '../../ui';
 import styles from './auth.module.css';
 import { FORMER_ACCOUNT_NAME, loginErrorMessage, pendingWarning } from './messages';
 
-/** Connexion (R-AUTH-1) ; un autre pseudo que celui de l'appareil est averti avant l'effacement (P-AUT-6). */
+/**
+ * Connexion (R-AUTH-1) ; un autre pseudo que celui de l'appareil est averti avant l'effacement
+ * (P-AUT-6). Une fois la session ouverte, la garde de l'appli mène à l'accueil : elle voit la
+ * nouvelle session au même rendu que l'écran, sans détour par un état de connexion périmé.
+ */
 export function LoginPage() {
   const repos = useRepos();
-  const [, navigate] = useLocation();
   const search = useSearch();
   const { connection } = useSyncState();
   const [username, setUsername] = useState('');
@@ -37,7 +40,6 @@ export function LoginPage() {
         }
       }
       await repos.me.login({ username, password });
-      navigate('/', { replace: true });
     } catch (e) {
       setError(loginErrorMessage(e));
     } finally {

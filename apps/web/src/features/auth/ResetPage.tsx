@@ -1,12 +1,12 @@
 import type { Role } from '@appsport/contracts';
 import { type FormEvent, useState } from 'react';
-import { useLocation } from 'wouter';
 import { useRepos } from '../../repos';
 import { Banner, Button, Page } from '../../ui';
 import styles from './auth.module.css';
 import { CodeStep, useFragmentCode } from './CodeStep';
 import { accessErrorMessage, checkNewPassword } from './messages';
 import { PasswordFields } from './PasswordFields';
+import { useSessionRedirect } from './use-session-redirect';
 
 interface CheckedReset {
   code: string;
@@ -16,7 +16,7 @@ interface CheckedReset {
 
 function NewPasswordForm(p: CheckedReset) {
   const repos = useRepos();
-  const [, navigate] = useLocation();
+  const redirect = useSessionRedirect();
   const [passwords, setPasswords] = useState({ password: '', confirm: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +32,8 @@ function NewPasswordForm(p: CheckedReset) {
     setBusy(true);
     setError(null);
     try {
-      await repos.me.resetPassword({ code: p.code, newPassword: passwords.password });
-      navigate('/', { replace: true });
+      const me = await repos.me.resetPassword({ code: p.code, newPassword: passwords.password });
+      redirect(me.id, '/');
     } catch (err) {
       setError(accessErrorMessage(err, p.role));
     } finally {

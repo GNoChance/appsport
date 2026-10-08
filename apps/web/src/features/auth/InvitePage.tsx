@@ -1,7 +1,6 @@
 import type { Role } from '@appsport/contracts';
 import { formatSecretCode } from '@appsport/domain';
 import { useState } from 'react';
-import { useLocation } from 'wouter';
 import { useRepos } from '../../repos';
 import { Banner, Button, CopyButton, Page } from '../../ui';
 import { OWNER_FIRST_NAME } from '../public/privacy-content';
@@ -10,6 +9,7 @@ import { CodeStep, useFragmentCode } from './CodeStep';
 import { CreateAccountForm } from './CreateAccountForm';
 import { detectPlatform, installHelp, isStandalone } from './install-help';
 import { accessErrorMessage } from './messages';
+import { useSessionRedirect } from './use-session-redirect';
 
 interface CheckedInvitation {
   code: string;
@@ -43,7 +43,7 @@ function InstallGuide(p: { code: string | null; onContinue(): void }) {
 /** Arrivée d'un proche (02 §3.3 et §3.4) : lien ou code d'invitation, puis création du compte. */
 export function InvitePage() {
   const repos = useRepos();
-  const [, navigate] = useLocation();
+  const redirect = useSessionRedirect();
   const fragment = useFragmentCode();
   const [standalone] = useState(() => isStandalone());
   const [inBrowser, setInBrowser] = useState(false);
@@ -63,7 +63,7 @@ export function InvitePage() {
           code={checked.code}
           birthDate={checked.birthDate}
           role={checked.role}
-          onCreated={() => navigate('/onboarding', { replace: true })}
+          onCreated={(me) => redirect(me.id, '/onboarding')}
         />
       </Page>
     );
