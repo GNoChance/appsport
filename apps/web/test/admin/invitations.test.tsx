@@ -62,8 +62,19 @@ function create(birthDate: string, note?: string) {
   fireEvent.click(screen.getByRole('button', { name: "Créer l'invitation" }));
 }
 
+/** Presse-papiers refusé (permission) ou absent (contexte non sécurisé, vieux navigateur). */
+function breakClipboard(mode: 'refusé' | 'absent'): void {
+  if (mode === 'absent')
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  else
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(
+      new DOMException('refusé', 'NotAllowedError'),
+    );
+}
+
 afterEach(() => {
   Reflect.deleteProperty(navigator, 'share');
+  Reflect.deleteProperty(navigator, 'clipboard');
   vi.restoreAllMocks();
 });
 
@@ -247,6 +258,27 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     await until(() => writeText.mock.calls.length === 1);
     expect(writeText).toHaveBeenCalledWith(buildInvitationShareMessage(window.location.origin, link, CODE));
   });
+
+  it.each(['refusé', 'absent'] as const)(
+    'presse-papiers %s : « Copie impossible », consigne de sélection ; code, lien et message restent affichés',
+    async (mode) => {
+      breakClipboard(mode);
+      const { api, link } = createdApi();
+      await renderInvitations({ api });
+      create('2009-05-01');
+      await screen.findByText(CODE);
+      fireEvent.click(screen.getByRole('button', { name: 'Copier le message' }));
+      expect(await screen.findByRole('button', { name: 'Copie impossible' })).toBeTruthy();
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        'Copie impossible : sélectionne le message et copie-le.',
+      );
+      expect(screen.getByTestId('share-message').textContent).toBe(
+        buildInvitationShareMessage(window.location.origin, link, CODE),
+      );
+      expect(screen.getByText(CODE)).toBeTruthy();
+      expect(screen.getByText(link)).toBeTruthy();
+    },
+  );
 
   it('400 under_min_age → « appsport est réservé aux 16 ans et plus », aucun code', async () => {
     const api = createFakeApi().on('POST', '/api/admin/invitations', {

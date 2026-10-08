@@ -22,6 +22,7 @@ import {
 } from './admin-ui';
 
 export const RESET_SELF_MESSAGE = 'Pour toi-même, utilise la commande admin:reset sur le serveur.';
+const COPY_LINK_FAILED = 'Copie impossible : sélectionne le lien et copie-le.';
 
 const PASSWORD_OVERRIDES = { invalid_credentials: WRONG_PASSWORD_MESSAGE } as const;
 
@@ -176,6 +177,7 @@ function ResetLinkDialog(p: DialogProps) {
   const repos = useRepos();
   const name = p.member.username;
   const [created, setCreated] = useState<ResetLinkResponse | null>(null);
+  const [copyFailed, setCopyFailed] = useState(false);
   const generate = useAction(
     async () => {
       setCreated(await repos.admin.resetLink(p.member.id));
@@ -223,7 +225,8 @@ function ResetLinkDialog(p: DialogProps) {
             Code : <span className={styles.secret}>{created.code}</span>
           </p>
           <p>Valable jusqu'au {formatDateTime(created.expiresAt)}.</p>
-          <CopyButton text={created.link} />
+          <CopyButton text={created.link} onResult={(copied) => setCopyFailed(!copied)} />
+          {copyFailed ? <Banner tone="error">{COPY_LINK_FAILED}</Banner> : null}
           <p className={styles.once}>{SECRET_SHOWN_ONCE}</p>
         </div>
       ) : (

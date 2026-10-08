@@ -61,6 +61,7 @@ function confirmButton(name: string): HTMLButtonElement {
 }
 
 afterEach(() => {
+  Reflect.deleteProperty(navigator, 'clipboard');
   vi.restoreAllMocks();
 });
 
@@ -207,6 +208,32 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     expect(dialog().queryByText(CODE)).toBeNull();
     expect(dialog().getByRole('button', { name: 'Générer' })).toBeTruthy();
   });
+
+  it.each(['refusé', 'absent'] as const)(
+    'presse-papiers %s : « Copie impossible », consigne de sélection ; lien et code restent affichés',
+    async (mode) => {
+      if (mode === 'absent')
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+      else
+        vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(
+          new DOMException('refusé', 'NotAllowedError'),
+        );
+      const api = createFakeApi().on('POST', '/api/admin/members/:id/reset-link', {
+        status: 200,
+        body: { code: CODE, link: LINK, expiresAt: '2026-10-07T12:00:00.000Z' },
+      });
+      await renderMembers({ api });
+      fireEvent.click(open('lea', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
+      await dialog().findByText(CODE);
+      fireEvent.click(dialog().getByRole('button', { name: 'Copier' }));
+      expect(await dialog().findByRole('button', { name: 'Copie impossible' })).toBeTruthy();
+      expect((await dialog().findByRole('alert')).textContent).toBe(
+        'Copie impossible : sélectionne le lien et copie-le.',
+      );
+      expect(dialog().getByText(LINK)).toBeTruthy();
+      expect(dialog().getByText(CODE)).toBeTruthy();
+    },
+  );
 
   it('Échap après la génération efface aussi le code', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/reset-link', {

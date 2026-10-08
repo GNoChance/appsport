@@ -157,7 +157,7 @@
   color: var(--color-muted);
 }
 
-/* Code et lien affichés une seule fois. */
+/* Code et lien affichés une seule fois ; un geste les sélectionne en entier si la copie échoue. */
 .secretPanel {
   display: flex;
   flex-direction: column;
@@ -172,6 +172,8 @@
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-weight: 600;
   overflow-wrap: anywhere;
+  -webkit-user-select: all;
+  user-select: all;
 }
 
 .message {
@@ -182,6 +184,7 @@
   font: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  -webkit-user-select: all;
   user-select: all;
 }
 

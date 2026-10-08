@@ -13,6 +13,7 @@ import { buildInvitationShareMessage } from './share-message';
 
 const BIRTH_DATE_REQUIRED = 'Saisis la date de naissance.';
 const SHARE_FAILED = 'Partage impossible : copie le message.';
+const COPY_FAILED = 'Copie impossible : sélectionne le message et copie-le.';
 
 /** État affiché d'une invitation (R-INV-7). */
 export function invitationStateText(i: InvitationSummary): string {
@@ -174,24 +175,25 @@ function InvitationForm(p: { onCreated(r: CreateInvitationResponse): void }) {
 
 /**
  * Invitation créée (R-INV-3, R-INV-9) : code, lien et message de partage, affichés une seule fois ;
- * « Partager » si l'appareil sait partager, « Copier le message » toujours (le message reste
- * sélectionnable si la copie échoue). « J'ai noté le code » les efface de l'écran.
+ * « Partager » si l'appareil sait partager, « Copier le message » toujours. Partage ou copie
+ * impossible : un message le dit, le message reste affiché et se sélectionne d'un geste.
+ * « J'ai noté le code » les efface de l'écran.
  */
 function CreatedInvitation(p: { created: CreateInvitationResponse; onDone(): void }) {
   const { code, link, invitation } = p.created;
   const message = buildInvitationShareMessage(window.location.origin, link, code);
   const canShare = typeof navigator.share === 'function';
-  const [shareError, setShareError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   const headingId = useId();
   const focusOnMount = useCallback((el: HTMLHeadingElement | null) => el?.focus(), []);
 
   async function share() {
-    setShareError(null);
+    setFailure(null);
     try {
       await navigator.share({ text: message });
     } catch (e) {
       // Partage annulé par l'utilisateur : rien à signaler.
-      if (!(e instanceof Error && e.name === 'AbortError')) setShareError(SHARE_FAILED);
+      if (!(e instanceof Error && e.name === 'AbortError')) setFailure(SHARE_FAILED);
     }
   }
 
@@ -213,9 +215,13 @@ function CreatedInvitation(p: { created: CreateInvitationResponse; onDone(): voi
       </pre>
       <div className={styles.actions}>
         {canShare ? <Button onClick={() => void share()}>Partager</Button> : null}
-        <CopyButton text={message} label="Copier le message" />
+        <CopyButton
+          text={message}
+          label="Copier le message"
+          onResult={(copied) => setFailure(copied ? null : COPY_FAILED)}
+        />
       </div>
-      {shareError ? <Banner tone="error">{shareError}</Banner> : null}
+      {failure ? <Banner tone="error">{failure}</Banner> : null}
       <p className={styles.once}>{SECRET_SHOWN_ONCE}</p>
       <Button variant="secondary" onClick={p.onDone}>
         J'ai noté le code
