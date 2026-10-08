@@ -151,14 +151,39 @@ describe('ServerHealthPage (08 §9)', () => {
     expect(screen.getByText('SMART : OK')).toBeTruthy();
     expect(screen.getByText('Redémarrage nécessaire')).toBeTruthy();
     expect(screen.queryByText('Sauvegarde en retard (plus de 26 h)')).toBeNull();
+    expect(screen.queryByText('Aucune sauvegarde enregistrée')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('pourcentages arrondis au-dessus : 80,2 % est au-delà de 80 %, 79,6 % ne l’est pas', async () => {
+    await renderHealth({
+      ...OPS,
+      host: {
+        ...(OPS.host as NonNullable<OpsStatus['host']>),
+        disks: [
+          { mount: '/', usedPct: 80.2 },
+          { mount: '/srv/appsport', usedPct: 79.6 },
+        ],
+      },
+    });
+    const disks = within(screen.getByRole('list', { name: 'Espace disque' }))
+      .getAllByRole('listitem')
+      .map((li) => li.textContent);
+    expect(disks).toEqual(['/ : 81 % (au-delà de 80 %)', '/srv/appsport : 80 %']);
   });
 
   it('sauvegarde de plus de 26 h → bandeau « Sauvegarde en retard (plus de 26 h) »', async () => {
     await renderHealth({ ...OPS, backup: { at: ago(28 * HOUR), ok: true } });
     const late = screen.getByText('Sauvegarde en retard (plus de 26 h)');
     expect(late.closest('[role="status"], [role="alert"]')).not.toBeNull();
-    expect(screen.getByText('Dernière sauvegarde : il y a 1 j (réussie)')).toBeTruthy();
+    // En heures sous 72 h : « il y a 1 j » sous « plus de 26 h » minimiserait le retard.
+    expect(screen.getByText('Dernière sauvegarde : il y a 28 h (réussie)')).toBeTruthy();
+  });
+
+  it('sauvegarde de 3 jours et plus : âge en jours', async () => {
+    await renderHealth({ ...OPS, backup: { at: ago(80 * HOUR), ok: true } });
+    expect(screen.getByText('Dernière sauvegarde : il y a 3 j (réussie)')).toBeTruthy();
+    expect(screen.getByText('Sauvegarde en retard (plus de 26 h)')).toBeTruthy();
   });
 
   it('sauvegarde de 26 h tout juste : pas encore en retard', async () => {
@@ -188,6 +213,13 @@ describe('ServerHealthPage (08 §9)', () => {
     expect(screen.getByText('Dernier test de restauration : 04/10/2026 (échoué)')).toBeTruthy();
     expect(screen.getByText('SMART : problème détecté')).toBeTruthy();
     expect(screen.queryByText('Redémarrage nécessaire')).toBeNull();
+  });
+
+  it('aucune sauvegarde enregistrée : bandeau d’avertissement (08 §9 : sauvegarde absente)', async () => {
+    await renderHealth({ deploy: OPS.deploy, host: OPS.host });
+    const missing = screen.getByText('Aucune sauvegarde enregistrée');
+    expect(missing.closest('[role="status"], [role="alert"]')).not.toBeNull();
+    expect(screen.getByText('Dernière sauvegarde : aucune')).toBeTruthy();
   });
 
   it('contrôles absents : « aucune », « aucun »', async () => {

@@ -7,14 +7,26 @@ import { AdminNav } from './AdminNav';
 import styles from './admin.module.css';
 import { LoadFailure, useServerData } from './admin-ui';
 
+const HOUR_MS = 3_600_000;
 /** [décision plan] période de 24 h + 2 h de grâce du contrôle `backup` (08 §9). */
-export const BACKUP_LATE_MS = 26 * 3_600_000;
-const BACKUP_LATE_HOURS = BACKUP_LATE_MS / 3_600_000;
+export const BACKUP_LATE_MS = 26 * HOUR_MS;
+const BACKUP_LATE_HOURS = BACKUP_LATE_MS / HOUR_MS;
 /** Disque en alerte au-delà de ce taux d'occupation (08 §9, contrôle `host`). */
 export const DISK_WARN_PCT = 80;
 
 export const NO_OPS_STATUS =
   "Aucun état d'exploitation disponible : les scripts de l'hôte n'ont encore rien écrit.";
+/** Contrôle `backup` : « sauvegarde absente » est une alerte (08 §9). */
+export const NO_BACKUP = 'Aucune sauvegarde enregistrée';
+
+/**
+ * Âge de la dernière sauvegarde : en heures jusqu'à 72 h, pour qu'un retard (au-delà de 26 h) ne
+ * se lise pas « il y a 1 j » ; au-delà, en jours.
+ */
+function backupAge(iso: string, nowMs: number): string {
+  const hours = Math.floor((nowMs - Date.parse(iso)) / HOUR_MS);
+  return hours >= 1 && hours < 72 ? `il y a ${hours} h` : formatAge(iso, nowMs);
+}
 
 const done = (ok: boolean) => (ok ? 'réussi' : 'échoué');
 const doneFeminine = (ok: boolean) => (ok ? 'réussie' : 'échouée');
@@ -60,6 +72,7 @@ function OpsReport(p: { ops: OpsStatus; nowMs: number }) {
           La dernière sauvegarde a échoué.{backup.detail ? ` Détail : ${backup.detail}` : ''}
         </Banner>
       ) : null}
+      {backup === undefined ? <Banner tone="warning">{NO_BACKUP}</Banner> : null}
       {late ? <Banner tone="warning">Sauvegarde en retard (plus de {BACKUP_LATE_HOURS} h)</Banner> : null}
       <ul className={styles.facts}>
         <li>
@@ -69,7 +82,7 @@ function OpsReport(p: { ops: OpsStatus; nowMs: number }) {
         </li>
         <li>
           {backup
-            ? `Dernière sauvegarde : ${formatAge(backup.at, p.nowMs)} (${doneFeminine(backup.ok)})`
+            ? `Dernière sauvegarde : ${backupAge(backup.at, p.nowMs)} (${doneFeminine(backup.ok)})`
             : 'Dernière sauvegarde : aucune'}
         </li>
         <li>
