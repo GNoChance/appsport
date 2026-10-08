@@ -7,7 +7,10 @@ export interface PrecacheManifest {
   buildHash: string;
   /** Chemins absolus de la coquille (`/index.html`, `/assets/…`), triés, sans `/sw.js` ni `*.map`. */
   files: string[];
-  /** LOCAL_DB_VERSION du build : un SW en attente de version inférieure n'est jamais activé (R-PWA-9). */
+  /**
+   * LOCAL_DB_VERSION du build (R-PWA-9, ADR 0001 décision 5) : un SW de version inférieure à celle de la page
+   * n'est jamais proposé ni activé.
+   */
   localDbVersion: number;
 }
 
