@@ -30,6 +30,8 @@ describe('planIllustrationSync', () => {
     { referenced: ['a', 'b', 'b'], cached: ['b', 'c'], plan: { toFetch: ['a'], toDelete: ['c'] } },
     { referenced: [], cached: ['c'], plan: { toFetch: [], toDelete: ['c'] } },
     { referenced: ['a'], cached: [], plan: { toFetch: ['a'], toDelete: [] } },
+    // Illustration partagée (référencée deux fois, absente) : téléchargée et comptée une fois.
+    { referenced: ['a', 'a'], cached: [], plan: { toFetch: ['a'], toDelete: [] } },
     { referenced: [], cached: [], plan: { toFetch: [], toDelete: [] } },
   ])('($referenced, $cached) → $plan', ({ referenced, cached, plan }) => {
     expect(planIllustrationSync(referenced, cached)).toEqual(plan);

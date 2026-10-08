@@ -299,6 +299,15 @@ describe('marqueur de version de la base locale (ADR 0001 décision 5, R-PWA-9)'
     await h3.activate();
     expect(await marker(s)).toBe('5');
   });
+
+  it("GET_STATUS d'un SW en attente : localDbVersion de son manifeste, pas celle du marqueur (lue par T37)", async () => {
+    const { s } = await activeA();
+    s.setNetwork(staticNetwork(B_FILES));
+    const waiting = createSwHandlers(s, { ...B, localDbVersion: 2 });
+    await waiting.install();
+    expect(await marker(s)).toBe('1');
+    expect(await getStatus(waiting)).toMatchObject({ buildHash: 'bbbbbbbbbbbb', localDbVersion: 2 });
+  });
 });
 
 describe('handleFetch', () => {
@@ -322,7 +331,8 @@ describe('handleFetch', () => {
     await hA.activate();
     const sB = createFakeSwScope({ caches });
     sB.setNetwork(staticNetwork(B_FILES));
-    await createSwHandlers(sB, B).install(); // B en attente : pas d'activate
+    const hB = createSwHandlers(sB, B);
+    await hB.install(); // B en attente : pas d'activate
     for (const network of [staticNetwork(B_FILES), offline]) {
       sA.setNetwork(network);
       sA.fetchLog.length = 0;
@@ -337,6 +347,30 @@ describe('handleFetch', () => {
       'shell-bbbbbbbbbbbb',
     ]);
     expect(sA.skipWaitingCalls + sB.skipWaitingCalls).toBe(0);
+
+    // index.html perdu par A pendant que B attend : A ne lit que shell-aaaaaaaaaaaa, jamais l'index de B
+    // (R-PWA-8), et passe par le réseau.
+    await (await caches.open(SHELL_A)).delete('/index.html');
+    sA.setNetwork(offline);
+    await expect(hA.handleFetch(nav('/'))).rejects.toThrow(/Failed to fetch/);
+    expect((await hA.status()).shellCached).toBe(false);
+    sA.setNetwork(staticNetwork({ '/': 'net-index' }));
+    sA.fetchLog.length = 0;
+    expect(await bodyOf(hA.handleFetch(nav('/')))).toBe('net-index');
+    expect(sA.fetchLog).toEqual([`${ORIGIN}/`]);
+
+    // « Mettre à jour » : B activé sert sa propre coquille sans réseau, celle de A est purgée (R-PWA-4).
+    sB.setNetwork(offline);
+    sB.fetchLog.length = 0;
+    await hB.activate();
+    expect(await bodyOf(hB.handleFetch(nav('/')))).toBe('B-index');
+    expect(await bodyOf(hB.handleFetch(get('/assets/app-2.js')))).toBe('B-app');
+    expect(sB.fetchLog).toEqual([]);
+    expect((await caches.keys()).sort()).toEqual([
+      LOCAL_DB_MARKER_CACHE,
+      ILLUSTRATIONS_CACHE,
+      'shell-bbbbbbbbbbbb',
+    ]);
   });
 
   it('fichier du manifeste : servi du cache sans réseau ; absent du cache → réseau', async () => {
@@ -903,11 +937,12 @@ describe('installServiceWorker', () => {
     expect(s.fetchLog).toEqual([]);
   });
 
-  it('message SKIP_WAITING → skipWaiting une fois ; GET_STATUS répond sur le port ; message inconnu ignoré', async () => {
+  it('messages SKIP_WAITING, GET_STATUS et SYNC_ILLUSTRATIONS : chacun dans un waitUntil ; inconnu ou mal formé ignoré', async () => {
     const { s } = await activeA();
     const sw = fakeGlobal(s);
     installServiceWorker(sw.g, A);
     const skip = sw.message({ type: 'SKIP_WAITING' });
+    expect(skip.waits).toHaveLength(1);
     await Promise.all(skip.waits);
     expect(s.skipWaitingCalls).toBe(1);
 
@@ -916,16 +951,27 @@ describe('installServiceWorker', () => {
       channel.port1.onmessage = (e: MessageEvent) => resolve(e.data);
     });
     const status = sw.message({ type: 'GET_STATUS' }, [channel.port2]);
+    expect(status.waits).toHaveLength(1);
     await Promise.all(status.waits);
     expect(await reply).toMatchObject({ type: 'STATUS', buildHash: 'aaaaaaaaaaaa', localDbVersion: 1 });
     channel.port1.close();
     channel.port2.close();
 
+    // Le seul chemin par lequel la page fait télécharger les illustrations (sync/catalog.ts, T37).
+    s.setNetwork(ILLUSTRATIONS_NET);
+    const sync = sw.message({ type: 'SYNC_ILLUSTRATIONS', files: [IA, IB] });
+    expect(sync.waits).toHaveLength(1);
+    await Promise.all(sync.waits);
+    expect(await illustrationPaths(s)).toEqual([ILL(IA), ILL(IB)]);
+    s.fetchLog.length = 0;
+
     for (const data of [
       null,
       'SKIP_WAITING',
       { type: 'AUTRE' },
+      { type: 'SYNC_ILLUSTRATIONS' },
       { type: 'SYNC_ILLUSTRATIONS', files: 'a' },
+      { type: 'SYNC_ILLUSTRATIONS', files: ['a', 1] },
     ]) {
       expect(sw.message(data).waits).toEqual([]);
     }
