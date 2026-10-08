@@ -55,6 +55,8 @@ function NewPasswordForm(p: CheckedReset) {
   return (
     <>
       <form className={styles.form} noValidate onSubmit={submit}>
+        {/* Pseudo pour les gestionnaires de mots de passe : le nouveau est enregistré sous ce nom. */}
+        <input type="text" autoComplete="username" value={p.username} readOnly hidden />
         <PasswordFields
           username={p.username}
           role={p.role}

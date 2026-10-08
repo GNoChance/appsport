@@ -5,10 +5,10 @@ import { useRepos } from '../../repos';
 import { Banner, Button, CopyButton, Page } from '../../ui';
 import { OWNER_FIRST_NAME } from '../public/privacy-content';
 import styles from './auth.module.css';
-import { CodeStep, useFragmentCode } from './CodeStep';
+import { CodeStep, type FragmentCode, useFragmentCode } from './CodeStep';
 import { CreateAccountForm } from './CreateAccountForm';
 import { detectPlatform, installHelp, isStandalone } from './install-help';
-import { accessErrorMessage } from './messages';
+import { accessErrorMessage, INCOMPLETE_CODE_MESSAGE } from './messages';
 import { useSessionRedirect } from './use-session-redirect';
 
 interface CheckedInvitation {
@@ -17,21 +17,37 @@ interface CheckedInvitation {
   role: Role;
 }
 
+/** Premier écran de l'invitation (03 §13.1), rappelé sur « Crée ton compte ». */
+function Welcome() {
+  return (
+    <p>
+      appsport est un outil de suivi entre proches, hébergé chez {OWNER_FIRST_NAME}. Ce n'est pas un service
+      médical.
+    </p>
+  );
+}
+
 /**
  * Aide à l'installation avec le code en clair (R-ARR-2). La page ne s'ouvre pas à la création du
- * compte hors de l'appli installée : le code est copiable, l'adresse ne le garde plus.
+ * compte hors de l'appli installée : le code est copiable, l'adresse ne le garde plus. Un lien
+ * tronqué (fragment illisible) est annoncé : il n'y a rien à copier.
  */
-function InstallGuide(p: { code: string | null; onContinue(): void }) {
+function InstallGuide(p: { fragment: FragmentCode; onContinue(): void }) {
+  const { code, present } = p.fragment;
   return (
     <div className={styles.install}>
       {installHelp(detectPlatform(navigator.userAgent)).map((line) => (
         <p key={line}>{line}</p>
       ))}
-      {p.code ? (
+      {code ? (
         <div className={styles.codeRow}>
-          <code className={styles.code}>{formatSecretCode(p.code)}</code>
-          <CopyButton text={formatSecretCode(p.code)} />
+          <code className={styles.code}>{formatSecretCode(code)}</code>
+          <CopyButton text={formatSecretCode(code)} />
         </div>
+      ) : present ? (
+        <Banner tone="error">
+          {INCOMPLETE_CODE_MESSAGE} Demande à l'administrateur le lien complet ou le code.
+        </Banner>
       ) : null}
       <Button variant="secondary" onClick={p.onContinue}>
         Continuer dans ce navigateur
@@ -58,6 +74,8 @@ export function InvitePage() {
   if (checked) {
     return (
       <Page title="Crée ton compte">
+        {/* Le lien vers Confidentialité est celui de la case « J'ai lu la page… ». */}
+        <Welcome />
         {browserWarning}
         <CreateAccountForm
           code={checked.code}
@@ -71,10 +89,7 @@ export function InvitePage() {
 
   return (
     <Page title="Bienvenue sur appsport">
-      <p>
-        appsport est un outil de suivi entre proches, hébergé chez {OWNER_FIRST_NAME}. Ce n'est pas un service
-        médical.
-      </p>
+      <Welcome />
       {/* Nouvel onglet : l'adresse n'a plus le code, revenir en arrière le ferait perdre. */}
       <a href="/privacy" target="_blank" rel="noopener noreferrer">
         Confidentialité et règles
@@ -89,7 +104,7 @@ export function InvitePage() {
           describeError={(e) => accessErrorMessage(e, 'member')}
         />
       ) : (
-        <InstallGuide code={fragment.code} onContinue={() => setInBrowser(true)} />
+        <InstallGuide fragment={fragment} onContinue={() => setInBrowser(true)} />
       )}
     </Page>
   );

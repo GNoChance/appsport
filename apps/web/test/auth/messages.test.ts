@@ -120,6 +120,14 @@ describe('mots de passe (R-MDP-1, R-MDP-3)', () => {
   it('checkNewPassword : pseudo encore vide : aucun rejet sur le pseudo', () => {
     expect(checkNewPassword({ ...base, username: '', confirm: base.password })).toBeNull();
   });
+
+  it('checkNewPassword : confirmation comparée après NFC (é saisi, é collé décomposé)', () => {
+    const typed = 'cheval agrafé batterie';
+    const pasted = 'cheval agrafé batterie';
+    expect(typed).not.toBe(pasted);
+    expect(checkNewPassword({ ...base, password: typed, confirm: pasted })).toBeNull();
+    expect(checkNewPassword({ ...base, password: pasted, confirm: typed })).toBeNull();
+  });
 });
 
 describe('pseudo (R-CPT-3)', () => {

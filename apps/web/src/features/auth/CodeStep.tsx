@@ -4,38 +4,55 @@ import { Banner, Button, Field } from '../../ui';
 import styles from './auth.module.css';
 import { INCOMPLETE_CODE_MESSAGE } from './messages';
 
-/** Fragment d'adresse `#code` à l'ouverture de la page : présent ou non, et code lisible ou non. */
+/**
+ * Fragment d'adresse `#code` : présent ou non, code lisible ou non, et numéro de lecture (`seq`),
+ * qui change à chaque fragment reçu, même identique au précédent.
+ */
 export interface FragmentCode {
   present: boolean;
   code: string | null;
+  seq: number;
 }
 
-export function readFragment(): FragmentCode {
+export function readFragment(seq = 0): FragmentCode {
   const hash = window.location.hash;
-  return hash.length > 1 ? { present: true, code: parseSecretCode(hash) } : { present: false, code: null };
+  return hash.length > 1
+    ? { present: true, code: parseSecretCode(hash), seq }
+    : { present: false, code: null, seq };
+}
+
+/** Retire le fragment de l'adresse sans nouvelle entrée d'historique (R-INV-4). */
+function clearFragment(): void {
+  if (!window.location.hash) return;
+  window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
 }
 
 /**
- * Fragment lu une fois à l'ouverture, puis effacé de l'adresse par `history.replaceState` (R-INV-4).
- * La lecture est pure et l'effacement idempotent : le mode strict de React les rejoue sans dommage.
+ * Fragment lu à l'ouverture, puis effacé de l'adresse par `history.replaceState` (R-INV-4) ; un
+ * fragment reçu page ouverte (`hashchange` : lien ouvert dans l'appli déjà affichée) est lu et
+ * effacé de même. La lecture initiale est pure et l'effacement idempotent : le mode strict de
+ * React les rejoue sans dommage.
  */
 export function useFragmentCode(): FragmentCode {
-  const [fragment] = useState(readFragment);
+  const [fragment, setFragment] = useState(() => readFragment());
   useEffect(() => {
-    if (window.location.hash) {
-      window.history.replaceState(
-        window.history.state,
-        '',
-        window.location.pathname + window.location.search,
-      );
-    }
+    clearFragment();
+    const onHashChange = () => {
+      if (!window.location.hash) return;
+      const next = readFragment();
+      clearFragment();
+      setFragment((previous) => ({ ...next, seq: previous.seq + 1 }));
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
   return fragment;
 }
 
 /**
- * Saisie d'un code (lien complet ou code, R-INV-5) puis vérification par le serveur. Un fragment
- * lisible déclenche la vérification seul, une seule fois.
+ * Saisie d'un code (lien complet ou code, R-INV-5) puis vérification par le serveur. Chaque
+ * fragment lisible déclenche la vérification seul, une seule fois ; un fragment illisible est
+ * signalé « Code incomplet ».
  */
 export function CodeStep<T>(p: {
   label: string;
@@ -65,13 +82,22 @@ export function CodeStep<T>(p: {
     }
   }, []);
 
-  const started = useRef(false);
+  const seen = useRef<number | null>(null);
+  const { seq } = p.fragment;
   useEffect(() => {
-    const code = latest.current.fragment.code;
-    if (started.current || !code) return;
-    started.current = true;
+    const { present, code } = latest.current.fragment;
+    if (seen.current === seq) return;
+    seen.current = seq;
+    if (!present) return;
+    if (!code) {
+      setValue('');
+      setProblem(INCOMPLETE_CODE_MESSAGE);
+      return;
+    }
+    setValue(formatSecretCode(code));
+    setProblem(null);
     void run(code);
-  }, [run]);
+  }, [seq, run]);
 
   const submit = () => {
     const code = parseSecretCode(value);

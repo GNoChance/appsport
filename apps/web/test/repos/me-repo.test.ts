@@ -44,6 +44,44 @@ describe('MeRepo : profil en cache', () => {
   });
 });
 
+describe('MeRepo : déconnexion sur une session que le serveur ne connaît plus (R-AUTH-9)', () => {
+  const logoutWith = async (status: number, error: string) => {
+    const { services, api, db } = await createTestServices({ me: lea });
+    await seedOutbox(db, 'u-A', 2);
+    api.on('POST', '/api/auth/logout', { status, body: { error } });
+    const outcome = await createRepos(services)
+      .me.logout('current')
+      .then(
+        () => 'resolved',
+        (e: { code?: string }) => e.code,
+      );
+    return { outcome, outbox: await db.outbox.count(), me: await getMeta(db, 'me') };
+  };
+
+  it('401 : déconnexion faite, données locales effacées', async () => {
+    expect(await logoutWith(401, 'unauthenticated')).toEqual({
+      outcome: 'resolved',
+      outbox: 0,
+      me: undefined,
+    });
+  });
+
+  it('410 : données effacées, erreur account_deleted rendue', async () => {
+    expect(await logoutWith(410, 'account_deleted')).toEqual({
+      outcome: 'account_deleted',
+      outbox: 0,
+      me: undefined,
+    });
+  });
+
+  it('500 : erreur rendue, rien effacé', async () => {
+    const r = await logoutWith(500, 'internal');
+    expect(r.outcome).toBe('internal');
+    expect(r.outbox).toBe(2);
+    expect(r.me?.username).toBe('lea');
+  });
+});
+
 describe('MeRepo : changement de compte (P-AUT-6)', () => {
   it("connexion d'un autre compte : file de l'ancien effacée, meta.userId posé, synchro relancée", async () => {
     const { services, api, sync, db } = await createTestServices({ me: lea });

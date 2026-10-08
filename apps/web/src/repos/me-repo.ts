@@ -1,5 +1,6 @@
 import {
   type AcceptInvitationRequest,
+  type ApiErrorCode,
   type ChangePasswordRequest,
   ExportV1,
   InvitationCheckResponse,
@@ -13,6 +14,9 @@ import type { AppServices } from '../app-services';
 import { deleteMeta, getMeta, setMeta } from '../local-db/meta';
 import { wipeUserData } from '../local-db/wipe';
 import { pendingCount } from '../sync/outbox';
+
+/** Erreurs d'une session que le serveur ne connaît plus. */
+const SESSION_GONE: readonly ApiErrorCode[] = ['unauthenticated', 'account_deleted'];
 
 /** Propriétaire des données de l'appareil et nombre de ses éléments non envoyés. */
 export interface DeviceOwner {
@@ -145,7 +149,17 @@ export function createMeRepo(s: AppServices): MeRepo {
     },
     logout: (mode) =>
       withEngineStopped(async () => {
-        await api.send('POST', mode === 'all' ? '/api/auth/logout-all' : '/api/auth/logout');
+        try {
+          await api.send('POST', mode === 'all' ? '/api/auth/logout-all' : '/api/auth/logout');
+        } catch (error) {
+          // Session déjà fermée ou compte supprimé : rien à fermer côté serveur, les données locales
+          // partent quand même (R-AUTH-9, P-DRT-4). Le 410 reste une erreur : le client API mène à
+          // « Ce compte a été supprimé ». Toute autre erreur (réseau, serveur) laisse tout en place.
+          if (!(error instanceof ApiError) || !SESSION_GONE.includes(error.code)) throw error;
+          await wipeUserData(db, { keepOutbox: false });
+          if (error.code === 'account_deleted') throw error;
+          return;
+        }
         await wipeUserData(db, { keepOutbox: false });
       }),
     exportData: () => api.get('/api/me/export', ExportV1),

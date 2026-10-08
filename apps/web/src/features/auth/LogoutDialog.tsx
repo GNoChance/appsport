@@ -5,18 +5,27 @@ import { useRepos } from '../../repos';
 import { Banner, Button, Dialog, errorMessage } from '../../ui';
 import { FORMER_ACCOUNT_NAME, pendingWarning } from './messages';
 
+type LogoutProps = { mode: 'current' | 'all'; open: boolean; onClose(): void };
+
+const ignore = () => {};
+
 /**
  * Déconnexion de cet appareil (`current`) ou de tous (`all`). Les données locales sont effacées une
  * fois la déconnexion faite : s'il reste des éléments non envoyés, l'avertissement le dit d'abord
- * (R-AUTH-9, R-SYN-14) et propose l'export.
+ * (R-AUTH-9, R-SYN-14) et propose l'export. Fermé, rien n'est monté : chaque ouverture repart
+ * sans l'erreur de la précédente.
  */
-export function LogoutDialog(p: { mode: 'current' | 'all'; open: boolean; onClose(): void }) {
+export function LogoutDialog(p: LogoutProps) {
+  return p.open ? <OpenLogoutDialog {...p} /> : null;
+}
+
+function OpenLogoutDialog(p: LogoutProps) {
   const repos = useRepos();
   const [, navigate] = useLocation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const device = useLive(() => (p.open ? repos.me.deviceOwner() : Promise.resolve(null)), [repos, p.open]);
-  if (!p.open || !device) return null;
+  const device = useLive(() => repos.me.deviceOwner(), [repos]);
+  if (!device) return null;
 
   const unsent = device.pending > 0;
   const all = p.mode === 'all';
@@ -49,7 +58,8 @@ export function LogoutDialog(p: { mode: 'current' | 'all'; open: boolean; onClos
     <Dialog
       open
       title={title}
-      onClose={p.onClose}
+      // Pendant la requête, Échap ne ferme pas : l'issue (erreur ou écran de connexion) reste visible.
+      onClose={busy ? ignore : p.onClose}
       actions={
         <>
           <Button variant="secondary" onClick={p.onClose} disabled={busy}>

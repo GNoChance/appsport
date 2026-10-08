@@ -1,12 +1,13 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LogoutDialog } from '../../src/features/auth/LogoutDialog';
 import { PASSWORD_MESSAGES, pendingWarning } from '../../src/features/auth/messages';
 import { ResetPage } from '../../src/features/auth/ResetPage';
 import { getMeta } from '../../src/local-db/meta';
 import type { SyncEngine } from '../../src/sync/engine';
-import { click, fill, lostSessionApi, openUrl, settle } from '../support/auth';
-import { createFakeApi, type FakeApi } from '../support/fake-api';
+import { click, fill, fragmentCleared, lostSessionApi, openUrl, settle } from '../support/auth';
+import { createFakeApi, type FakeApi, type FakeReply } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
 import { seedOutbox } from '../support/seed';
@@ -104,9 +105,105 @@ describe('LogoutDialog (R-AUTH-9, R-SYN-14)', () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 
-  it("fermé : rien à l'écran", async () => {
-    await renderDialog('current', 2, false);
+  it("fermé : rien à l'écran, même une fois la base lue", async () => {
+    const db = createTestLocalDb();
+    await seedOutbox(db, 'u-1', 2);
+    await renderWithServices(
+      <>
+        <LogoutDialog mode="current" open={false} onClose={() => {}} />
+        <LogoutDialog mode="all" open onClose={() => {}} />
+      </>,
+      { me: lea, db, path: '/profile' },
+    );
+    // Le dialogue ouvert a lu la base ; le fermé, monté avant lui, l'aurait lue aussi.
+    await screen.findAllByRole('dialog');
+    await settle();
+    expect(screen.getAllByRole('dialog').map((d) => d.textContent)).toEqual([
+      expect.stringContaining('Toutes tes sessions seront fermées'),
+    ]);
+  });
+
+  /** Dialogue ouvert par le bouton « Ouvrir », fermé par ses propres actions. */
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Ouvrir
+        </button>
+        <LogoutDialog mode="current" open={open} onClose={() => setOpen(false)} />
+      </>
+    );
+  }
+
+  async function renderHarness(logout: FakeReply | (() => Promise<FakeReply>)) {
+    const db = createTestLocalDb();
+    await seedOutbox(db, 'u-1', 2);
+    const api = createFakeApi().on('POST', '/api/auth/logout', logout);
+    const view = await renderWithServices(<Harness />, { me: lea, api, db, path: '/profile' });
+    return { ...view, api, db };
+  }
+
+  it('ouvert puis fermé : le dialogue disparaît', async () => {
+    await renderHarness(reply(undefined, 204));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Annuler' }));
+    await settle();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it("erreur hors ligne, fermeture, réouverture : aucune alerte d'avant", async () => {
+    const { api } = await renderHarness(reply(undefined, 204));
+    api.setOffline('reject');
+    let dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Se déconnecter quand même' }));
+    expect((await within(dialog).findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+    api.setOffline(false);
+    click('Ouvrir');
+    dialog = await screen.findByRole('dialog');
+    await settle();
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    expect((within(dialog).getByRole('button', { name: 'Annuler' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
+  it('Échap pendant la déconnexion : le dialogue reste ouvert, puis la déconnexion aboutit', async () => {
+    let release: () => void = () => {};
+    const { location } = await renderHarness(
+      () =>
+        new Promise<FakeReply>((resolve) => {
+          release = () => resolve(reply(undefined, 204));
+        }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Se déconnecter quand même' }));
+    await settle();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    release();
+    await waitFor(() => expect(location()).toBe('/login'));
+  });
+
+  it('session déjà fermée (401) : déconnexion faite, données locales effacées', async () => {
+    const { db, location } = await renderHarness(reply({ error: 'unauthenticated' }, 401));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Se déconnecter quand même' }),
+    );
+    await waitFor(() => expect(location()).toBe('/login'));
+    expect(await db.outbox.count()).toBe(0);
+    expect(await getMeta(db, 'me')).toBeUndefined();
+    expect(await getMeta(db, 'userId')).toBeUndefined();
+  });
+
+  it('compte supprimé (410) : données locales effacées, « Ce compte a été supprimé »', async () => {
+    const { db, location } = await renderHarness(reply({ error: 'account_deleted' }, 410));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Se déconnecter quand même' }),
+    );
+    await waitFor(() => expect(location()).toBe('/login?reason=account_deleted'));
+    expect(await db.outbox.count()).toBe(0);
+    expect(await getMeta(db, 'me')).toBeUndefined();
   });
 });
 
@@ -118,27 +215,37 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
   const memberCheck = reply({ username: 'lea', role: 'member' });
 
   async function renderReset(o: { url?: string; api?: FakeApi } = {}) {
-    openUrl(o.url ?? '/reset#abcd-efgh-jkmn-pqrs');
+    const historyLength = openUrl(o.url ?? '/reset#abcd-efgh-jkmn-pqrs');
     const api = o.api ?? createFakeApi().on('POST', CHECK, memberCheck).on('POST', RESET, reply(lea));
     const view = await renderWithServices(<ResetPage />, { me: null, api, path: '/reset' });
-    return { ...view, api };
+    return { ...view, api, historyLength };
   }
   const alertText = async () => (await screen.findByRole('alert')).textContent;
 
   it('lien : vérification du fragment, fragment effacé, nouveau mot de passe pour le pseudo', async () => {
-    const { api, location } = await renderReset();
+    const { api, location, historyLength } = await renderReset();
     const password = (await screen.findByLabelText('Nouveau mot de passe pour lea')) as HTMLInputElement;
     expect(callsTo(api, CHECK)).toHaveLength(1);
     expect(callsTo(api, CHECK)[0]?.body).toEqual({ code: CODE });
-    expect(window.location.hash).toBe('');
+    expect(callsTo(api, CHECK)[0]?.method).toBe('POST');
+    expect(callsTo(api, CHECK)[0]?.query.toString()).toBe('');
+    expect(fragmentCleared(historyLength)).toBe(true);
     expect(password.type).toBe('password');
     expect(password.autocomplete).toBe('new-password');
+    expect((screen.getByLabelText('Confirmation') as HTMLInputElement).autocomplete).toBe('new-password');
+    // Pseudo pour les gestionnaires de mots de passe, qui enregistrent le nouveau sous ce nom.
+    const account = document.querySelector<HTMLInputElement>('input[autocomplete="username"]');
+    expect(account?.value).toBe('lea');
+    expect(account?.readOnly).toBe(true);
+    expect(account?.closest('form')).toBe(password.closest('form'));
     expect(document.body.textContent).toContain('4 mots');
     fill('Nouveau mot de passe pour lea', PHRASE);
     fill('Confirmation', PHRASE);
     click('Changer le mot de passe');
     await waitFor(() => expect(location()).toBe('/'));
     expect(callsTo(api, RESET)).toHaveLength(1);
+    expect(callsTo(api, RESET)[0]?.method).toBe('POST');
+    expect(callsTo(api, RESET)[0]?.query.toString()).toBe('');
     expect(callsTo(api, RESET)[0]?.body).toEqual({ code: CODE, newPassword: PHRASE });
   });
 

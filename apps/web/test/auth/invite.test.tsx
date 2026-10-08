@@ -3,10 +3,12 @@ import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvitePage } from '../../src/features/auth/InvitePage';
 import { PASSWORD_MESSAGES, USERNAME_MESSAGES } from '../../src/features/auth/messages';
+import { OWNER_FIRST_NAME } from '../../src/features/public/privacy-content';
 import {
   ANDROID_UA,
   click,
   fill,
+  fragmentCleared,
   IPHONE_UA,
   openUrl,
   settle,
@@ -26,6 +28,8 @@ const PHRASE = 'cheval agrafe batterie correcte';
 const ASK = "Demande un nouveau code à l'administrateur.";
 const CHECK = '/api/invitations/check';
 const ACCEPT = '/api/invitations/accept';
+const WELCOME = `appsport est un outil de suivi entre proches, hébergé chez ${OWNER_FIRST_NAME}. Ce n'est pas un service médical.`;
+const INCOMPLETE = 'Code incomplet : il faut 16 caractères.';
 
 const reply = (body: unknown, status = 200) => ({ status, body });
 const memberCheck = reply({ birthDate: '2008-03-01', role: 'member' });
@@ -42,10 +46,10 @@ async function renderInvite(
 ) {
   stubDisplayMode(o.standalone ?? true);
   if (o.userAgent) stubUserAgent(o.userAgent);
-  openUrl(o.url ?? '/invite');
+  const historyLength = openUrl(o.url ?? '/invite');
   const api = o.api ?? createFakeApi().on('POST', CHECK, memberCheck);
   const view = await renderWithServices(<InvitePage />, { me: null, api });
-  return { ...view, api };
+  return { ...view, api, historyLength };
 }
 
 /** Formulaire de création affiché, case de lecture cochée. */
@@ -67,13 +71,19 @@ const submitWith = (username: string, password: string, confirm = password) => {
 describe('accueil (03 §13.1, R-ARR-1)', () => {
   it('porteur, rappel « pas un service médical », lien vers Confidentialité', async () => {
     await renderInvite();
-    const text = document.body.textContent ?? '';
-    expect(text).toContain(
-      "appsport est un outil de suivi entre proches, hébergé chez l'administrateur. Ce n'est pas un service médical.",
-    );
+    expect(document.body.textContent).toContain(WELCOME);
     expect(screen.getByRole('link', { name: 'Confidentialité et règles' }).getAttribute('href')).toBe(
       '/privacy',
     );
+  });
+
+  it("« Crée ton compte » ouvert d'emblée par un lien : le rappel reste affiché, avec un lien vers Confidentialité", async () => {
+    await renderInvite({ url: LINK });
+    await screen.findByLabelText('Date de naissance');
+    expect(document.body.textContent).toContain(WELCOME);
+    const links = screen.getAllByRole('link', { name: 'Confidentialité et règles' });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) expect(link.getAttribute('href')).toBe('/privacy');
   });
 
   it("route /invite de l'appli, sans session", async () => {
@@ -87,13 +97,13 @@ describe('accueil (03 §13.1, R-ARR-1)', () => {
 
 describe("lien d'invitation dans l'appli installée (R-ARR-1, R-INV-4)", () => {
   it('vérifie le code du fragment, efface le fragment, affiche la date de naissance en lecture seule', async () => {
-    const { api } = await renderInvite({ url: LINK });
+    const { api, historyLength } = await renderInvite({ url: LINK });
     await screen.findByLabelText('Date de naissance');
     expect(callsTo(api, CHECK)).toHaveLength(1);
     expect(callsTo(api, CHECK)[0]?.body).toEqual({ code: CODE });
     expect(callsTo(api, CHECK)[0]?.query.toString()).toBe('');
     expect(callsTo(api, CHECK)[0]?.method).toBe('POST');
-    expect(window.location.hash).toBe('');
+    expect(fragmentCleared(historyLength)).toBe(true);
     const birth = screen.getByLabelText('Date de naissance') as HTMLInputElement;
     expect(birth.readOnly).toBe(true);
     expect(birth.value).toBe('01/03/2008');
@@ -121,6 +131,8 @@ describe("lien d'invitation dans l'appli installée (R-ARR-1, R-INV-4)", () => {
     submitWith('lea', PHRASE);
     await waitFor(() => expect(location()).toBe('/onboarding'));
     expect(callsTo(api, ACCEPT)).toHaveLength(1);
+    expect(callsTo(api, ACCEPT)[0]?.method).toBe('POST');
+    expect(callsTo(api, ACCEPT)[0]?.query.toString()).toBe('');
     expect(callsTo(api, ACCEPT)[0]?.body).toEqual({
       code: CODE,
       username: 'lea',
@@ -159,7 +171,7 @@ describe("lien d'invitation dans l'appli installée (R-ARR-1, R-INV-4)", () => {
 
   it("sous StrictMode (appli réelle) : une seule vérification, le formulaire s'affiche, fragment effacé", async () => {
     stubDisplayMode(true);
-    openUrl(LINK);
+    const historyLength = openUrl(LINK);
     const api = createFakeApi().on('POST', CHECK, memberCheck);
     await renderWithServices(
       <StrictMode>
@@ -170,7 +182,7 @@ describe("lien d'invitation dans l'appli installée (R-ARR-1, R-INV-4)", () => {
     await screen.findByLabelText('Date de naissance');
     expect(callsTo(api, CHECK)).toHaveLength(1);
     expect(callsTo(api, CHECK)[0]?.body).toEqual({ code: CODE });
-    expect(window.location.hash).toBe('');
+    expect(fragmentCleared(historyLength)).toBe(true);
   });
 
   it("429 au contrôle du code : « Trop d'essais depuis cet appareil. »", async () => {
@@ -187,7 +199,7 @@ describe("navigateur : aide à l'installation (R-ARR-2, 02 §15 n°5)", () => {
   const bodyText = () => document.body.textContent ?? '';
 
   it('iPhone : consigne iOS, code en clair avec « Copier », ni formulaire ni requête', async () => {
-    const { api } = await browser(IPHONE_UA);
+    const { api, historyLength } = await browser(IPHONE_UA);
     expect(bodyText()).toContain("Sur l'écran d'accueil");
     expect(bodyText()).not.toContain("Installer l'application");
     expect(screen.getByText('ABCD-EFGH-JKMN-PQRS')).toBeTruthy();
@@ -195,7 +207,22 @@ describe("navigateur : aide à l'installation (R-ARR-2, 02 §15 n°5)", () => {
     expect(screen.queryByLabelText('Pseudo')).toBeNull();
     expect(screen.queryByLabelText("Lien ou code d'invitation")).toBeNull();
     expect(api.calls).toHaveLength(0);
-    expect(window.location.hash).toBe('');
+    expect(fragmentCleared(historyLength)).toBe(true);
+  });
+
+  it('lien tronqué (#abc) : « Code incomplet » annoncé, rien à copier, aucune requête', async () => {
+    const { api, historyLength } = await renderInvite({
+      url: '/invite#abc',
+      standalone: false,
+      userAgent: IPHONE_UA,
+    });
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(INCOMPLETE);
+    expect(alert.textContent).toContain("Demande à l'administrateur le lien complet ou le code.");
+    expect(screen.queryByRole('button', { name: 'Copier' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Continuer dans ce navigateur' })).toBeTruthy();
+    expect(api.calls).toHaveLength(0);
+    expect(fragmentCleared(historyLength)).toBe(true);
   });
 
   it('Android : consigne Android', async () => {
@@ -271,9 +298,31 @@ describe('saisie du code (R-INV-5, 02 §15 n°3)', () => {
   });
 
   it('fragment illisible : « Code incomplet » et saisie, aucune requête', async () => {
-    const { api } = await renderInvite({ url: '/invite#abc' });
-    expect(await screen.findByText('Code incomplet : il faut 16 caractères.')).toBeTruthy();
+    const { api, historyLength } = await renderInvite({ url: '/invite#abc' });
+    expect(await screen.findByText(INCOMPLETE)).toBeTruthy();
     expect(field()).toBeTruthy();
+    expect(api.calls).toHaveLength(0);
+    expect(fragmentCleared(historyLength)).toBe(true);
+  });
+
+  it('lien reçu page déjà ouverte (hashchange) : une vérification, fragment effacé', async () => {
+    const { api } = await renderInvite();
+    await screen.findByLabelText("Lien ou code d'invitation");
+    window.location.hash = '#abcd-efgh-jkmn-pqrs';
+    await screen.findByLabelText('Date de naissance');
+    await settle();
+    expect(callsTo(api, CHECK)).toHaveLength(1);
+    expect(callsTo(api, CHECK)[0]?.body).toEqual({ code: OTHER_CODE });
+    expect(window.location.hash).toBe('');
+    expect(window.location.href).not.toContain('#');
+  });
+
+  it('lien tronqué reçu page déjà ouverte : « Code incomplet », aucune requête, fragment effacé', async () => {
+    const { api } = await renderInvite();
+    await screen.findByLabelText("Lien ou code d'invitation");
+    window.location.hash = '#abc';
+    expect(await screen.findByText(INCOMPLETE)).toBeTruthy();
+    await settle();
     expect(api.calls).toHaveLength(0);
     expect(window.location.hash).toBe('');
   });
@@ -443,7 +492,9 @@ describe('création du compte : contrôles locaux et erreurs du serveur (R-CPT-1
     const password = screen.getByLabelText('Mot de passe') as HTMLInputElement;
     expect(password.type).toBe('password');
     expect(password.autocomplete).toBe('new-password');
-    expect((screen.getByLabelText('Confirmation') as HTMLInputElement).type).toBe('password');
+    const confirm = screen.getByLabelText('Confirmation') as HTMLInputElement;
+    expect(confirm.type).toBe('password');
+    expect(confirm.autocomplete).toBe('new-password');
     expect((screen.getByLabelText('Pseudo') as HTMLInputElement).autocomplete).toBe('username');
     expect(screen.getByText(/Astuce : une phrase de 4 mots ou plus/)).toBeTruthy();
   });
