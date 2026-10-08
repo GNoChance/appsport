@@ -486,6 +486,127 @@ describe('liste des illustrations comptée par le statut (R-SYN-32, R-SYN-33 con
   });
 });
 
+describe('reprise et délais des illustrations (R-SYN-30, R-SYN-32)', () => {
+  const failing500 = () => Promise.resolve(new Response('panne', { status: 500 }));
+  const poll = (h: SwHandlers) => h.handleMessage({ type: 'GET_STATUS' }, null);
+
+  it('reprise au GET_STATUS : immédiate une fois, puis espacée de 2 s à 5 min ; une nouvelle liste la remet à zéro', async () => {
+    const { s, h } = await activeA();
+    s.setNetwork((url) => (url.endsWith(IB) ? failing500() : ILLUSTRATIONS_NET(url)));
+    const bRequests = () => s.fetchLog.filter((u) => u.endsWith(IB)).length;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await h.syncIllustrations([IA, IB]);
+      await poll(h); // première reprise immédiate (brief : b demandé deux fois)
+      let expected = 2;
+      expect(bRequests()).toBe(expected);
+      for (const delay of [2000, 4000, 8000, 16_000, 32_000, 64_000, 128_000, 256_000, 300_000, 300_000]) {
+        await poll(h);
+        vi.advanceTimersByTime(delay - 1);
+        await poll(h);
+        expect(bRequests(), `avant ${delay} ms`).toBe(expected);
+        vi.advanceTimersByTime(1);
+        await poll(h);
+        expected++;
+        expect(bRequests(), `à ${delay} ms`).toBe(expected);
+      }
+      await h.syncIllustrations([IA, IB]);
+      await poll(h);
+      expect(bRequests()).toBe(expected + 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reprise réussie : la suivante redevient immédiate, et le délai repart de 2 s', async () => {
+    const { s, h } = await activeA();
+    let failing = IB;
+    s.setNetwork((url) => (url.endsWith(failing) ? failing500() : ILLUSTRATIONS_NET(url)));
+    const aRequests = () => s.fetchLog.filter((u) => u.endsWith(IA)).length;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await h.syncIllustrations([IA, IB]);
+      await poll(h); // reprise immédiate, en échec : la suivante attend 2 s
+      vi.advanceTimersByTime(2000);
+      await poll(h); // en échec : la suivante attend 4 s
+      failing = 'aucune';
+      vi.advanceTimersByTime(4000);
+      await poll(h);
+      expect(await illustrationPaths(s)).toEqual([ILL(IA), ILL(IB)]);
+      // Entrée évincée, et a désormais en échec : reprise immédiate, puis 2 s (et non 8 s).
+      failing = IA;
+      await (await s.caches.open(ILLUSTRATIONS_CACHE)).delete(ILL(IA));
+      await poll(h);
+      expect(aRequests()).toBe(2);
+      vi.advanceTimersByTime(1999);
+      await poll(h);
+      expect(aRequests()).toBe(2);
+      vi.advanceTimersByTime(1);
+      await poll(h);
+      expect(aRequests()).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('la reprise du GET_STATUS reste dans la promesse du message (waitUntil) : résolue après elle', async () => {
+    const { s, h } = await activeA();
+    const secondB = deferred();
+    let bCalls = 0;
+    s.setNetwork(async (url) => {
+      if (url.endsWith(IB) && ++bCalls === 1) return new Response('panne', { status: 500 });
+      if (url.endsWith(IB)) await secondB.promise;
+      return ILLUSTRATIONS_NET(url);
+    });
+    await h.syncIllustrations([IA, IB]);
+    const channel = new MessageChannel();
+    const reply = new Promise<unknown>((resolve) => {
+      channel.port1.onmessage = (e: MessageEvent) => resolve(e.data);
+    });
+    let settled = false;
+    const handled = h.handleMessage({ type: 'GET_STATUS' }, channel.port2).then(() => {
+      settled = true;
+    });
+    try {
+      expect(await reply).toMatchObject({ illustrationsMissing: 1 });
+      await flush();
+      expect(bCalls).toBe(2);
+      expect(settled).toBe(false);
+      secondB.release();
+      await handled;
+      expect((await h.status()).illustrationsMissing).toBe(0);
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+    }
+  });
+
+  it('téléchargement bloqué : annulé au bout de 30 s, la synchro se termine et la suivante passe', async () => {
+    const { s, h } = await activeA();
+    const signals = new Map<string, AbortSignal | null | undefined>();
+    s.setNetwork((url, init) => {
+      signals.set(url, init?.signal);
+      return url.endsWith(IB) ? new Promise<Response>(() => {}) : ILLUSTRATIONS_NET(url);
+    });
+    vi.useFakeTimers();
+    try {
+      let done = 0;
+      const first = h.syncIllustrations([IA, IB]).then(() => done++);
+      const second = h.syncIllustrations([IA, IC]).then(() => done++);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(done).toBe(0);
+      expect(s.fetchLog.filter((u) => u.endsWith(IC))).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.all([first, second]);
+      expect(done).toBe(2);
+      expect(signals.get(ORIGIN + ILL(IB))?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await illustrationPaths(s)).toEqual([ILL(IA), ILL(IC)]);
+  });
+});
+
 describe('checkKillSwitch (R-PWA-6, étapes 1 à 3 côté SW)', () => {
   it('swKill vrai : désenregistre, vide shell-* et illustrations-*, recharge chaque fenêtre ; IndexedDB intact', async () => {
     const local = await seedLocalDb();

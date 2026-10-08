@@ -23,6 +23,11 @@ const INDEX_PATH = '/index.html';
 const HEALTH_PATH = '/api/health';
 const HEALTH_TIMEOUT_MS = 4000;
 const PARALLEL_DOWNLOADS = 4;
+/** Une illustration (quelques Ko) : une connexion bloquée ne retient pas la file des synchros. */
+const DOWNLOAD_TIMEOUT_MS = 30_000;
+/** Reprises des illustrations manquantes au GET_STATUS : la première tout de suite, puis 2 s à 5 min (R-SYN-30). */
+const RETRY_MIN_MS = 2000;
+const RETRY_MAX_MS = 300_000;
 /** Un seul segment, sans `/` ni `.` ou `..` isolés : l'URL reste sous /illustrations/. */
 const SAFE_FILE_RE = /^[\w-]+(?:\.[\w-]+)*$/;
 
@@ -89,6 +94,31 @@ async function forEachLimited<T>(items: readonly T[], limit: number, fn: (item: 
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
+/**
+ * `run` borné à `ms` : à l'échéance, la requête est annulée et `fallback` rendu, même si elle ignore
+ * l'annulation. AbortController et minuteur plutôt qu'`AbortSignal.timeout` (absent de Safari avant la 16).
+ * `run` ne doit pas rejeter.
+ */
+async function withDeadline<T>(
+  ms: number,
+  fallback: T,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(fallback);
+    }, ms);
+  });
+  try {
+    return await Promise.race([run(controller.signal), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): SwHandlers {
   const shellCache = SHELL_CACHE_PREFIX + manifest.buildHash;
   const shellFiles = new Set(manifest.files);
@@ -100,6 +130,11 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
    * le relais, et la page la renvoie à chaque démarrage (T37).
    */
   let latestReferenced: string[] | null = null;
+  /** Délai de la prochaine reprise au GET_STATUS (0 : immédiate) et instant avant lequel elle attend. */
+  let retryDelay = 0;
+  let retryNotBefore = 0;
+  /** Change à chaque liste reçue : une reprise lancée avant ne touche plus au délai. */
+  let listGeneration = 0;
 
   // `caches.match` avec `cacheName` ne crée pas le cache, contrairement à `caches.open`.
   const fromShell = (path: string) => scope.caches.match(path, { cacheName: shellCache });
@@ -206,28 +241,51 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
     }
   }
 
-  /** `files` null : reprise sur la liste courante (après un échec ou un redémarrage du SW). */
-  async function runSync(files: readonly string[] | null): Promise<void> {
+  /**
+   * Échec ignoré (réseau, statut autre que 200, délai dépassé, stockage plein) : l'illustration reste
+   * manquante et sera reprise au GET_STATUS. Le corps est lu dans le délai : une connexion qui cale au
+   * milieu du corps est abandonnée aussi.
+   */
+  async function downloadIllustration(cache: Cache, path: string): Promise<boolean> {
+    const response = await withDeadline(DOWNLOAD_TIMEOUT_MS, null, async (signal) => {
+      try {
+        const res = await scope.fetch(path, { signal });
+        return res.status === 200 ? new Response(await res.arrayBuffer(), res) : null;
+      } catch {
+        return null;
+      }
+    });
+    if (response === null) return false;
+    try {
+      await cache.put(path, response);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * `files` null : reprise sur la liste courante (après un échec ou un redémarrage du SW).
+   * Rend le nombre d'illustrations restées manquantes.
+   */
+  async function runSync(files: readonly string[] | null): Promise<number> {
     const received = files ?? latestReferenced;
     const referenced = received ?? (await readReferenced());
-    if (referenced === null) return;
+    if (referenced === null) return 0;
     const cache = await scope.caches.open(ILLUSTRATIONS_CACHE);
     const plan = planIllustrationSync(referenced.map(illustrationPath), await cachedIllustrations(cache));
     // Suppressions d'abord : elles libèrent la place que la liste et les téléchargements vont prendre.
     await Promise.allSettled(plan.toDelete.map((path) => cache.delete(path)));
     if (received !== null) await saveReferenced(cache, received);
+    let failed = 0;
     await forEachLimited(plan.toFetch, PARALLEL_DOWNLOADS, async (path) => {
-      try {
-        const res = await scope.fetch(path);
-        if (res.status === 200) await cache.put(path, res);
-      } catch {
-        // Échec ignoré : l'illustration reste manquante et sera retentée au prochain GET_STATUS.
-      }
+      if (!(await downloadIllustration(cache, path))) failed++;
     });
+    return failed;
   }
 
   /** Une synchro à la fois, dans l'ordre des demandes : la dernière liste reçue fait foi. */
-  function enqueueSync(files: readonly string[] | null): Promise<void> {
+  function enqueueSync(files: readonly string[] | null): Promise<number> {
     syncsPending++;
     const run = syncQueue.then(() => runSync(files)).finally(() => syncsPending--);
     syncQueue = run.catch(() => undefined);
@@ -263,10 +321,33 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
     };
   }
 
-  /** La liste reçue fait foi tout de suite, même si une synchro la précède dans la file. */
+  /**
+   * La liste reçue fait foi tout de suite, même si une synchro la précède dans la file ; elle remet à zéro
+   * le délai des reprises (R-SYN-32 : téléchargement après chaque mise à jour du catalogue).
+   */
   function syncIllustrations(files: readonly string[]): Promise<void> {
     latestReferenced = referencedList(files);
-    return enqueueSync(latestReferenced);
+    listGeneration++;
+    retryDelay = 0;
+    retryNotBefore = 0;
+    return enqueueSync(latestReferenced).then(() => undefined);
+  }
+
+  /**
+   * Reprise des manquantes : la première tout de suite, puis un délai doublé de 2 s à 5 min tant qu'il en
+   * reste (R-SYN-30), pour qu'une illustration toujours en échec ne soit pas redemandée à chaque GET_STATUS.
+   */
+  async function retryMissing(): Promise<void> {
+    const generation = listGeneration;
+    let complete = false;
+    try {
+      complete = (await enqueueSync(null)) === 0;
+    } finally {
+      if (generation === listGeneration) {
+        retryDelay = complete ? 0 : Math.min(Math.max(retryDelay * 2, RETRY_MIN_MS), RETRY_MAX_MS);
+        retryNotBefore = complete ? 0 : Date.now() + retryDelay;
+      }
+    }
   }
 
   async function handleMessage(msg: PageToSw, port: MessagePort | null): Promise<void> {
@@ -278,41 +359,26 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
       case 'GET_STATUS': {
         const current = await status();
         port?.postMessage(current);
-        // R-SYN-32 : les manquantes sont retentées en tâche de fond, après la réponse.
-        if (current.illustrationsMissing > 0 && syncsPending === 0) await enqueueSync(null);
+        // R-SYN-32 : les manquantes sont reprises en tâche de fond, après la réponse, dans le waitUntil.
+        const due = syncsPending === 0 && Date.now() >= retryNotBefore;
+        if (current.illustrationsMissing > 0 && due) await retryMissing();
         return;
       }
     }
   }
 
-  /**
-   * `/api/health` en 4 s au plus, corps compris. AbortController et minuteur plutôt qu'`AbortSignal.timeout`
-   * (absent de Safari avant la 16) ; la course rend `false` à l'échéance même si la requête ignore l'annulation.
-   */
-  async function killRequested(): Promise<boolean> {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const expired = new Promise<false>((resolve) => {
-      timer = setTimeout(() => {
-        controller.abort();
-        resolve(false);
-      }, HEALTH_TIMEOUT_MS);
-    });
-    const verdict = (async () => {
+  /** `/api/health` en 4 s au plus, corps compris. */
+  function killRequested(): Promise<boolean> {
+    return withDeadline(HEALTH_TIMEOUT_MS, false, async (signal) => {
       try {
-        const res = await scope.fetch(HEALTH_PATH, { cache: 'no-store', signal: controller.signal });
+        const res = await scope.fetch(HEALTH_PATH, { cache: 'no-store', signal });
         // JSON lu quel que soit le statut ; seul `swKill === true` compte (pas de Zod dans le SW).
         const body: unknown = await res.json();
         return typeof body === 'object' && body !== null && 'swKill' in body && body.swKill === true;
       } catch {
         return false;
       }
-    })();
-    try {
-      return await Promise.race([verdict, expired]);
-    } finally {
-      clearTimeout(timer);
-    }
+    });
   }
 
   async function checkKillSwitch(): Promise<boolean> {
