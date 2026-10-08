@@ -21,6 +21,7 @@ describe('computeReadiness', () => {
       const p = (mask & 8) !== 0;
       const r = computeReadiness({
         sw: sw({ shellCached: s, illustrationsMissing: i ? 0 : 3 }),
+        illustrationCount: 3,
         catalogVersion: 'cat-1',
         serverCatalogVersion: c ? 'cat-1' : 'cat-2',
         lastPullOkAt: iso(p ? NOW - 3_600_000 : NOW - 2 * RECENT_PULL_MS),
@@ -37,6 +38,7 @@ describe('computeReadiness', () => {
     const at = (ms: number) =>
       computeReadiness({
         sw: sw(),
+        illustrationCount: 0,
         catalogVersion: 'c',
         serverCatalogVersion: 'c',
         lastPullOkAt: iso(NOW - ms),
@@ -47,10 +49,33 @@ describe('computeReadiness', () => {
     expect(at(RECENT_PULL_MS - 1)).toBe(true);
   });
 
+  it('illustrations : le SW compte sur la liste du catalogue local, pas sur une liste inconnue ou ancienne', () => {
+    const illustrations = (o: Partial<SwStatus>, illustrationCount: number) =>
+      computeReadiness({
+        sw: sw(o),
+        illustrationCount,
+        catalogVersion: 'c',
+        serverCatalogVersion: 'c',
+        lastPullOkAt: iso(NOW - 3_600_000),
+        now: NOW,
+      }).checks.illustrations;
+    // Aucune liste reçue par le SW : 0 manquante ne prouve rien.
+    expect(illustrations({ illustrationsReferenced: null }, 0)).toBe(false);
+    expect(illustrations({ illustrationsReferenced: null }, 3)).toBe(false);
+    // Liste d'un autre catalogue (autre nombre d'illustrations) : pas prêt.
+    expect(illustrations({ illustrationsReferenced: 2 }, 3)).toBe(false);
+    expect(illustrations({ illustrationsReferenced: 3 }, 3)).toBe(true);
+    expect(illustrations({ illustrationsReferenced: 0 }, 0)).toBe(true);
+    expect(illustrations({ illustrationsReferenced: 3, illustrationsMissing: 1 }, 3)).toBe(false);
+    // Bouchon sans SW (développement) : pas de liste suivie, seules les manquantes comptent.
+    expect(illustrations({}, 3)).toBe(true);
+  });
+
   it('sans SW, sans versions ni pull : tout échoue', () => {
     expect(
       computeReadiness({
         sw: null,
+        illustrationCount: 0,
         catalogVersion: null,
         serverCatalogVersion: null,
         lastPullOkAt: null,

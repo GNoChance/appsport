@@ -10,7 +10,8 @@
     "lint": "biome check .",
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
     "test": "vitest run",
-    "test:e2e": "pnpm --filter @appsport/web test:e2e"
+    "test:e2e": "pnpm --filter @appsport/web test:e2e",
+    "build": "pnpm --filter @appsport/web build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",

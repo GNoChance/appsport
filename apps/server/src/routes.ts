@@ -11,9 +11,10 @@ import { gymRoutes } from './places/gym-routes';
 import { placeRoutes } from './places/place-routes';
 import { consentRoutes } from './privacy/consent-routes';
 import { profileRoutes } from './profile/routes';
+import { mountWebApp } from './static';
 import { syncRoutes } from './sync/routes';
 
-/** Un routeur par ligne ; les routeurs des tâches suivantes s'ajoutent ici. */
+/** Un routeur par ligne ; les routeurs des tâches suivantes s'ajoutent ici, avant la PWA. */
 export function mountRoutes(app: Hono<AppEnv>, deps: AppDeps): void {
   app.route('/', healthRoutes(deps));
   app.route('/api/auth', authRoutes(deps));
@@ -27,4 +28,6 @@ export function mountRoutes(app: Hono<AppEnv>, deps: AppDeps): void {
   app.route('/api/admin', adminRoutes(deps));
   app.route('/api/sync', syncRoutes(deps));
   app.route('/api/catalog', catalogRoutes(deps));
+  // En dernier : illustrations, fichiers de la PWA et repli SPA.
+  mountWebApp(app, deps);
 }

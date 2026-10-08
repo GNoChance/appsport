@@ -29,6 +29,22 @@ describe('getSwStatus', () => {
     expect(received).toEqual([{ type: 'GET_STATUS' }]);
   });
 
+  it('illustrationsReferenced : nombre ou null accepté, autre valeur refusée', async () => {
+    let reply: unknown = null;
+    setController({
+      postMessage(_, transfer) {
+        const port = transfer?.[0] as MessagePort;
+        port.postMessage(reply);
+      },
+    });
+    for (const referenced of [3, null]) {
+      reply = { ...STATUS, illustrationsReferenced: referenced };
+      expect(await getSwStatus()).toEqual(reply);
+    }
+    reply = { ...STATUS, illustrationsReferenced: '3' };
+    expect(await getSwStatus()).toBeNull();
+  });
+
   it('sans contrôleur : null, et postToSw rend false', async () => {
     setController(null);
     expect(await getSwStatus()).toBeNull();
