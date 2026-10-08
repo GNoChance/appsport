@@ -46,6 +46,18 @@ describe('en-têtes de sécurité', () => {
     expect(boom.status).toBe(500);
     for (const res of [ok, missing, boom]) expect(pick(res.headers)).toEqual(EXPECTED);
   });
+
+  it('gardent une CSP déjà posée par la route ; les autres en-têtes restent imposés', async () => {
+    ctx = await createTestContext();
+    ctx.app.get('/api/test/csp', (c) => {
+      c.header('Content-Security-Policy', "default-src 'none'");
+      c.header('Referrer-Policy', 'origin');
+      return c.text('ok');
+    });
+    const res = await ctx.request('/api/test/csp');
+    expect(res.status).toBe(200);
+    expect(pick(res.headers)).toEqual({ ...EXPECTED, 'content-security-policy': "default-src 'none'" });
+  });
 });
 
 describe("en-tête d'époque", () => {
