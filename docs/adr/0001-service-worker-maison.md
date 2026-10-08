@@ -90,7 +90,7 @@ qu'elles le restent. Rien de ce dont nous avons besoin (un cache par build, une 
    `<id>.<hash8>.<ext>` immuables, compressées, avec leur propre CSP ; en-têtes de sécurité sur toute
    réponse ; repli SPA vers `index.html` pour les chemins sans extension. Aucun script en ligne ni ressource
    tierce (P-LOG-4) : le build est vérifié sur `dist/index.html`.
-7. **Activation sans clic à la fermeture de l'appli** **[à confirmer par le propriétaire]** : dans le cycle
+7. **Activation sans clic à la fermeture de l'appli** (confirmée par le propriétaire le 2026-10-08) : dans le cycle
    de vie standard, le navigateur active de lui-même un SW en attente dès qu'aucune fenêtre ne dépend plus de
    l'ancien : appli fermée par l'utilisateur, ou tuée par le système (fréquent sur iOS). Retenir
    `SKIP_WAITING` ne l'empêche pas. Au lancement suivant, le nouveau SW sert sa coquille et le nouveau build
