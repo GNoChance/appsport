@@ -12,7 +12,7 @@ import { createStatusRepo, type StatusRepo } from './status-repo';
 export type { AdminRepo } from './admin-repo';
 export type { ConsentRepo, LimitationView } from './consent-repo';
 export type { GymsRepo } from './gyms-repo';
-export type { MeRepo } from './me-repo';
+export type { DeviceOwner, MeRepo } from './me-repo';
 export type { PlacesRepo, PlaceView } from './places-repo';
 export type { ProfileRepo, TrainingProfileView } from './profile-repo';
 export type { RejectionsRepo, RejectionView } from './rejections-repo';

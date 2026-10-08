@@ -14,12 +14,19 @@ import { deleteMeta, getMeta, setMeta } from '../local-db/meta';
 import { wipeUserData } from '../local-db/wipe';
 import { pendingCount } from '../sync/outbox';
 
+/** Propriétaire des données de l'appareil et nombre de ses éléments non envoyés. */
+export interface DeviceOwner {
+  userId: string | null;
+  username: string | null;
+  pending: number;
+}
+
 export interface MeRepo {
   current(): Promise<MeResponse | null>;
   /** GET /api/me ; hors ligne → cache ; ApiError → null sans effacer le cache. */
   refresh(): Promise<MeResponse | null>;
   /** Propriétaire des données de l'appareil, pour avertir avant qu'un autre pseudo se connecte (P-AUT-6). */
-  deviceOwner(): Promise<{ userId: string | null; username: string | null; pending: number }>;
+  deviceOwner(): Promise<DeviceOwner>;
   login(r: LoginRequest): Promise<MeResponse>;
   checkInvitation(code: string): Promise<InvitationCheckResponse>;
   acceptInvitation(r: AcceptInvitationRequest): Promise<MeResponse>;

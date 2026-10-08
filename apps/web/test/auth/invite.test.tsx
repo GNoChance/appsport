@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvitePage } from '../../src/features/auth/InvitePage';
@@ -16,6 +16,7 @@ import {
 } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
+import { seedOutbox } from '../support/seed';
 import { until } from '../support/wait';
 
 const CODE = 'ABCDEFGHJKMNPQR0';
@@ -302,6 +303,64 @@ describe('saisie du code (R-INV-5, 02 §15 n°3)', () => {
     click('Suivant');
     await screen.findByLabelText('Date de naissance');
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('création du compte sur un appareil qui garde des données non envoyées (P-AUT-6, R-AUTH-8)', () => {
+  /** Appareil de lea (session perdue ou non), `n` éléments à elle en attente ; formulaire prêt. */
+  async function renderFormWithPending(n: number) {
+    stubDisplayMode(true);
+    openUrl(LINK);
+    const api = createFakeApi()
+      .on('POST', CHECK, memberCheck)
+      .on('POST', ACCEPT, reply(makeMe({ id: 'u-9', username: 'max', onboardingCompletedAt: null })));
+    const view = await renderWithServices(<InvitePage />, {
+      me: makeMe({ id: 'u-1', username: 'lea' }),
+      api,
+    });
+    if (n > 0) await seedOutbox(view.db, 'u-1', n);
+    await screen.findByLabelText('Date de naissance');
+    fireEvent.click(screen.getByLabelText("J'ai lu la page Confidentialité et règles"));
+    return { ...view, api };
+  }
+
+  it('avertit avant toute requête ; Annuler : rien envoyé, file et formulaire gardés', async () => {
+    const { api, db, location } = await renderFormWithPending(2);
+    submitWith('max', PHRASE);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('2 éléments non envoyés de lea seront effacés de cet appareil');
+    expect(callsTo(api, ACCEPT)).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Créer mon compte' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+    expect(callsTo(api, ACCEPT)).toHaveLength(0);
+    expect(await db.outbox.count()).toBe(2);
+    expect((screen.getByLabelText('Pseudo') as HTMLInputElement).value).toBe('max');
+    expect(location()).toBe('/');
+  });
+
+  it('Continuer : compte créé, file de lea effacée, onboarding', async () => {
+    const { api, db, location } = await renderFormWithPending(1);
+    submitWith('max', PHRASE);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('1 élément non envoyé de lea sera effacé de cet appareil');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Continuer' }));
+    await waitFor(() => expect(location()).toBe('/onboarding'));
+    expect(callsTo(api, ACCEPT)).toHaveLength(1);
+    expect(await db.outbox.count()).toBe(0);
+    expect((await db.meta.get('userId'))?.value).toBe('u-9');
+  });
+
+  it("rien en attente : pas d'avertissement", async () => {
+    const { api, location } = await renderFormWithPending(0);
+    submitWith('max', PHRASE);
+    await waitFor(() => expect(location()).toBe('/onboarding'));
+    expect(callsTo(api, ACCEPT)).toHaveLength(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
 

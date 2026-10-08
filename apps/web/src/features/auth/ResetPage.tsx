@@ -1,12 +1,14 @@
 import type { Role } from '@appsport/contracts';
+import { usernameKey } from '@appsport/domain';
 import { type FormEvent, useState } from 'react';
-import { useRepos } from '../../repos';
+import { type DeviceOwner, useRepos } from '../../repos';
 import { Banner, Button, Page } from '../../ui';
 import styles from './auth.module.css';
 import { CodeStep, useFragmentCode } from './CodeStep';
 import { accessErrorMessage, checkNewPassword } from './messages';
 import { PasswordFields } from './PasswordFields';
 import { useSessionRedirect } from './use-session-redirect';
+import { useWipeWarning } from './WipeWarning';
 
 interface CheckedReset {
   code: string;
@@ -20,8 +22,9 @@ function NewPasswordForm(p: CheckedReset) {
   const [passwords, setPasswords] = useState({ password: '', confirm: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wipe = useWipeWarning(() => void send(true));
 
-  async function submit(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
     const problem = checkNewPassword({ ...passwords, username: p.username, role: p.role });
@@ -29,9 +32,17 @@ function NewPasswordForm(p: CheckedReset) {
       setError(problem);
       return;
     }
+    void send(false);
+  }
+
+  /** `confirmed` : l'effacement des éléments non envoyés d'un autre compte a été accepté. */
+  async function send(confirmed: boolean) {
     setBusy(true);
     setError(null);
     try {
+      const sameUser = (owner: DeviceOwner) =>
+        owner.username !== null && usernameKey(p.username) === usernameKey(owner.username);
+      if (!confirmed && (await wipe.warns(sameUser))) return;
       const me = await repos.me.resetPassword({ code: p.code, newPassword: passwords.password });
       redirect(me.id, '/');
     } catch (err) {
@@ -42,19 +53,22 @@ function NewPasswordForm(p: CheckedReset) {
   }
 
   return (
-    <form className={styles.form} noValidate onSubmit={(e) => void submit(e)}>
-      <PasswordFields
-        username={p.username}
-        role={p.role}
-        label={`Nouveau mot de passe pour ${p.username}`}
-        {...passwords}
-        onChange={setPasswords}
-      />
-      {error ? <Banner tone="error">{error}</Banner> : null}
-      <Button type="submit" disabled={busy}>
-        Changer le mot de passe
-      </Button>
-    </form>
+    <>
+      <form className={styles.form} noValidate onSubmit={submit}>
+        <PasswordFields
+          username={p.username}
+          role={p.role}
+          label={`Nouveau mot de passe pour ${p.username}`}
+          {...passwords}
+          onChange={setPasswords}
+        />
+        {error ? <Banner tone="error">{error}</Banner> : null}
+        <Button type="submit" disabled={busy}>
+          Changer le mot de passe
+        </Button>
+      </form>
+      {wipe.dialog}
+    </>
   );
 }
 

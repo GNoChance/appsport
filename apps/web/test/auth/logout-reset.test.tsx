@@ -254,6 +254,53 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
     expect(screen.queryByText('Ta session a expiré. Reconnecte-toi.')).toBeNull();
   });
 
+  describe('appareil qui garde des données non envoyées (P-AUT-6, R-AUTH-8)', () => {
+    /** Appareil de lea, 2 éléments à elle en attente ; le lien est pour `username`. */
+    async function renderResetWithPending(username: string, id: string) {
+      openUrl('/reset#abcd-efgh-jkmn-pqrs');
+      const api = createFakeApi()
+        .on('POST', CHECK, reply({ username, role: 'member' }))
+        .on('POST', RESET, reply(makeMe({ id, username })));
+      const view = await renderWithServices(<ResetPage />, { me: lea, api, path: '/reset' });
+      await seedOutbox(view.db, 'u-1', 2);
+      await screen.findByLabelText(`Nouveau mot de passe pour ${username}`);
+      fill(`Nouveau mot de passe pour ${username}`, PHRASE);
+      fill('Confirmation', PHRASE);
+      return { ...view, api };
+    }
+
+    it('lien pour un autre compte : avertissement ; Annuler : rien envoyé, file gardée', async () => {
+      const { api, db } = await renderResetWithPending('max', 'u-2');
+      click('Changer le mot de passe');
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog.textContent).toContain(pendingWarning(2, 'lea'));
+      expect(callsTo(api, RESET)).toHaveLength(0);
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(callsTo(api, RESET)).toHaveLength(0);
+      expect(await db.outbox.count()).toBe(2);
+    });
+
+    it('lien pour un autre compte : Continuer, mot de passe changé, file effacée', async () => {
+      const { api, db, location } = await renderResetWithPending('max', 'u-2');
+      click('Changer le mot de passe');
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continuer' }));
+      await waitFor(() => expect(location()).toBe('/'));
+      expect(callsTo(api, RESET)).toHaveLength(1);
+      expect(await db.outbox.count()).toBe(0);
+      expect(await getMeta(db, 'userId')).toBe('u-2');
+    });
+
+    it("lien pour le propriétaire (casse différente) : pas d'avertissement, file gardée", async () => {
+      const { api, db, location } = await renderResetWithPending('LEA', 'u-1');
+      click('Changer le mot de passe');
+      await waitFor(() => expect(location()).toBe('/'));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(callsTo(api, RESET)).toHaveLength(1);
+      expect(await db.outbox.count()).toBe(2);
+    });
+  });
+
   it("route /reset de l'appli, sans session", async () => {
     await renderApp({ path: '/reset', me: null });
     expect(await screen.findByLabelText('Lien ou code de réinitialisation')).toBeTruthy();
