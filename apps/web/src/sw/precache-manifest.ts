@@ -19,6 +19,8 @@ export const PRECACHE_GLOBAL = '__APPSPORT_PRECACHE__';
 // Noms des caches ici et non dans sw.ts : la page les lit sans embarquer le code du SW.
 export const SHELL_CACHE_PREFIX = 'shell-';
 export const ILLUSTRATIONS_CACHE = 'illustrations-v1';
+/** Toutes générations d'illustrations : ce que l'interrupteur d'urgence vide (R-PWA-6), côté SW et page. */
+export const ILLUSTRATIONS_CACHE_PREFIX = 'illustrations-';
 
 /**
  * Marqueur de la plus haute version de base locale connue de l'appareil (ADR 0001 décision 5) : réponse

@@ -1,5 +1,6 @@
 import {
   ILLUSTRATIONS_CACHE,
+  ILLUSTRATIONS_CACHE_PREFIX,
   LOCAL_DB_MARKER_CACHE,
   LOCAL_DB_MARKER_KEY,
   PRECACHE_GLOBAL,
@@ -18,7 +19,6 @@ import type { PageToSw, SwStatus } from './protocol';
 export const REFERENCED_ILLUSTRATIONS_KEY = '/__sw/illustrations-referenced.json';
 
 const ILLUSTRATIONS_PATH = '/illustrations/';
-const ILLUSTRATIONS_CACHE_PREFIX = 'illustrations-';
 const INDEX_PATH = '/index.html';
 const HEALTH_PATH = '/api/health';
 const HEALTH_TIMEOUT_MS = 4000;
