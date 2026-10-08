@@ -12,11 +12,14 @@ import {
 } from '../onboarding/HealthStep';
 import styles from './privacy.module.css';
 
+/** Titre de la section du questionnaire d'alerte (glossaire, 02 §11). */
+const SCREENING_TITLE = "Questionnaire d'alerte";
+
 /**
- * Profil › Santé (02 §11, E7) : sans accord, l'accord est proposé et les questions s'affichent en
- * auto-vérification (P-CST-2) ; avec accord, dernière réponse au questionnaire (« Répondre de
- * nouveau »), limitations modifiables (P-DRT-2). Le mode prudent (C1) est réglable dans tous les cas.
- * Le retrait de l'accord se fait dans Confidentialité (R-CST-5).
+ * Profil › Santé (02 §11, E7) : sans accord, l'accord est proposé, puis les questions s'affichent
+ * en auto-vérification dans leur propre section (P-CST-2) ; avec accord, dernière réponse au
+ * questionnaire (« Répondre de nouveau »), limitations modifiables (P-DRT-2). Le mode prudent (C1)
+ * est réglable dans tous les cas. Le retrait de l'accord se fait dans Confidentialité (R-CST-5).
  */
 export function HealthSection() {
   const me = useMe();
@@ -33,10 +36,14 @@ export function HealthSection() {
           </p>
         </>
       ) : (
-        <Section title="Accord santé">
-          <HealthConsentPanel onGranted={() => {}} />
-          <ScreeningQuestions record={false} />
-        </Section>
+        <>
+          <Section title="Accord santé">
+            <HealthConsentPanel onGranted={() => {}} />
+          </Section>
+          <Section title={SCREENING_TITLE}>
+            <ScreeningQuestions record={false} />
+          </Section>
+        </>
       )}
       <CautiousSection me={me} />
       <HealthWarning />
@@ -56,45 +63,55 @@ function Section(p: { title: string; children: ReactNode }) {
 }
 
 /**
- * Questionnaire de prudence : seuls l'indicateur, la version et la date sont gardés (E7.2). Déjà
- * répondu : date et indicateur, puis « Répondre de nouveau » ouvre les questions ; enregistrées, le
- * résumé revient et reprend le focus.
+ * Questionnaire d'alerte : seuls l'indicateur, la version et la date sont gardés (E7.2). Déjà
+ * répondu : date et indicateur, puis « Répondre de nouveau » ouvre les questions. Enregistrées, le
+ * résumé revient avec « Réponses enregistrées. » jusqu'à la prochaine ouverture.
  */
 function ScreeningSection() {
   const repos = useRepos();
   const screening = useLive(() => repos.consent.screening(), [repos]);
   const [answering, setAnswering] = useState(false);
+  const [saved, setSaved] = useState(false);
   const summaryRef = useRef<HTMLDivElement>(null);
-  const returnFocus = useRef(false);
+  const hadQuestions = useRef(false);
   const summary = Boolean(screening) && !answering;
+  const questions = screening !== undefined && !summary;
 
-  // Questions fermées (enregistrées ou « Annuler ») : le focus revient à « Répondre de nouveau ».
+  // Questions fermées (enregistrées, relues avant la fin de l'envoi, ou « Annuler ») : le focus,
+  // perdu avec elles, revient à « Répondre de nouveau ». Placé ailleurs entre-temps, il y reste.
   useEffect(() => {
-    if (!summary || !returnFocus.current) return;
-    returnFocus.current = false;
-    summaryRef.current?.querySelector('button')?.focus();
-  }, [summary]);
+    const closed = hadQuestions.current && !questions;
+    hadQuestions.current = questions;
+    if (!closed) return;
+    const active = document.activeElement;
+    if (active === null || active === document.body) summaryRef.current?.querySelector('button')?.focus();
+  }, [questions]);
 
   if (screening === undefined) return null;
-  const close = () => {
-    returnFocus.current = true;
+  const reopen = () => {
+    setSaved(false);
+    setAnswering(true);
+  };
+  const onSaved = () => {
+    setSaved(true);
     setAnswering(false);
   };
   return (
-    <Section title="Questionnaire de prudence">
+    <Section title={SCREENING_TITLE}>
       {screening && summary ? (
         <div ref={summaryRef} className={styles.summary}>
+          {saved ? <Banner tone="info">Réponses enregistrées.</Banner> : null}
           <p>{`Dernière réponse le ${formatDate(screening.answeredAt)}`}</p>
           <p>{`Indicateur de prudence : ${screening.caution ? 'actif' : 'inactif'}`}</p>
-          <Button variant="secondary" onClick={() => setAnswering(true)}>
+          <Button variant="secondary" onClick={reopen}>
             Répondre de nouveau
           </Button>
         </div>
       ) : (
         <>
-          <ScreeningQuestions record onSaved={close} />
+          <ScreeningQuestions record onSaved={onSaved} />
           {screening ? (
-            <Button variant="secondary" className={styles.start} onClick={close}>
+            <Button variant="secondary" className={styles.start} onClick={() => setAnswering(false)}>
               Annuler
             </Button>
           ) : null}

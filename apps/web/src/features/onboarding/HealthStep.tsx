@@ -204,7 +204,9 @@ export type LimitationDraft = ReturnType<typeof useLimitationDraft>;
  * Limitations facultatives (E7.3) : zone, côté, gêne et note de 200 caractères au plus. `draft` :
  * saisie tenue par l'écran parent (onboarding), sinon par le composant. `editable` (Profil › Santé,
  * P-DRT-2) : chaque limitation a aussi « Modifier », qui la remplace par son formulaire ; à la
- * fermeture, le focus revient à « Modifier ». `headingLevel` : niveau du titre (3 par défaut).
+ * fermeture, le focus revient à « Modifier ». Un formulaire à la fois : tant qu'il est ouvert (envoi
+ * compris), les autres « Modifier » attendent ; la limitation disparue (supprimée ailleurs), ils se
+ * libèrent. `headingLevel` : niveau du titre (3 par défaut).
  */
 export function LimitationsEditor(
   p: { draft?: LimitationDraft; editable?: boolean; headingLevel?: 2 | 3 } = {},
@@ -220,6 +222,13 @@ export function LimitationsEditor(
   const returnTo = useRef<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const Heading = p.headingLevel === 2 ? 'h2' : 'h3';
+
+  // Limitation en cours de modification disparue de la liste : plus de formulaire ouvert.
+  useEffect(() => {
+    if (editing !== null && limitations !== undefined && !limitations.some((l) => l.id === editing)) {
+      setEditing(null);
+    }
+  }, [editing, limitations]);
 
   useEffect(() => {
     if (editing !== null || returnTo.current === null) return;
@@ -261,6 +270,7 @@ export function LimitationsEditor(
                       variant="secondary"
                       data-edit={l.id}
                       aria-describedby={`${id}-${l.id}`}
+                      disabled={editing !== null}
                       onClick={() => setEditing(l.id)}
                     >
                       Modifier
