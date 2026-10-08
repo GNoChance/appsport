@@ -6,6 +6,7 @@ import { InvitePage } from './features/auth/InvitePage';
 import { LoginPage } from './features/auth/LoginPage';
 import { ResetPage } from './features/auth/ResetPage';
 import { HomePage } from './features/home/HomePage';
+import { OnboardingFlow } from './features/onboarding/OnboardingFlow';
 import { CreditsPage } from './features/public/CreditsPage';
 import { HelpPage } from './features/public/HelpPage';
 import { NotFound } from './features/public/NotFound';
@@ -114,15 +115,28 @@ export function App() {
           <NotFound />
         </AppShell>
       );
-    case 'render':
-      return PUBLIC_PATHS.includes(normalizePath(path)) ? (
-        <PublicShell>
-          <PublicRoutes />
-        </PublicShell>
-      ) : (
+    case 'render': {
+      const route = normalizePath(path);
+      if (PUBLIC_PATHS.includes(route)) {
+        return (
+          <PublicShell>
+            <PublicRoutes />
+          </PublicShell>
+        );
+      }
+      // L'onboarding n'a ni navigation de compte ni bandeau de mise à jour.
+      if (route === '/onboarding') {
+        return (
+          <PublicShell>
+            <OnboardingFlow />
+          </PublicShell>
+        );
+      }
+      return (
         <AppShell>
           <ConnectedRoutes />
         </AppShell>
       );
+    }
   }
 }

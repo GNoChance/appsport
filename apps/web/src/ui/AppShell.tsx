@@ -24,7 +24,7 @@ export function AppShell(p: { children: ReactNode }) {
   );
 }
 
-/** Cadre des pages publiques, lisibles sans session : pas de navigation de compte. */
+/** Cadre des pages publiques, lisibles sans session, et de l'onboarding : pas de navigation de compte. */
 export function PublicShell(p: { children: ReactNode }) {
   return (
     <div className={styles.shell}>

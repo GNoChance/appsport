@@ -43,7 +43,9 @@ export function useLive<T>(query: () => Promise<T>, deps: readonly unknown[]): T
   const [value, setValue] = useState<T | undefined>(undefined);
   useEffect(
     () => {
-      const subscription = liveQuery(query).subscribe({ next: setValue, error: () => {} });
+      // Requête enveloppée dans une fonction async : Dexie ne suit les lectures faites après un
+      // `await` natif que si la fonction passée à liveQuery est elle-même async.
+      const subscription = liveQuery(async () => query()).subscribe({ next: setValue, error: () => {} });
       return () => subscription.unsubscribe();
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: dépendances de la requête fournies par l'appelant
