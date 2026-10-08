@@ -14,6 +14,7 @@ import { buildInvitationShareMessage } from './share-message';
 const BIRTH_DATE_REQUIRED = 'Saisis la date de naissance.';
 const SHARE_FAILED = 'Partage impossible : copie le message.';
 const COPY_FAILED = 'Copie impossible : sélectionne le message et copie-le.';
+const NOTE_CODE_FIRST = "Note d'abord le code affiché, puis appuie sur « J'ai noté le code ».";
 
 /** État affiché d'une invitation (R-INV-7). */
 export function invitationStateText(i: InvitationSummary): string {
@@ -53,6 +54,7 @@ export function InvitationsPage() {
           Nouvelle invitation
         </h2>
         <InvitationForm
+          blocked={created !== null}
           onCreated={(r) => {
             setCreated(r);
             void reload();
@@ -117,9 +119,14 @@ export function InvitationsPage() {
   );
 }
 
-/** Date de naissance complète (obligatoire) et note libre de 60 caractères au plus (R-INV-1). */
-function InvitationForm(p: { onCreated(r: CreateInvitationResponse): void }) {
+/**
+ * Date de naissance complète (obligatoire) et note libre de 60 caractères au plus (R-INV-1).
+ * `blocked` : le code de l'invitation précédente est encore affiché ; une nouvelle création le
+ * remplacerait et il serait perdu (affiché une seule fois, R-INV-3).
+ */
+function InvitationForm(p: { blocked: boolean; onCreated(r: CreateInvitationResponse): void }) {
   const repos = useRepos();
+  const blockedHintId = useId();
   const [birthDate, setBirthDate] = useState('');
   const [note, setNote] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -134,7 +141,7 @@ function InvitationForm(p: { onCreated(r: CreateInvitationResponse): void }) {
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (create.pending) return;
+    if (create.pending || p.blocked) return;
     if (birthDate === '') {
       setFieldError(BIRTH_DATE_REQUIRED);
       birthDateRef.current?.focus();
@@ -166,7 +173,12 @@ function InvitationForm(p: { onCreated(r: CreateInvitationResponse): void }) {
         />
       </Field>
       {create.error ? <Banner tone="error">{create.error}</Banner> : null}
-      <Button type="submit" disabled={create.pending}>
+      {p.blocked ? <p id={blockedHintId}>{NOTE_CODE_FIRST}</p> : null}
+      <Button
+        type="submit"
+        disabled={create.pending || p.blocked}
+        aria-describedby={p.blocked ? blockedHintId : undefined}
+      >
         Créer l'invitation
       </Button>
     </form>

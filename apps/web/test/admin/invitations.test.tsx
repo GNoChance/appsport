@@ -188,6 +188,26 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
   });
 
+  it('code affiché : « Créer l’invitation » bloqué jusqu’à « J’ai noté le code » (le code ne se perd pas)', async () => {
+    const { api } = createdApi();
+    await renderInvitations({ api });
+    create('2009-05-01', 'pour Léa');
+    await screen.findByText(CODE);
+    const submit = screen.getByRole('button', { name: "Créer l'invitation" }) as HTMLButtonElement;
+    const hintText = "Note d'abord le code affiché, puis appuie sur « J'ai noté le code ».";
+    expect(submit.disabled).toBe(true);
+    expect(submit.getAttribute('aria-describedby')).toBe(screen.getByText(hintText).id);
+    // Entrée dans un champ : rien ne part, le code reste.
+    fill('Date de naissance', '2009-06-01');
+    fireEvent.submit(submit.closest('form') as HTMLFormElement);
+    await settle();
+    expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
+    expect(screen.getByText(CODE)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: "J'ai noté le code" }));
+    expect(submit.disabled).toBe(false);
+    expect(screen.queryByText(hintText)).toBeNull();
+  });
+
   it('note vide : seule la date part', async () => {
     const { api } = createdApi();
     await renderInvitations({ api });
