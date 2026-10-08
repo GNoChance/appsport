@@ -7,6 +7,10 @@ import { LoginPage } from './features/auth/LoginPage';
 import { ResetPage } from './features/auth/ResetPage';
 import { HomePage } from './features/home/HomePage';
 import { OnboardingFlow } from './features/onboarding/OnboardingFlow';
+import { GymPage } from './features/places/GymPage';
+import { PlaceDetail } from './features/places/PlaceDetail';
+import { PlacesPage } from './features/places/PlacesPage';
+import { ProfilePage } from './features/profile/ProfilePage';
 import { CreditsPage } from './features/public/CreditsPage';
 import { HelpPage } from './features/public/HelpPage';
 import { NotFound } from './features/public/NotFound';
@@ -83,6 +87,10 @@ function ConnectedRoutes() {
   return (
     <Switch>
       <Route path="/" component={HomePage} />
+      <Route path="/profile" component={ProfilePage} />
+      <Route path="/profile/places" component={PlacesPage} />
+      <Route path="/profile/places/:id" component={PlaceDetail} />
+      <Route path="/gyms/:id" component={GymPage} />
       <Route component={NotFound} />
     </Switch>
   );

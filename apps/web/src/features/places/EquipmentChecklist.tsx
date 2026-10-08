@@ -47,3 +47,15 @@ export function EquipmentChecklist(p: {
     </div>
   );
 }
+
+/** Matériel en lecture seule (salle sans droit de modifier, hors ligne, lieu de type salle). */
+export function EquipmentList(p: { value: readonly EquipmentCode[] }) {
+  if (p.value.length === 0) return <p className={styles.hint}>Aucun matériel renseigné.</p>;
+  return (
+    <ul className={styles.equipmentList}>
+      {sortEquipment(p.value).map((code) => (
+        <li key={code}>{EQUIPMENT_LABELS[code]}</li>
+      ))}
+    </ul>
+  );
+}

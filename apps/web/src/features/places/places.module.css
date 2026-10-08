@@ -86,3 +86,95 @@
 .bannerText {
   margin: 0 0 var(--space-2);
 }
+
+/* Profil › Lieux, fiche d'un lieu et fiche de salle. */
+.equipmentList {
+  margin: 0;
+  padding-left: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.places {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.place {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.placeHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.placeName {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.badge {
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5rem;
+}
+
+.meta {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.section,
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.section p {
+  margin: 0;
+}
+
+.form > button,
+.section > button,
+.section > a {
+  align-self: flex-start;
+}
+
+.members,
+.history {
+  margin: 0;
+  padding-left: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
