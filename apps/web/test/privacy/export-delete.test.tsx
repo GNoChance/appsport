@@ -62,6 +62,18 @@ afterEach(() => {
 const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
 const calls = (api: FakeApi, path: string) => api.calls.filter((c) => c.path === path);
 
+/**
+ * État final, pas seulement le passage : une fois tout retombé, l'écran est toujours « Ce compte a
+ * été supprimé », sans détour par l'accueil ni départ après l'adresse visée (P-DRT-4).
+ */
+async function expectAccountDeletedScreen(location: () => string, visits: () => string[]) {
+  await settle();
+  expect(location()).toBe('/login?reason=account_deleted');
+  expect(visits()).not.toContain('/');
+  expect(visits().at(-1)).toBe('/login?reason=account_deleted');
+  expect(screen.getByText('Ce compte a été supprimé')).toBeTruthy();
+}
+
 describe('download.ts', () => {
   it('exportFileName : date civile de Paris (AAAA-MM-JJ)', () => {
     expect(exportFileName(Date.parse('2026-10-06T12:00:00.000Z'))).toBe('appsport-export-2026-10-06.json');
@@ -76,7 +88,12 @@ describe('download.ts', () => {
     expect(document.querySelector('a[download]')).toBeNull();
     expect(blobs[0]?.type).toBe('application/json');
     expect(await blobs[0]?.text()).toBe(JSON.stringify({ a: 1, b: [true] }, null, 2));
-    vi.runAllTimers();
+    // Révoquée trop tôt, Safari annule le téléchargement : 40 s après le clic, pas avant.
+    expect(revokeUrl).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(39_999);
+    expect(revokeUrl).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(revokeUrl).toHaveBeenCalledTimes(1);
     expect(revokeUrl).toHaveBeenCalledWith('blob:test/1');
   });
 });
@@ -189,7 +206,7 @@ describe('DeleteAccountDialog (R-SUP-1, R-SUP-4, R-SUP-5, P-DRT-3, P-DRT-6)', ()
 
   it('POST /api/me/delete { password } → base vidée, /login?reason=account_deleted, « Ce compte a été supprimé »', async () => {
     const api = createFakeApi().on('POST', DELETE, { status: 204 });
-    const { db, location } = await renderPrivacy({ api, pending: 2 });
+    const { db, location, visits } = await renderPrivacy({ api, pending: 2 });
     const dialog = await openDelete();
     fill('Mot de passe', PASSWORD);
     fireEvent.click(dialog.getByRole('button', { name: 'Supprimer définitivement' }));
@@ -197,7 +214,7 @@ describe('DeleteAccountDialog (R-SUP-1, R-SUP-4, R-SUP-5, P-DRT-3, P-DRT-6)', ()
     expect(calls(api, DELETE).map((c) => [c.method, c.body])).toEqual([['POST', { password: PASSWORD }]]);
     expect(await db.outbox.count()).toBe(0);
     expect(await getMeta(db, 'me')).toBeUndefined();
-    expect(await screen.findByText('Ce compte a été supprimé')).toBeTruthy();
+    await expectAccountDeletedScreen(location, visits);
   });
 
   it("409 last_admin → « Tu es le dernier administrateur : nomme d'abord un autre administrateur. », rien effacé", async () => {
@@ -257,11 +274,11 @@ describe('compte supprimé depuis un autre appareil (P-DRT-4, 03 §17 n°9)', ()
     const api = createFakeApi().on('GET', '/api/me', { status: 410, body: { error: 'account_deleted' } });
     const db = createTestLocalDb();
     await seedOutbox(db, 'u-1', 2);
-    const { location } = await renderApp({ path: '/profile/privacy', db, api });
+    const { location, visits } = await renderApp({ path: '/profile/privacy', db, api });
     await waitFor(() => expect(location()).toBe('/login?reason=account_deleted'));
     expect(await db.outbox.count()).toBe(0);
     expect(await getMeta(db, 'me')).toBeUndefined();
-    expect(await screen.findByText('Ce compte a été supprimé')).toBeTruthy();
+    await expectAccountDeletedScreen(location, visits);
   });
 
   it('GET /api/me → 410 watermark_expired : rien effacé', async () => {

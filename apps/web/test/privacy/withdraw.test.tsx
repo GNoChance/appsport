@@ -1,4 +1,4 @@
-import { HEALTH_CONSENT_TEXT, type MeResponse } from '@appsport/contracts';
+import { HEALTH_CONSENT_TEXT, type MeResponse, SYNC_PROTOCOL } from '@appsport/contracts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { AppDb } from '../../src/local-db/db';
@@ -24,7 +24,11 @@ const consented = (textVersion: string | null = '1.0', active = true): MeRespons
     },
   });
 
-/** Questionnaire et limitation portant la valeur témoin. */
+/**
+ * Données de santé portant la valeur témoin partout où elles peuvent être sur l'appareil :
+ * questionnaire et limitation (miroirs), ajout de limitation en attente (outbox) et rejet local
+ * dont le détail la cite (deadletter), écrits directement dans Dexie.
+ */
 async function seedHealth(db: AppDb): Promise<void> {
   await seedMirror(db, 'health_screening', [
     {
@@ -46,7 +50,37 @@ async function seedHealth(db: AppDb): Promise<void> {
       active: true,
     },
   ]);
+  await db.outbox.add({
+    opId: '0192f5a0-0000-7000-8000-000000000001',
+    userId: 'u-1',
+    entity: 'limitation',
+    id: 'l-9',
+    kind: 'create',
+    fields: { bodyArea: 'hip', side: 'right', severity: 'severe', note: WITNESS, active: true },
+    clientTs: '2026-10-06T11:00:00.000Z',
+    protocol: SYNC_PROTOCOL,
+    attempts: 0,
+  });
+  await db.deadletter.put({
+    opId: '0192f5a0-0000-7000-8000-000000000002',
+    userId: 'u-1',
+    entity: 'limitation',
+    id: 'l-8',
+    code: 'validation',
+    detail: { kind: 'patch', note: WITNESS },
+    receivedAt: '2026-10-06T11:00:00.000Z',
+  });
 }
+
+/** Magasins locaux où la valeur témoin apparaît. */
+async function witnessStores(db: AppDb): Promise<string[]> {
+  const found: string[] = [];
+  for (const table of db.tables) {
+    if (JSON.stringify(await table.toArray()).includes(WITNESS)) found.push(table.name);
+  }
+  return found.sort();
+}
+const SEEDED_STORES = ['deadletter', 'limitation', 'outbox'];
 
 async function renderPrivacy(o: { me?: MeResponse; api?: FakeApi } = {}) {
   const db = createTestLocalDb();
@@ -123,7 +157,7 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
   it('POST withdraw { type, password } → 200 MeResponse : message, meta.me à jour, aucune valeur C2 en local', async () => {
     const api = createFakeApi().on('POST', WITHDRAW, { status: 200, body: consented(null, false) });
     const { db, sync } = await renderPrivacy({ api });
-    expect(await dumpLocalDb(db)).toContain(WITNESS);
+    expect(await witnessStores(db)).toEqual(SEEDED_STORES);
     const dialog = await openWithdraw();
     fill('Mot de passe', 'cheval agrafe batterie correcte');
     fireEvent.click(dialog.getByRole('button', { name: 'Retirer mon accord' }));
@@ -132,7 +166,10 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
       ['POST', { type: 'health', password: 'cheval agrafe batterie correcte' }],
     ]);
     expect((await getMeta(db, 'me'))?.consents.health.active).toBe(false);
+    expect(await witnessStores(db)).toEqual([]);
     expect(await dumpLocalDb(db)).not.toContain(WITNESS);
+    expect(await db.mirror('health_screening').count()).toBe(0);
+    expect(await db.mirror('limitation').count()).toBe(0);
     expect(sync.pullCount).toBe(1);
     fireEvent.click(button('Fermer'));
     await until(() => screen.queryByRole('dialog') === null);
@@ -148,8 +185,21 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
     fill('Mot de passe', 'mauvais mot de passe');
     fireEvent.click(dialog.getByRole('button', { name: 'Retirer mon accord' }));
     expect((await dialog.findByRole('alert')).textContent).toBe('Mot de passe incorrect.');
-    expect(await dumpLocalDb(db)).toContain(WITNESS);
+    expect(await witnessStores(db)).toEqual(SEEDED_STORES);
     expect((await getMeta(db, 'me'))?.consents.health.active).toBe(true);
+  });
+
+  it('429 rate_limited → attente annoncée en minutes, rien purgé', async () => {
+    const api = createFakeApi().on('POST', WITHDRAW, {
+      status: 429,
+      body: { error: 'rate_limited', retryAfterS: 90 },
+    });
+    const { db } = await renderPrivacy({ api });
+    const dialog = await openWithdraw();
+    fill('Mot de passe', 'cheval agrafe batterie correcte');
+    fireEvent.click(dialog.getByRole('button', { name: 'Retirer mon accord' }));
+    expect((await dialog.findByRole('alert')).textContent).toBe('Trop de tentatives. Réessaie dans 2 min.');
+    expect(await witnessStores(db)).toEqual(SEEDED_STORES);
   });
 
   it('hors ligne → « Nécessite le réseau », rien purgé', async () => {
@@ -160,7 +210,7 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
     fill('Mot de passe', 'cheval agrafe batterie correcte');
     fireEvent.click(dialog.getByRole('button', { name: 'Retirer mon accord' }));
     expect((await dialog.findByRole('alert')).textContent).toBe('Nécessite le réseau');
-    expect(await dumpLocalDb(db)).toContain(WITNESS);
+    expect(await witnessStores(db)).toEqual(SEEDED_STORES);
   });
 
   it('« Annuler » ferme sans requête', async () => {
@@ -305,6 +355,25 @@ describe('HealthReconsentGate (R-CST-6, P-CST-1)', () => {
     await until(() => screen.queryByRole('dialog') === null);
     await settle();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('« Je refuse » sur Santé : la note témoin, visible derrière la porte, disparaît de l’écran et de l’appareil', async () => {
+    const api = createFakeApi().on('POST', WITHDRAW, { status: 200, body: consented(null, false) });
+    const { db } = await renderGate(consented('0.9'), api, '/profile/health');
+    const gate = within(await screen.findByRole('dialog', { name: GATE }));
+    expect(screen.getByText(new RegExp(WITNESS))).toBeTruthy();
+    fireEvent.click(gate.getByRole('button', { name: 'Je refuse' }));
+    const withdraw = within(await screen.findByRole('dialog', { name: "Retirer l'accord santé" }));
+    // Derrière le retrait aussi, la page est inerte.
+    expect(screen.getByText(new RegExp(WITNESS)).closest('[inert]')).not.toBeNull();
+    fill('Mot de passe', 'cheval agrafe batterie correcte');
+    fireEvent.click(withdraw.getByRole('button', { name: 'Retirer mon accord' }));
+    expect(await screen.findByText(WITHDRAWN)).toBeTruthy();
+    expect(screen.queryByText(new RegExp(WITNESS))).toBeNull();
+    expect(await witnessStores(db)).toEqual([]);
+    fireEvent.click(button('Fermer'));
+    await until(() => screen.queryByRole('dialog') === null);
+    expect(screen.queryByText(new RegExp(WITNESS))).toBeNull();
   });
 
   it.each([
