@@ -227,6 +227,38 @@ describe('activate', () => {
     expect(s.skipWaitingCalls).toBe(0);
     expect(await getMeta(local, 'userId')).toBe('u1');
   });
+
+  /** A installé sur un stockage qui contient déjà un vieux shell-* ; `activate` à lancer par le test. */
+  async function installedOverOld(caches: CacheStorage) {
+    const s = createFakeSwScope({ caches });
+    s.setNetwork(staticNetwork(A_FILES));
+    await (await s.caches.open('shell-old000000000')).put('/index.html', new Response('vieux'));
+    const h = createSwHandlers(s, A);
+    await h.install();
+    return { s, h };
+  }
+
+  it('écriture du marqueur refusée : purge, illustrations-v1 et clients.claim ont lieu, erreur remontée', async () => {
+    const caches = createFakeCacheStorage({
+      failPut: (name) => (name === LOCAL_DB_MARKER_CACHE ? quotaExceeded() : undefined),
+    });
+    const { s, h } = await installedOverOld(caches);
+    await expect(h.activate()).rejects.toThrow(/Quota/);
+    expect(s.claimCalls).toBe(1);
+    expect(await caches.has('shell-old000000000')).toBe(false);
+    expect(await caches.has(ILLUSTRATIONS_CACHE)).toBe(true);
+  });
+
+  it('purge refusée : marqueur écrit, illustrations-v1 ouvert et clients.claim quand même, erreur remontée', async () => {
+    const caches = createFakeCacheStorage({
+      failDelete: (name) => (name === 'shell-old000000000' ? new Error('purge refusée') : undefined),
+    });
+    const { s, h } = await installedOverOld(caches);
+    await expect(h.activate()).rejects.toThrow(/purge refusée/);
+    expect(s.claimCalls).toBe(1);
+    expect(await cachedText(s, LOCAL_DB_MARKER_CACHE, LOCAL_DB_MARKER_KEY)).toBe('1');
+    expect(await caches.has(ILLUSTRATIONS_CACHE)).toBe(true);
+  });
 });
 
 describe('marqueur de version de la base locale (ADR 0001 décision 5, R-PWA-9)', () => {

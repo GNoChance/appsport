@@ -174,17 +174,39 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
     // Mode prompt (R-PWA-2) : pas de skipWaiting ici, seulement sur le message SKIP_WAITING.
   }
 
-  async function activate(): Promise<void> {
-    const stale = cachesToDelete(await scope.caches.keys(), manifest.buildHash);
-    await Promise.all(stale.map((name) => scope.caches.delete(name)));
-    await scope.caches.open(ILLUSTRATIONS_CACHE);
-    // Marqueur écrit avant que la page de ce build ne tourne, jamais abaissé (ADR 0001 décision 5).
+  /** Marqueur écrit avant que la page de ce build ne tourne, jamais abaissé (ADR 0001 décision 5). */
+  async function raiseMarker(): Promise<void> {
     const marker = await readMarker();
     if (marker === null || marker < manifest.localDbVersion) {
       const meta = await scope.caches.open(LOCAL_DB_MARKER_CACHE);
       await meta.put(LOCAL_DB_MARKER_KEY, new Response(String(manifest.localDbVersion)));
     }
+  }
+
+  async function purgeStaleShells(): Promise<void> {
+    const stale = cachesToDelete(await scope.caches.keys(), manifest.buildHash);
+    const results = await Promise.allSettled(stale.map((name) => scope.caches.delete(name)));
+    const failed = results.find((r) => r.status === 'rejected');
+    if (failed) throw failed.reason;
+  }
+
+  /**
+   * Étapes isolées, marqueur d'abord : une erreur (quota, Cache Storage) n'empêche ni les suivantes ni
+   * clients.claim, sans quoi une première installation laisserait la page sans contrôleur. La première
+   * erreur est remontée ensuite, pour la console.
+   */
+  async function activate(): Promise<void> {
+    const openIllustrations = () => scope.caches.open(ILLUSTRATIONS_CACHE);
+    const errors: unknown[] = [];
+    for (const step of [raiseMarker, purgeStaleShells, openIllustrations]) {
+      try {
+        await step();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
     await scope.claimClients();
+    if (errors.length > 0) throw errors[0];
   }
 
   async function fromShellOrNetwork(r: SwRequest, path: string): Promise<Response> {
