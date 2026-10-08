@@ -4,7 +4,13 @@ import { useRepos } from '../../repos';
 import { Banner, Button, downloadJson, exportFileName, useAction } from '../../ui';
 import styles from './privacy.module.css';
 
-function unsentWarning(n: number): string {
+/** File d'envoi illisible (base bloquée, transaction en échec) : son contenu n'est pas connu. */
+const UNKNOWN = 'unknown' as const;
+
+function unsentWarning(n: number | typeof UNKNOWN): string {
+  if (n === UNKNOWN) {
+    return "Impossible de vérifier les éléments non envoyés : ils pourraient manquer dans l'export.";
+  }
   return n === 1
     ? "1 élément n'est pas encore envoyé au serveur : il ne figurera pas dans l'export."
     : `${n} éléments ne sont pas encore envoyés au serveur : ils ne figureront pas dans l'export.`;
@@ -13,12 +19,13 @@ function unsentWarning(n: number): string {
 /**
  * « Télécharger mes données » (R-EXP-1, P-DRT-1) : export du serveur, en ligne, enregistré sous
  * `appsport-export-AAAA-MM-JJ.json`. Des éléments encore dans la file d'envoi : avertissement
- * d'abord, et rien ne part avant « Exporter quand même ».
+ * d'abord, et rien ne part avant « Exporter quand même ». File illisible : même chose, puisque des
+ * éléments non envoyés pourraient manquer.
  */
 export function ExportButton(p: { label?: string }) {
   const repos = useRepos();
   const { now } = useServices();
-  const [unsent, setUnsent] = useState<number | null>(null);
+  const [unsent, setUnsent] = useState<number | typeof UNKNOWN | null>(null);
   const checking = useRef(false);
   const exporting = useAction(async () => {
     const data = await repos.me.exportData();
@@ -31,9 +38,8 @@ export function ExportButton(p: { label?: string }) {
     checking.current = true;
     exporting.reset();
     try {
-      // File illisible : rien à signaler, l'export du serveur part quand même.
-      const pending = await repos.status.pendingCount().catch(() => 0);
-      if (pending > 0) setUnsent(pending);
+      const pending = await repos.status.pendingCount().catch((): typeof UNKNOWN => UNKNOWN);
+      if (pending === UNKNOWN || pending > 0) setUnsent(pending);
       else await exporting.run();
     } finally {
       checking.current = false;

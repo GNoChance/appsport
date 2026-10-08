@@ -120,6 +120,26 @@ describe('ExportButton (R-EXP-1, P-DRT-1)', () => {
     ).toBeTruthy();
   });
 
+  it('file illisible : avertissement, rien ne part avant « Exporter quand même »', async () => {
+    const api = createFakeApi().on('GET', EXPORT, { status: 200, body: EXPORTED });
+    const { db } = await renderPrivacy({ api, pending: 1 });
+    vi.spyOn(db.outbox, 'where').mockImplementation(() => {
+      throw new Error('IndexedDB indisponible');
+    });
+    fireEvent.click(button('Télécharger mes données'));
+    const warning = await screen.findByText(
+      "Impossible de vérifier les éléments non envoyés : ils pourraient manquer dans l'export.",
+    );
+    expect(warning.closest('[role="status"]')).toBeTruthy();
+    await settle();
+    expect(calls(api, EXPORT)).toHaveLength(0);
+    expect(clicks).toHaveLength(0);
+    fireEvent.click(button('Exporter quand même'));
+    await until(() => clicks.length === 1);
+    expect(clicks[0]?.download).toBe('appsport-export-2026-10-06.json');
+    expect(calls(api, EXPORT)).toHaveLength(1);
+  });
+
   it('file vide : téléchargement au premier clic', async () => {
     const api = createFakeApi().on('GET', EXPORT, { status: 200, body: EXPORTED });
     await renderPrivacy({ api });
