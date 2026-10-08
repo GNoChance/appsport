@@ -114,13 +114,41 @@ export function useMe(): MeResponse | null {
   return useMeState().me;
 }
 
+/** Attente au plus de `whenSignedOut` : la requête observée répond en quelques millisecondes. */
+const SIGNED_OUT_WAIT_MS = 2000;
+
 /**
- * `410 account_deleted` (P-DRT-4) : base locale effacée, file comprise, puis écran de connexion.
- * Un effacement en échec n'empêche pas la navigation et ne rejette pas (appelé en `void`).
+ * Résout quand la requête observée de `meta.me` (celle de la garde) ne voit plus d'utilisateur,
+ * tout de suite si personne ne l'observe, au plus tard après `timeoutMs`. Une navigation faite
+ * ensuite n'est pas renvoyée ailleurs par la garde encore sur l'ancien utilisateur (de
+ * `/login?reason=account_deleted` vers l'accueil, puis vers `/login` sans la raison).
+ */
+export function whenSignedOut(db: AppDb, timeoutMs = SIGNED_OUT_WAIT_MS): Promise<void> {
+  const store = meStores.get(db);
+  if (!store || store.get().me === null) return Promise.resolve();
+  return new Promise((resolve) => {
+    let unsubscribe = () => {};
+    const done = () => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    unsubscribe = store.subscribe(() => {
+      if (store.get().me === null) done();
+    });
+  });
+}
+
+/**
+ * `410 account_deleted` (P-DRT-4) : base locale effacée, file comprise, puis écran de connexion
+ * « Ce compte a été supprimé », une fois que la garde ne voit plus l'utilisateur. Un effacement en
+ * échec n'empêche pas la navigation et ne rejette pas (appelé en `void`).
  */
 export async function handleAccountDeleted(db: AppDb, navigate: (to: string) => void): Promise<void> {
   try {
     await wipeUserData(db, { keepOutbox: false });
+    await whenSignedOut(db);
   } catch {
     // Base locale inaccessible : le moteur de synchro l'effacera au prochain 410.
   } finally {

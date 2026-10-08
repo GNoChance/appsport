@@ -1,9 +1,14 @@
 import type { ReactNode } from 'react';
 import { Link } from 'wouter';
 import { useMe } from '../app-services';
+import { ConnectionStatus } from '../features/status/ConnectionStatus';
+import { PendingCounter, RejectedCounter } from '../features/status/PendingCounter';
 import styles from './ui.module.css';
 
-/** Cadre des écrans connectés : navigation, liens vers les pages publiques. */
+/**
+ * Cadre des écrans connectés : navigation, zone d'état (connexion, éléments en attente et refusés,
+ * R-SYN-34), liens vers les pages publiques.
+ */
 export function AppShell(p: { children: ReactNode }) {
   const me = useMe();
   return (
@@ -17,6 +22,11 @@ export function AppShell(p: { children: ReactNode }) {
           <Link href="/profile">Profil</Link>
           {me?.role === 'admin' ? <Link href="/admin/members">Administration</Link> : null}
         </nav>
+        <div className={styles.status}>
+          <ConnectionStatus />
+          <PendingCounter />
+          <RejectedCounter />
+        </div>
       </header>
       <main className={styles.main}>{p.children}</main>
       <PublicLinks />

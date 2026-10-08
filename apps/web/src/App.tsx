@@ -14,11 +14,16 @@ import { OnboardingFlow } from './features/onboarding/OnboardingFlow';
 import { GymPage } from './features/places/GymPage';
 import { PlaceDetail } from './features/places/PlaceDetail';
 import { PlacesPage } from './features/places/PlacesPage';
+import { HealthReconsentGate } from './features/privacy/HealthReconsentGate';
+import { HealthSection } from './features/privacy/HealthSection';
+import { PrivacySettingsPage } from './features/privacy/PrivacySettingsPage';
 import { ProfilePage } from './features/profile/ProfilePage';
 import { CreditsPage } from './features/public/CreditsPage';
 import { HelpPage } from './features/public/HelpPage';
 import { NotFound } from './features/public/NotFound';
 import { PrivacyPage } from './features/public/PrivacyPage';
+import { RejectionsPage } from './features/status/RejectionsPage';
+import { SettingsPage } from './features/status/SettingsPage';
 import { useRepos } from './repos';
 import type { ConnectionState } from './sync/engine';
 import { AppShell, PublicShell } from './ui';
@@ -98,6 +103,10 @@ function ConnectedRoutes() {
       <Route path="/profile" component={ProfilePage} />
       <Route path="/profile/places" component={PlacesPage} />
       <Route path="/profile/places/:id" component={PlaceDetail} />
+      <Route path="/profile/health" component={HealthSection} />
+      <Route path="/profile/privacy" component={PrivacySettingsPage} />
+      <Route path="/settings" component={SettingsPage} />
+      <Route path="/rejections" component={RejectionsPage} />
       <Route path="/gyms/:id" component={GymPage} />
       <Route path="/admin/members" component={MembersPage} />
       <Route path="/admin/invitations" component={InvitationsPage} />
@@ -133,6 +142,7 @@ export function App() {
       return (
         <AppShell>
           <NotFound />
+          <HealthReconsentGate />
         </AppShell>
       );
     case 'render': {
@@ -152,9 +162,11 @@ export function App() {
           </PublicShell>
         );
       }
+      // Accord santé à redemander (R-CST-6) : sur tout écran connecté, jamais pendant l'onboarding.
       return (
         <AppShell>
           <ConnectedRoutes />
+          <HealthReconsentGate />
         </AppShell>
       );
     }

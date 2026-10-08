@@ -4,6 +4,7 @@ export * from './Button';
 export * from './ChoiceList';
 export * from './CopyButton';
 export * from './Dialog';
+export * from './download';
 export * from './errors';
 export * from './Field';
 export * from './format';

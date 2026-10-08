@@ -41,3 +41,63 @@
 .indicator > button {
   justify-self: start;
 }
+
+/* Compteurs de la zone d'état (R-SYN-34). */
+.connection {
+  font-weight: 600;
+}
+
+.counter:empty {
+  display: none;
+}
+
+.rejected {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.rejections {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rejection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.rejection > div {
+  display: flex;
+  flex-direction: column;
+  margin-right: auto;
+}
+
+.meta {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.section h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.section p {
+  margin: 0;
+}

@@ -10,7 +10,7 @@ import {
   type ResetPasswordRequest,
 } from '@appsport/contracts';
 import { ApiError, NetworkRequiredError } from '../api/client';
-import type { AppServices } from '../app-services';
+import { type AppServices, whenSignedOut } from '../app-services';
 import { deleteMeta, getMeta, setMeta } from '../local-db/meta';
 import { wipeUserData } from '../local-db/wipe';
 import { pendingCount } from '../sync/outbox';
@@ -173,6 +173,8 @@ export function createMeRepo(s: AppServices): MeRepo {
       withEngineStopped(async () => {
         await api.send('POST', '/api/me/delete', { password });
         await wipeUserData(db, { keepOutbox: false });
+        // L'écran navigue ensuite vers « Ce compte a été supprimé » : la garde doit déjà le savoir.
+        await whenSignedOut(db);
       }),
     async adultNotice() {
       const last = await getMeta(db, 'lastAgeBand');

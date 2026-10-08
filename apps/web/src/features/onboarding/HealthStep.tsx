@@ -1,22 +1,16 @@
 import {
-  BODY_AREA_LABELS,
-  BODY_AREAS,
   type BodyArea,
   HEALTH_CONSENT_TEXT,
   HEALTH_QUESTIONNAIRE,
-  LIMITATION_NOTE_MAX,
-  LIMITATION_SEVERITIES,
-  LIMITATION_SEVERITY_LABELS,
-  LIMITATION_SIDE_LABELS,
-  LIMITATION_SIDES,
   type LimitationSeverity,
   type LimitationSide,
   type TrainingProfilePatch,
 } from '@appsport/contracts';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
-import { Banner, Button, ChoiceList, Field, HealthWarning, useAction } from '../../ui';
+import { Banner, Button, ChoiceList, HealthWarning, useAction } from '../../ui';
+import { LimitationEditForm, LimitationFields, limitationLabel } from './LimitationFields';
 import styles from './onboarding.module.css';
 import { StepActions, type StepProps, saveLabel, saveStep } from './StepActions';
 import { StepTitle } from './StepTitle';
@@ -208,9 +202,13 @@ export type LimitationDraft = ReturnType<typeof useLimitationDraft>;
 
 /**
  * Limitations facultatives (E7.3) : zone, côté, gêne et note de 200 caractères au plus. `draft` :
- * saisie tenue par l'écran parent (onboarding), sinon par le composant.
+ * saisie tenue par l'écran parent (onboarding), sinon par le composant. `editable` (Profil › Santé,
+ * P-DRT-2) : chaque limitation a aussi « Modifier », qui la remplace par son formulaire ; à la
+ * fermeture, le focus revient à « Modifier ». `headingLevel` : niveau du titre (3 par défaut).
  */
-export function LimitationsEditor(p: { draft?: LimitationDraft } = {}) {
+export function LimitationsEditor(
+  p: { draft?: LimitationDraft; editable?: boolean; headingLevel?: 2 | 3 } = {},
+) {
   const repos = useRepos();
   const id = useId();
   const limitations = useLive(() => repos.consent.limitations(), [repos]);
@@ -218,72 +216,71 @@ export function LimitationsEditor(p: { draft?: LimitationDraft } = {}) {
   const draft = p.draft ?? own;
   const add = useAction(() => draft.persist());
   const remove = useAction((limitationId: string) => repos.consent.removeLimitation(limitationId));
+  const [editing, setEditing] = useState<string | null>(null);
+  const returnTo = useRef<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const Heading = p.headingLevel === 2 ? 'h2' : 'h3';
+
+  useEffect(() => {
+    if (editing !== null || returnTo.current === null) return;
+    listRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-edit="${CSS.escape(returnTo.current)}"]`)
+      ?.focus();
+    returnTo.current = null;
+  }, [editing]);
+
+  function closeEditor() {
+    returnTo.current = editing;
+    setEditing(null);
+  }
 
   return (
     <section className={styles.panel}>
-      <h3>Limitations</h3>
+      <Heading>Limitations</Heading>
       <p className={styles.note}>
         Facultatif : une zone sensible ou une gêne à ménager ; aucun diagnostic n'est nécessaire.
       </p>
       {limitations === undefined ? null : limitations.length === 0 ? (
         <p>Aucune</p>
       ) : (
-        <ul className={styles.limitations}>
-          {limitations.map((l) => (
-            <li key={l.id} className={styles.limitation}>
-              <span>
-                <span id={`${id}-${l.id}`}>
-                  {`${BODY_AREA_LABELS[l.bodyArea]} · ${LIMITATION_SIDE_LABELS[l.side]} · ${LIMITATION_SEVERITY_LABELS[l.severity]}`}
+        <ul ref={listRef} className={styles.limitations}>
+          {limitations.map((l) =>
+            editing === l.id ? (
+              <li key={l.id}>
+                <LimitationEditForm limitation={l} onDone={closeEditor} />
+              </li>
+            ) : (
+              <li key={l.id} className={styles.limitation}>
+                <span>
+                  <span id={`${id}-${l.id}`}>{limitationLabel(l)}</span>
+                  {l.note ? <span className={styles.note}> — {l.note}</span> : null}
                 </span>
-                {l.note ? <span className={styles.note}> — {l.note}</span> : null}
-              </span>
-              <Button
-                variant="secondary"
-                aria-describedby={`${id}-${l.id}`}
-                disabled={remove.pending}
-                onClick={() => void remove.run(l.id)}
-              >
-                Supprimer
-              </Button>
-            </li>
-          ))}
+                <span className={styles.itemActions}>
+                  {p.editable ? (
+                    <Button
+                      variant="secondary"
+                      data-edit={l.id}
+                      aria-describedby={`${id}-${l.id}`}
+                      onClick={() => setEditing(l.id)}
+                    >
+                      Modifier
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="secondary"
+                    aria-describedby={`${id}-${l.id}`}
+                    disabled={remove.pending}
+                    onClick={() => void remove.run(l.id)}
+                  >
+                    Supprimer
+                  </Button>
+                </span>
+              </li>
+            ),
+          )}
         </ul>
       )}
-      <Field label="Zone">
-        <select value={draft.bodyArea} onChange={(e) => draft.setBodyArea(e.target.value as BodyArea | '')}>
-          <option value="">Choisir</option>
-          {BODY_AREAS.map((a) => (
-            <option key={a} value={a}>
-              {BODY_AREA_LABELS[a]}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Côté">
-        <select value={draft.side} onChange={(e) => draft.setSide(e.target.value as LimitationSide | '')}>
-          <option value="">Choisir</option>
-          {LIMITATION_SIDES.map((s) => (
-            <option key={s} value={s}>
-              {LIMITATION_SIDE_LABELS[s]}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <ChoiceList<LimitationSeverity>
-        name={`${id}-severity`}
-        legend="Gêne"
-        value={draft.severity}
-        onChange={draft.setSeverity}
-        options={LIMITATION_SEVERITIES.map((s) => ({ value: s, label: LIMITATION_SEVERITY_LABELS[s] }))}
-      />
-      <Field label="Note" hint={`${LIMITATION_NOTE_MAX} caractères au plus.`}>
-        <input
-          type="text"
-          maxLength={LIMITATION_NOTE_MAX}
-          value={draft.note}
-          onChange={(e) => draft.setNote(e.target.value)}
-        />
-      </Field>
+      <LimitationFields state={draft} />
       {add.error ? <Banner tone="error">{add.error}</Banner> : null}
       {remove.error ? <Banner tone="error">{remove.error}</Banner> : null}
       <div className={styles.actions}>
