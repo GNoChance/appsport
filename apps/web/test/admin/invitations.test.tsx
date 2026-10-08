@@ -116,6 +116,25 @@ describe('InvitationsPage : liste (R-INV-7)', () => {
     expect(await screen.findByText("Aucune invitation pour l'instant.")).toBeTruthy();
   });
 
+  it('invitation utilisée entre-temps (409 conflict) : message, liste relue avec le nouvel état', async () => {
+    const api = createFakeApi().on('POST', '/api/admin/invitations/:id/revoke', {
+      status: 409,
+      body: { error: 'conflict' },
+    });
+    await renderInvitations({ api });
+    api.on('GET', '/api/admin/invitations', {
+      status: 200,
+      body: [invitation({ id: 'i-1', note: 'pour Léa', state: 'used', usedByUsername: 'lea' })],
+    });
+    fireEvent.click(item(0).getByRole('button', { name: 'Révoquer' }));
+    const d = within(screen.getByRole('dialog', { name: "Révoquer l'invitation" }));
+    fireEvent.click(d.getByRole('button', { name: 'Révoquer' }));
+    expect(await d.findByText("L'élément a changé entre-temps : la liste est relue.")).toBeTruthy();
+    expect(await screen.findByText('Utilisée par lea')).toBeTruthy();
+    expect(loads(api)).toBe(2);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
   it('« Révoquer » (confirmé) → POST …/i-1/revoke {} puis liste rechargée', async () => {
     const api = createFakeApi().on('POST', '/api/admin/invitations/:id/revoke', { status: 204 });
     await renderInvitations({ api });

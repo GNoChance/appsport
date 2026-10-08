@@ -14,6 +14,7 @@ import { AdminNav } from './AdminNav';
 import styles from './admin.module.css';
 import {
   ActionDialog,
+  isStaleError,
   LoadFailure,
   SECRET_SHOWN_ONCE,
   useRestoreFocus,
@@ -180,7 +181,12 @@ function ResetLinkDialog(p: DialogProps) {
   const [copyFailed, setCopyFailed] = useState(false);
   const generate = useAction(
     async () => {
-      setCreated(await repos.admin.resetLink(p.member.id));
+      const r = await repos.admin.resetLink(p.member.id).catch((e: unknown) => {
+        // Membre supprimé entre-temps : la liste est relue, le message reste.
+        if (isStaleError(e)) void p.reload();
+        throw e;
+      });
+      setCreated(r);
       void p.reload();
     },
     { reset_self_forbidden: RESET_SELF_MESSAGE },
@@ -257,6 +263,7 @@ function SessionsDialog(p: DialogProps) {
       title={`Fermer les sessions de ${name}`}
       confirmLabel="Fermer les sessions"
       fallbackFocus={p.fallbackFocus}
+      reload={p.reload}
       onClose={p.onClose}
       onConfirm={async () => {
         await repos.admin.revokeSessions(p.member.id);
@@ -280,6 +287,7 @@ function StatusDialog(p: DialogProps) {
       confirmLabel={disabling ? 'Désactiver' : 'Réactiver'}
       danger={disabling}
       fallbackFocus={p.fallbackFocus}
+      reload={p.reload}
       onClose={p.onClose}
       onConfirm={async () => {
         await repos.admin.setStatus(p.member.id, disabling ? 'disabled' : 'active');
@@ -317,6 +325,7 @@ function RoleDialog(p: DialogProps) {
       canConfirm={password !== ''}
       overrides={PASSWORD_OVERRIDES}
       fallbackFocus={p.fallbackFocus}
+      reload={p.reload}
       onClose={p.onClose}
       onConfirm={async () => {
         await repos.admin.setRole(p.member.id, promoting ? 'admin' : 'member', password);
@@ -349,6 +358,7 @@ function BirthDateDialog(p: DialogProps) {
       confirmLabel="Enregistrer"
       canConfirm={birthDate !== ''}
       fallbackFocus={p.fallbackFocus}
+      reload={p.reload}
       onClose={p.onClose}
       onConfirm={async () => {
         await repos.admin.setBirthDate(p.member.id, birthDate);
@@ -383,6 +393,7 @@ function DeleteDialog(p: DialogProps) {
       canConfirm={confirmed && password !== ''}
       overrides={PASSWORD_OVERRIDES}
       fallbackFocus={p.fallbackFocus}
+      reload={p.reload}
       onClose={p.onClose}
       onConfirm={async () => {
         await repos.admin.deleteMember(p.member.id, typed.trim(), password);

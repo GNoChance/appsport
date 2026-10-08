@@ -80,6 +80,7 @@ export function AdminGymsPage() {
           danger
           overrides={{ gym_in_use: GYM_IN_USE_MESSAGE }}
           fallbackFocus={searchRef}
+          reload={reload}
           onClose={() => setDeleting(null)}
           onConfirm={async () => {
             await repos.admin.deleteGym(deleting.id);
@@ -140,6 +141,7 @@ function EditGymDialog(p: {
       title={`Modifier ${p.gym.name}`}
       confirmLabel="Enregistrer"
       fallbackFocus={p.fallbackFocus}
+      reload={p.reload}
       validate={validate}
       onConfirm={save}
       onClose={p.onClose}

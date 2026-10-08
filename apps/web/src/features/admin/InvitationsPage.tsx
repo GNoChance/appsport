@@ -103,6 +103,7 @@ export function InvitationsPage() {
           confirmLabel="Révoquer"
           danger
           fallbackFocus={listRef}
+          reload={reload}
           onClose={() => setRevoking(null)}
           onConfirm={async () => {
             await repos.admin.revokeInvitation(revoking.id);

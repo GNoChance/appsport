@@ -86,6 +86,18 @@ describe('AdminGymsPage (02 §6, R-SAL-4, R-SAL-7)', () => {
     expect(sent(api, 'DELETE', '/api/admin/gyms/g-1')).toEqual([{}]);
   });
 
+  it('salle déjà supprimée (404 not_found) : message gardé, liste relue', async () => {
+    const api = createFakeApi().on('DELETE', '/api/admin/gyms/:id', {
+      status: 404,
+      body: { error: 'not_found' },
+    });
+    await renderGyms(api);
+    fireEvent.click(gym('Basic Fit').getByRole('button', { name: 'Supprimer' }));
+    fireEvent.click(dialog().getByRole('button', { name: 'Supprimer' }));
+    expect(await dialog().findByText('Élément introuvable.')).toBeTruthy();
+    await until(() => searches(api).length === 2);
+  });
+
   it('409 gym_in_use → message, dialogue gardé', async () => {
     const api = createFakeApi().on('DELETE', '/api/admin/gyms/:id', {
       status: 409,

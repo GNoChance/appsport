@@ -292,6 +292,74 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
   });
 });
 
+describe('MembersPage : membre changé entre-temps (02 §6)', () => {
+  it.each([
+    [
+      'Fermer les sessions',
+      404,
+      'not_found',
+      'Fermer les sessions',
+      'revoke-sessions',
+      'Élément introuvable.',
+    ],
+    [
+      'Supprimer',
+      400,
+      'validation',
+      'Supprimer définitivement',
+      'delete',
+      'Certaines valeurs ne sont pas valides.',
+    ],
+  ] as const)(
+    '« %s » refusé (%i %s) : message gardé dans le dialogue, liste relue',
+    async (action, status, code, confirm, route, message) => {
+      const api = createFakeApi().on('POST', `/api/admin/members/:id/${route}`, {
+        status,
+        body: { error: code },
+      });
+      await renderMembers({ api });
+      // Supprimée ou renommée ailleurs : la liste relue ne contient plus « lea ».
+      api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN, { ...LEA, username: 'lea2' }] });
+      open('lea', action);
+      if (route === 'delete') {
+        fill('Tape le pseudo pour confirmer', 'lea');
+        fill('Ton mot de passe', PASSWORD);
+      }
+      fireEvent.click(confirmButton(confirm));
+      expect(await dialog().findByText(message)).toBeTruthy();
+      expect(await screen.findByRole('row', { name: 'lea2' })).toBeTruthy();
+      expect(memberLoads(api)).toBe(2);
+      expect(screen.getByRole('dialog')).toBeTruthy();
+    },
+  );
+
+  it('lien de réinitialisation, membre supprimé entre-temps (404) : liste relue', async () => {
+    const api = createFakeApi().on('POST', '/api/admin/members/:id/reset-link', {
+      status: 404,
+      body: { error: 'not_found' },
+    });
+    await renderMembers({ api });
+    api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN] });
+    fireEvent.click(open('lea', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
+    expect(await dialog().findByText('Élément introuvable.')).toBeTruthy();
+    await until(() => screen.queryByRole('row', { name: 'lea' }) === null);
+    expect(memberLoads(api)).toBe(2);
+  });
+
+  it('autre refus (409 last_admin) : la liste n’est pas relue', async () => {
+    const api = createFakeApi().on('POST', '/api/admin/members/:id/status', {
+      status: 409,
+      body: { error: 'last_admin' },
+    });
+    await renderMembers({ api });
+    open('bastien', 'Désactiver');
+    fireEvent.click(confirmButton('Désactiver'));
+    expect(await dialog().findByText('Il doit rester au moins un administrateur actif.')).toBeTruthy();
+    await settle();
+    expect(memberLoads(api)).toBe(1);
+  });
+});
+
 describe('MembersPage : sessions et statut (R-AUTH-7, R-ADM-1, R-ROLE-2)', () => {
   it('« Fermer les sessions » → POST revoke-sessions {} puis liste rechargée', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/revoke-sessions', { status: 204 });

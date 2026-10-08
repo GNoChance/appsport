@@ -23,6 +23,14 @@ export const WRONG_PASSWORD_MESSAGE = 'Mot de passe incorrect.';
 /** Code d'invitation ou de réinitialisation : affiché une seule fois, jamais gardé (R-INV-3, R-RST-1). */
 export const SECRET_SHOWN_ONCE = 'Ce code ne sera plus affiché.';
 
+/** Refus d'une action sur un élément changé ou disparu depuis la lecture de la liste. */
+const STALE_CODES: readonly ApiErrorCode[] = ['conflict', 'not_found', 'validation'];
+
+/** L'élément a changé entre-temps (409, 404, 400) : la liste affichée est périmée, à relire. */
+export const isStaleError = (e: unknown): boolean => e instanceof ApiError && STALE_CODES.includes(e.code);
+
+const STALE_CONFLICT = "L'élément a changé entre-temps : la liste est relue.";
+
 /**
  * Message d'une action d'administration : surcharges de l'écran, puis message commun ;
  * `rate_limited` (ressaisie du mot de passe, R-AUTH-2) annonce l'attente en minutes.
@@ -108,7 +116,8 @@ export function useRestoreFocus(fallback?: RefObject<HTMLElement | null>): void 
  * Dialogue de confirmation d'une action d'administration (en ligne seulement). Le bouton de
  * confirmation soumet le formulaire du dialogue (Entrée dans un champ aussi) ; `validate` faux :
  * saisie à corriger, signalée par l'écran, rien ne part. Pendant l'envoi, ni « Annuler » ni Échap
- * ne ferment. Échec : message dans le dialogue, qui reste ouvert. Réussite : `onConfirm` a fini
+ * ne ferment. Échec : message dans le dialogue, qui reste ouvert ; élément changé entre-temps
+ * (`isStaleError`) : la liste est relue (`reload`), le message reste. Réussite : `onConfirm` a fini
  * (liste relue comprise), le dialogue se ferme. Monté seulement ouvert : chaque ouverture repart vide.
  */
 export function ActionDialog(p: {
@@ -120,6 +129,8 @@ export function ActionDialog(p: {
   fallbackFocus?: RefObject<HTMLElement | null>;
   validate?(): boolean;
   onConfirm(): Promise<void>;
+  /** Relit la liste de l'écran quand l'élément a changé entre-temps. */
+  reload(): Promise<void>;
   onClose(): void;
   children?: ReactNode;
 }) {
@@ -146,7 +157,8 @@ export function ActionDialog(p: {
     try {
       await p.onConfirm();
     } catch (err) {
-      setError(adminErrorMessage(err, p.overrides));
+      if (isStaleError(err)) void p.reload();
+      setError(adminErrorMessage(err, { conflict: STALE_CONFLICT, ...p.overrides }));
       return;
     } finally {
       busy.current = false;
