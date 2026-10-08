@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { NetworkRequiredError } from '../api/client';
 import type { AppServices } from '../app-services';
 import { equipmentOf } from './places-repo';
-import { parseJsonColumn, sendThenPull, text } from './rows';
+import { isLive, parseJsonColumn, sendThenPull, text } from './rows';
 
 export interface GymsRepo {
   search(q: string): Promise<GymSummary[]>;
@@ -21,7 +21,8 @@ export interface GymsRepo {
   /**
    * En ligne : fiche du serveur. Hors ligne : fiche tirée des miroirs (`offline: true`), sans droit
    * d'édition, historique ni membres visibles ; l'écran affiche alors « Liste disponible en ligne »
-   * au lieu de la liste vide. Salle absente des miroirs : l'erreur réseau est relancée.
+   * au lieu de la liste vide. Salle absente des miroirs ou supprimée (R-SAL-7) : l'erreur réseau est
+   * relancée.
    */
   detail(id: string): Promise<{ detail: GymDetail; offline: boolean }>;
   update(id: string, r: UpdateGymRequest): Promise<void>;
@@ -36,13 +37,13 @@ export function createGymsRepo(s: AppServices): GymsRepo {
 
   async function offlineDetail(id: string): Promise<GymDetail | null> {
     const gym = await db.mirror('gym').get(id);
-    if (!gym) return null;
+    if (!gym || !isLive(gym)) return null;
     return {
       id: gym.id,
       name: text(gym.name) ?? '',
       city: text(gym.city) ?? '',
       loadSettings: parseJsonColumn(gym.loadSettings, LoadSettingsSchema) ?? defaultLoadSettings('gym'),
-      deletedAt: gym.deletedAt,
+      deletedAt: null,
       equipment: await equipmentOf(db, 'gym_equipment', 'gymId', gym.id),
       canEdit: false,
       visibleMembers: [],

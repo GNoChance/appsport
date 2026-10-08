@@ -1,6 +1,6 @@
 import { defaultLoadSettings, EQUIPMENT, type GymDetail, LoadSettingsSchema } from '@appsport/contracts';
 import { describe, expect, it } from 'vitest';
-import { ApiError } from '../../src/api/client';
+import { ApiError, NetworkRequiredError } from '../../src/api/client';
 import type { MirrorRow } from '../../src/local-db/db';
 import { getMeta } from '../../src/local-db/meta';
 import { createRepos } from '../../src/repos';
@@ -180,6 +180,20 @@ describe('PlacesRepo', () => {
     expect((await repos.places.get('p-2'))?.name).toBe('Garage');
   });
 
+  it("list : le principal d'abord, même quand son id et son nom viennent après", async () => {
+    const { repos, db } = await setup();
+    const p1 = await db.mirror('place').get('p-1');
+    const p2 = await db.mirror('place').get('p-2');
+    await seedMirror(db, 'place', [
+      { ...p1, isPrimary: false },
+      { ...p2, isPrimary: true },
+    ]);
+    expect((await repos.places.list()).map((p) => [p.id, p.name, p.isPrimary])).toEqual([
+      ['p-2', 'Garage', true],
+      ['p-1', 'Basic Fit', false],
+    ]);
+  });
+
   it('create, update, remove et matériel : API puis pull', async () => {
     const { repos, api, sync } = await setup();
     api.on('POST', '/api/places', { status: 201, body: { id: 'p-9' } });
@@ -235,6 +249,14 @@ describe('GymsRepo', () => {
         history: [],
       },
     });
+  });
+
+  it('detail hors ligne, salle supprimée dans le miroir : erreur réseau relancée (R-SAL-7)', async () => {
+    const { repos, api, db } = await setup();
+    const gym = await db.mirror('gym').get('g-1');
+    await seedMirror(db, 'gym', [{ ...gym, deletedAt: DELETED }]);
+    api.setOffline('reject');
+    await expect(repos.gyms.detail('g-1')).rejects.toBeInstanceOf(NetworkRequiredError);
   });
 
   it('create : 409 gym_duplicate → ApiError avec gymId, aucun pull', async () => {

@@ -10,8 +10,9 @@ import {
   type GymHistoryAction,
   type UpdateGymRequest,
 } from '@appsport/contracts';
-import { type FormEvent, type ReactNode, useEffect, useId, useState } from 'react';
+import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { z } from 'zod';
+import { ApiError } from '../../api/client';
 import { useRepos } from '../../repos';
 import { Banner, Button, errorMessage, Field, formatDateTime, Page, useAction } from '../../ui';
 import { EquipmentChecklist, EquipmentList } from './EquipmentChecklist';
@@ -22,6 +23,7 @@ export const GYM_HISTORY_LIMIT = 10;
 
 export const OFFLINE_GYM_TEXT = 'Hors ligne : dernière version connue.';
 export const GYM_RIGHTS_TEXT = 'Seuls les membres qui ont cette salle parmi leurs lieux peuvent la modifier.';
+export const GYM_DELETED_TEXT = 'Cette salle a été supprimée.';
 
 const ACTION_LABELS: Record<GymHistoryAction, string> = {
   create: 'Création de la salle',
@@ -54,23 +56,40 @@ const lengthError = (value: string, min: number, max: number) =>
   value.length < min || value.length > max ? `${min} à ${max} caractères.` : null;
 
 type Loaded = { detail: GymDetail; offline: boolean };
+/** Échec du chargement ; « Réessayer » sauf pour une salle inconnue, qui ne viendra pas. */
+type Failure = { message: string; retry: boolean };
 
 /**
  * Fiche d'une salle (02 §10.4, §10.6) : nom, ville, matériel, « Qui va à cette salle » (pour tout
  * membre connecté, R-VIS-2) et les dernières modifications. Les membres qui l'ont parmi leurs lieux
  * (et les admins) la modifient en ligne (R-SAL-4) ; hors ligne, dernière version connue des miroirs,
- * en lecture seule (§1 principe 4).
+ * en lecture seule (§1 principe 4). Salle supprimée (R-SAL-7) : signalée, en lecture seule, sans
+ * liste des membres. « Modifier » ouvre le formulaire avec le focus sur le nom ; à la fermeture, le
+ * focus revient au bouton.
  */
 export function GymPage(p: { params: { id: string } }) {
   const repos = useRepos();
   const id = p.params.id;
-  const [state, setState] = useState<{ loaded: Loaded | null; error: string | null }>({
+  const [state, setState] = useState<{ loaded: Loaded | null; error: Failure | null }>({
     loaded: null,
     error: null,
   });
   const [reload, setReload] = useState(0);
   const [editing, setEditing] = useState(false);
+  const editId = useId();
+  const returnFocus = useRef(false);
   const refresh = () => setReload((n) => n + 1);
+
+  useEffect(() => {
+    if (editing || !returnFocus.current) return;
+    returnFocus.current = false;
+    document.getElementById(editId)?.focus();
+  }, [editing, editId]);
+
+  function closeEditor() {
+    returnFocus.current = true;
+    setEditing(false);
+  }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `reload` relit la fiche
   useEffect(() => {
@@ -80,8 +99,10 @@ export function GymPage(p: { params: { id: string } }) {
         if (current) setState({ loaded, error: null });
       },
       (error: unknown) => {
-        if (current)
-          setState((s) => ({ ...s, error: errorMessage(error, { not_found: 'Salle introuvable.' }) }));
+        if (!current) return;
+        const message = errorMessage(error, { not_found: 'Salle introuvable.' });
+        const retry = !(error instanceof ApiError && error.code === 'not_found');
+        setState((s) => ({ ...s, error: { message, retry } }));
       },
     );
     return () => {
@@ -91,10 +112,12 @@ export function GymPage(p: { params: { id: string } }) {
 
   const failure = state.error ? (
     <>
-      <Banner tone="error">{state.error}</Banner>
-      <Button variant="secondary" onClick={refresh}>
-        Réessayer
-      </Button>
+      <Banner tone="error">{state.error.message}</Banner>
+      {state.error.retry ? (
+        <Button variant="secondary" onClick={refresh}>
+          Réessayer
+        </Button>
+      ) : null}
     </>
   ) : null;
 
@@ -108,6 +131,7 @@ export function GymPage(p: { params: { id: string } }) {
 
   const { detail, offline } = state.loaded;
   const editable = detail.canEdit && !offline;
+  const deleted = detail.deletedAt !== null;
 
   return (
     <Page title={detail.name} back="/profile/places">
@@ -116,9 +140,9 @@ export function GymPage(p: { params: { id: string } }) {
       {editing && editable ? (
         <GymInfoForm
           detail={detail}
-          onCancel={() => setEditing(false)}
+          onCancel={closeEditor}
           onSaved={() => {
-            setEditing(false);
+            closeEditor();
             refresh();
           }}
         />
@@ -127,12 +151,13 @@ export function GymPage(p: { params: { id: string } }) {
       )}
       {editable && !editing ? (
         <div className={styles.actions}>
-          <Button variant="secondary" onClick={() => setEditing(true)}>
+          <Button id={editId} variant="secondary" onClick={() => setEditing(true)}>
             Modifier
           </Button>
         </div>
       ) : null}
-      {offline || detail.canEdit ? null : <p className={styles.hint}>{GYM_RIGHTS_TEXT}</p>}
+      {deleted ? <Banner tone="warning">{GYM_DELETED_TEXT}</Banner> : null}
+      {offline || deleted || detail.canEdit ? null : <p className={styles.hint}>{GYM_RIGHTS_TEXT}</p>}
       <GymSection title="Matériel">
         {editable ? (
           <GymEquipment detail={detail} onSaved={refresh} />
@@ -140,19 +165,21 @@ export function GymPage(p: { params: { id: string } }) {
           <EquipmentList value={detail.equipment} />
         )}
       </GymSection>
-      <GymSection title="Qui va à cette salle">
-        {offline ? (
-          <p>Liste disponible en ligne</p>
-        ) : detail.visibleMembers.length === 0 ? (
-          <p>Personne n'est visible pour l'instant.</p>
-        ) : (
-          <ul className={styles.members}>
-            {detail.visibleMembers.map((m) => (
-              <li key={m}>{m}</li>
-            ))}
-          </ul>
-        )}
-      </GymSection>
+      {deleted ? null : (
+        <GymSection title="Qui va à cette salle">
+          {offline ? (
+            <p>Liste disponible en ligne</p>
+          ) : detail.visibleMembers.length === 0 ? (
+            <p>Personne n'est visible pour l'instant.</p>
+          ) : (
+            <ul className={styles.members}>
+              {detail.visibleMembers.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          )}
+        </GymSection>
+      )}
       <GymSection title="Dernières modifications">
         {offline ? (
           <p>Historique disponible en ligne</p>
@@ -181,11 +208,16 @@ function GymSection(p: { title: string; children: ReactNode }) {
   );
 }
 
-/** Nom et ville (R-SAL-2 : 2 à 60 caractères) ; seuls les champs changés partent (R-SAL-5). */
+/**
+ * Nom et ville (R-SAL-2 : 2 à 60 caractères) ; seuls les champs changés depuis l'ouverture partent
+ * (R-SAL-5) : une fiche relue entre-temps (matériel coché) ne renvoie pas un nom changé par un autre.
+ */
 function GymInfoForm(p: { detail: GymDetail; onCancel(): void; onSaved(): void }) {
   const repos = useRepos();
-  const [name, setName] = useState(p.detail.name);
-  const [city, setCity] = useState(p.detail.city);
+  const [initial] = useState(() => ({ name: p.detail.name, city: p.detail.city }));
+  const [name, setName] = useState(initial.name);
+  const [city, setCity] = useState(initial.city);
+  const focusOnMount = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
   const [errors, setErrors] = useState<{ name: string | null; city: string | null }>({
     name: null,
     city: null,
@@ -206,8 +238,8 @@ function GymInfoForm(p: { detail: GymDetail; onCancel(): void; onSaved(): void }
     setErrors(next);
     if (next.name || next.city) return;
     const patch = {
-      ...(n !== p.detail.name ? { name: n } : {}),
-      ...(c !== p.detail.city ? { city: c } : {}),
+      ...(n !== initial.name ? { name: n } : {}),
+      ...(c !== initial.city ? { city: c } : {}),
     };
     if (Object.keys(patch).length === 0) p.onCancel();
     else void save.run(patch);
@@ -216,7 +248,13 @@ function GymInfoForm(p: { detail: GymDetail; onCancel(): void; onSaved(): void }
   return (
     <form className={styles.form} noValidate onSubmit={submit}>
       <Field label="Nom de la salle" error={errors.name}>
-        <input type="text" maxLength={GYM_NAME_MAX} value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          ref={focusOnMount}
+          type="text"
+          maxLength={GYM_NAME_MAX}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
       </Field>
       <Field label="Ville" error={errors.city}>
         <input type="text" maxLength={GYM_CITY_MAX} value={city} onChange={(e) => setCity(e.target.value)} />

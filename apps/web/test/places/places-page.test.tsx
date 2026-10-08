@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { PlaceDetail } from '../../src/features/places/PlaceDetail';
 import { PlacesPage } from '../../src/features/places/PlacesPage';
 import type { AppDb } from '../../src/local-db/db';
-import { fill } from '../support/auth';
+import { fill, settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
 import { button, checkbox, choose, seedPrimaryGym } from '../support/onboarding';
@@ -16,36 +16,59 @@ const VISIBLE = 'Visible à la salle';
 const KEEP_ONE = 'Tu dois garder au moins un lieu.';
 const MINOR_HINT = 'Désactivé par défaut pour les moins de 18 ans.';
 
-/** p-1 : salle « Basic Fit » (Lyon), principale et visible ; p-2 : maison « Garage » (sauf `single`). */
-async function seedPlaces(db: AppDb, o: { single?: boolean } = {}) {
+const GYM_PLACE = {
+  id: 'p-1',
+  ownerId: 'u-1',
+  kind: 'gym',
+  gymId: 'g-1',
+  name: null,
+  isPrimary: true,
+  visibleAtGym: true,
+  loadSettings: null,
+};
+const HOME_PLACE = {
+  id: 'p-2',
+  ownerId: 'u-1',
+  kind: 'home',
+  gymId: null,
+  name: 'Garage',
+  isPrimary: false,
+  visibleAtGym: null,
+  loadSettings: defaultLoadSettings('home'),
+};
+
+/**
+ * p-1 : salle « Basic Fit » (Lyon), principale et visible ; p-2 : maison « Garage » (sauf `single`).
+ * `garagePrimary` : « Garage » principale, alors qu'elle vient après « Basic Fit » par l'id et le nom.
+ */
+async function seedPlaces(db: AppDb, o: { single?: boolean; garagePrimary?: boolean } = {}) {
   await seedPrimaryGym(db);
   await seedMirror(db, 'gym_equipment', [
     { id: 'g-1:barbell', gymId: 'g-1', equipmentCode: 'barbell' },
     { id: 'g-1:flat_bench', gymId: 'g-1', equipmentCode: 'flat_bench' },
   ]);
   if (o.single) return;
-  await seedMirror(db, 'place', [
-    {
-      id: 'p-2',
-      ownerId: 'u-1',
-      kind: 'home',
-      gymId: null,
-      name: 'Garage',
-      isPrimary: false,
-      visibleAtGym: null,
-      loadSettings: defaultLoadSettings('home'),
-    },
-  ]);
+  await seedMirror(db, 'place', [HOME_PLACE]);
   await seedMirror(db, 'home_equipment', [
     { id: 'p-2:chair', ownerId: 'u-1', placeId: 'p-2', equipmentCode: 'chair' },
   ]);
+  if (o.garagePrimary) {
+    await seedMirror(db, 'place', [
+      { ...GYM_PLACE, isPrimary: false },
+      { ...HOME_PLACE, isPrimary: true },
+    ]);
+  }
 }
 
-async function renderPlaces(o: { me?: MeResponse; api?: FakeApi; single?: boolean } = {}) {
+async function renderPlaces(
+  o: { me?: MeResponse; api?: FakeApi; single?: boolean; garagePrimary?: boolean } = {},
+) {
   const db = createTestLocalDb();
   await seedPlaces(db, o);
   const rendered = await renderWithServices(<PlacesPage />, { me: o.me, db, api: o.api });
   await screen.findByRole('link', { name: 'Basic Fit' });
+  // Relectures de la liste déclenchées par l'amorçage du miroir : passées avant toute action.
+  await settle();
   return rendered;
 }
 
@@ -67,11 +90,12 @@ const sent = (api: FakeApi, method: string, path: string) =>
 
 describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
   it("le principal d'abord avec le badge « Principal », puis les autres", async () => {
-    await renderPlaces();
+    // « Garage » principale vient après « Basic Fit » par l'id, le nom et l'ordre d'écriture.
+    await renderPlaces({ garagePrimary: true });
     const names = screen.getAllByRole('listitem').map((li) => li.querySelector('a')?.textContent);
-    expect(names).toEqual(['Basic Fit', 'Garage']);
-    expect(place('Basic Fit').getByText('Principal')).toBeTruthy();
-    expect(place('Garage').queryByText('Principal')).toBeNull();
+    expect(names).toEqual(['Garage', 'Basic Fit']);
+    expect(place('Garage').getByText('Principal')).toBeTruthy();
+    expect(place('Basic Fit').queryByText('Principal')).toBeNull();
     expect(place('Basic Fit').getByText('Salle · Lyon')).toBeTruthy();
     expect(place('Garage').getByText('Maison')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Garage' }).getAttribute('href')).toBe('/profile/places/p-2');
@@ -101,6 +125,40 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
     await until(() => place('Garage').queryByLabelText('Nom du lieu') === null);
   });
 
+  it('renommer hors ligne : « Nécessite le réseau », le formulaire garde la saisie', async () => {
+    const api = createFakeApi();
+    await renderPlaces({ api });
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
+    api.setOffline('reject');
+    fireEvent.change(place('Garage').getByLabelText('Nom du lieu'), { target: { value: 'Cave' } });
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Enregistrer' }));
+    expect((await place('Garage').findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    expect((place('Garage').getByLabelText('Nom du lieu') as HTMLInputElement).value).toBe('Cave');
+  });
+
+  it('« Renommer » : le focus va au champ, puis revient à « Renommer » après « Annuler » ou « Enregistrer »', async () => {
+    const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
+    await renderPlaces({ api });
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
+    expect(document.activeElement).toBe(place('Garage').getByLabelText('Nom du lieu'));
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Annuler' }));
+    expect(document.activeElement).toBe(place('Garage').getByRole('button', { name: 'Renommer' }));
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
+    fireEvent.change(place('Garage').getByLabelText('Nom du lieu'), { target: { value: 'Cave' } });
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Enregistrer' }));
+    await until(() => document.activeElement === place('Garage').queryByRole('button', { name: 'Renommer' }));
+  });
+
+  it('renommage : « Enregistrer » et « Annuler » décrits par le nom du lieu', async () => {
+    await renderPlaces();
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
+    const nameId = screen.getByRole('link', { name: 'Garage' }).id;
+    for (const name of ['Enregistrer', 'Annuler']) {
+      const described = place('Garage').getByRole('button', { name }).getAttribute('aria-describedby');
+      expect(described?.split(' ')).toContain(nameId);
+    }
+  });
+
   it('nom vide : message local, aucune requête', async () => {
     const api = createFakeApi();
     await renderPlaces({ api });
@@ -113,7 +171,7 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
 
   it('« Visible à la salle » décoché → PATCH { visibleAtGym: false } (R-VIS-3) ; pas de case pour une maison', async () => {
     const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
-    await renderPlaces({ api });
+    const { db } = await renderPlaces({ api });
     expect(place('Garage').queryByRole('checkbox')).toBeNull();
     const visible = place('Basic Fit').getByRole('checkbox', { name: VISIBLE }) as HTMLInputElement;
     expect(visible.checked).toBe(true);
@@ -124,6 +182,18 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
     // Envoi réussi, miroir pas encore relu : la case garde le choix.
     await until(() => !visible.disabled);
     expect(visible.checked).toBe(false);
+    // Miroir relu (un autre appareil a remis la visibilité) : il fait foi.
+    await seedMirror(db, 'place', [{ ...GYM_PLACE, visibleAtGym: true }]);
+    await until(() => visible.checked);
+  });
+
+  it("« Visible à la salle » : décrite par le nom du lieu et par l'aide « Coché : … »", async () => {
+    await renderPlaces();
+    const visible = place('Basic Fit').getByRole('checkbox', { name: VISIBLE });
+    const described = visible.getAttribute('aria-describedby')?.split(' ') ?? [];
+    expect(described).toContain(screen.getByRole('link', { name: 'Basic Fit' }).id);
+    const hint = place('Basic Fit').getByText('Coché : ton pseudo apparaît dans « Qui va à cette salle ».');
+    expect(described).toContain(hint.id);
   });
 
   it('« Visible à la salle » hors ligne : « Nécessite le réseau », la case revient', async () => {
@@ -175,6 +245,45 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
     await until(() => sent(api, 'DELETE', '/api/places/p-1').length === 1);
     expect(sent(api, 'DELETE', '/api/places/p-1')).toEqual([{ newPrimaryId: 'p-2' }]);
+  });
+
+  it('suppression : le focus va au lieu restant ; « Annuler » le rend à « Supprimer »', async () => {
+    const api = createFakeApi();
+    const { db } = await renderPlaces({ api });
+    // Le pull qui suit la suppression retire le lieu du miroir.
+    api.on('DELETE', '/api/places/:id', async () => {
+      await seedMirror(db, 'place', [{ ...HOME_PLACE, deletedAt: '2026-10-06T12:00:00.000Z' }]);
+      return { status: 204 };
+    });
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Supprimer' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Annuler' }));
+    expect(document.activeElement).toBe(place('Garage').getByRole('button', { name: 'Supprimer' }));
+    fireEvent.click(place('Garage').getByRole('button', { name: 'Supprimer' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Supprimer' }));
+    await until(() => screen.queryByRole('link', { name: 'Garage' }) === null);
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Basic Fit' }));
+  });
+
+  it('boîte de suppression : une relecture de la liste ou un envoi ne reprend pas le focus', async () => {
+    const api = createFakeApi().on('DELETE', '/api/places/:id', {
+      status: 409,
+      body: { error: 'primary_required' },
+    });
+    const { db } = await renderPlaces({ api });
+    fireEvent.click(place('Basic Fit').getByRole('button', { name: 'Supprimer' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    const garage = dialog.getByRole('radio', { name: 'Garage' });
+    fireEvent.click(garage);
+    garage.focus();
+    // Pull en arrière-plan : la liste des lieux est relue et rendue de nouveau.
+    await seedMirror(db, 'home_equipment', [
+      { id: 'p-2:table', ownerId: 'u-1', placeId: 'p-2', equipmentCode: 'table' },
+    ]);
+    await settle();
+    expect(document.activeElement).toBe(garage);
+    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
+    await dialog.findByRole('alert');
+    expect(document.activeElement).toBe(garage);
   });
 
   it('un seul lieu : « Supprimer » désactivé, « Tu dois garder au moins un lieu. »', async () => {
@@ -229,6 +338,38 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
       { kind: 'gym', gymId: 'g-2', isPrimary: false, visibleAtGym: true },
     ]);
     await until(() => screen.queryByRole('button', { name: 'Valider' }) === null);
+    await until(() => document.activeElement === screen.queryByRole('button', { name: 'Ajouter une salle' }));
+  });
+
+  it('« Ajouter une salle » : le focus va au titre du formulaire, puis revient au bouton après « Annuler »', async () => {
+    const api = createFakeApi().on('GET', '/api/gyms', { status: 200, body: [] });
+    await renderPlaces({ api });
+    fireEvent.click(button('Ajouter une salle'));
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Ajouter une salle' }));
+    fireEvent.click(button('Annuler'));
+    expect(document.activeElement).toBe(button('Ajouter une salle'));
+  });
+
+  it('« Ajouter une maison » : le focus va au titre du formulaire, puis revient au bouton après « Annuler »', async () => {
+    await renderPlaces();
+    fireEvent.click(button('Ajouter une maison'));
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { level: 2, name: 'Ajouter une maison' }),
+    );
+    fireEvent.click(button('Annuler'));
+    expect(document.activeElement).toBe(button('Ajouter une maison'));
+  });
+
+  it('« Ajouter une maison » hors ligne : « Nécessite le réseau », le formulaire garde la saisie', async () => {
+    const api = createFakeApi();
+    await renderPlaces({ api });
+    fireEvent.click(button('Ajouter une maison'));
+    api.setOffline('reject');
+    fill('Nom du lieu', 'Garage 2');
+    fireEvent.click(button('Ajouter la maison'));
+    expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    expect(button('Ajouter la maison')).toBeTruthy();
+    expect((screen.getByLabelText('Nom du lieu') as HTMLInputElement).value).toBe('Garage 2');
   });
 
   it('« Ajouter une salle » pour un mineur : case décochée par défaut', async () => {
@@ -259,6 +400,9 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
       },
     ]);
     await until(() => screen.queryByRole('button', { name: 'Ajouter la maison' }) === null);
+    await until(
+      () => document.activeElement === screen.queryByRole('button', { name: 'Ajouter une maison' }),
+    );
   });
 });
 
@@ -267,13 +411,20 @@ describe('PlaceDetail', () => {
     const api = createFakeApi()
       .on('PUT', '/api/places/:id/equipment/:code', { status: 204 })
       .on('DELETE', '/api/places/:id/equipment/:code', { status: 204 });
-    await renderDetail('p-2', { api });
+    const { db } = await renderDetail('p-2', { api });
     expect(await screen.findByRole('heading', { level: 1, name: 'Garage' })).toBeTruthy();
     expect(checkbox(EQUIPMENT_LABELS.chair).checked).toBe(true);
     fireEvent.click(checkbox(EQUIPMENT_LABELS.dumbbells));
     await until(() => sent(api, 'PUT', '/api/places/p-2/equipment/dumbbells').length === 1);
     expect(sent(api, 'PUT', '/api/places/p-2/equipment/dumbbells')).toEqual([{}]);
     await until(() => !checkbox(EQUIPMENT_LABELS.chair).disabled);
+    // Envoi réussi, miroir pas encore relu : la case garde le choix.
+    expect(checkbox(EQUIPMENT_LABELS.dumbbells).checked).toBe(true);
+    // Miroir relu sans haltères (retirés depuis un autre appareil) : il fait foi.
+    await seedMirror(db, 'home_equipment', [
+      { id: 'p-2:chair', ownerId: 'u-1', placeId: 'p-2', equipmentCode: 'chair' },
+    ]);
+    await until(() => !checkbox(EQUIPMENT_LABELS.dumbbells).checked);
     fireEvent.click(checkbox(EQUIPMENT_LABELS.chair));
     await until(() => sent(api, 'DELETE', '/api/places/p-2/equipment/chair').length === 1);
   });
