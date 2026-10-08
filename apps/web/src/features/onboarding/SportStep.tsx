@@ -6,7 +6,7 @@ import {
   SPORTS,
   type SportCode,
 } from '@appsport/contracts';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
 import { ChoiceList, Field } from '../../ui';
@@ -30,6 +30,7 @@ export function SportStep(p: StepProps & { pendingGoal?: Goal }) {
   const [practice, setPractice] = useState<Practice | null>(null);
   const [sport, setSport] = useState<SportCode | null>(null);
   const [otherLabel, setOtherLabel] = useState<string | null>(null);
+  const requiredId = useId();
   const save = useSaveStep(p, 'sport');
   if (!me || profile === undefined) return null;
 
@@ -67,11 +68,15 @@ export function SportStep(p: StepProps & { pendingGoal?: Goal }) {
         value={practiceValue}
         onChange={setPractice}
         options={[
-          { value: 'no', label: 'Non', disabled: required },
+          { value: 'no', label: 'Non', disabled: required, describedBy: required ? requiredId : undefined },
           { value: 'yes', label: 'Oui' },
         ]}
       />
-      {required ? <p className={styles.note}>{SPORT_REQUIRED_TEXT}</p> : null}
+      {required ? (
+        <p id={requiredId} className={styles.note}>
+          {SPORT_REQUIRED_TEXT}
+        </p>
+      ) : null}
       {practiceValue === 'yes' ? (
         <ChoiceList<SportCode>
           name="sport"

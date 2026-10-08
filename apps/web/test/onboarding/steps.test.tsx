@@ -115,13 +115,48 @@ describe('GoalStep (E1)', () => {
 });
 
 describe('SportStep (E2)', () => {
-  it('objectif sport : « Oui » imposé, « Non » désactivé, avec la raison', async () => {
+  it('objectif sport : « Oui » imposé, « Non » désactivé, avec la raison liée au bouton', async () => {
     await renderStep((onNext) => <SportStep mode="onboarding" onNext={onNext} />, {
       profile: { goal: 'sport_support' },
     });
     await until(() => isChecked('Oui'));
     expect(radio('Non').disabled).toBe(true);
-    expect(screen.getByText("Obligatoire avec l'objectif « Me renforcer pour mon sport ».")).toBeTruthy();
+    const reason = "Obligatoire avec l'objectif « Me renforcer pour mon sport ».";
+    expect(screen.getByText(reason)).toBeTruthy();
+    const describedBy = radio('Non').getAttribute('aria-describedby');
+    expect(describedBy && document.getElementById(describedBy)?.textContent).toBe(reason);
+  });
+
+  it('« Non » déjà validé (étape sport passée, aucun sport) : « Non » coché, « Suivant » actif', async () => {
+    const t = await renderStep((onNext) => <SportStep mode="onboarding" onNext={onNext} />, {
+      me: newcomer({ onboardingStep: 'sport' }),
+      profile: { goal: 'muscle' },
+    });
+    await until(() => isChecked('Non'));
+    expect(radio('Oui').checked).toBe(false);
+    expect(button('Suivant').disabled).toBe(false);
+    fireEvent.click(button('Suivant'));
+    await until(() => t.onNext.mock.calls.length === 1);
+    expect(t.patches).toEqual([{ sportCode: null, sportOtherLabel: null, onboardingStep: 'sport' }]);
+  });
+
+  it('sport enregistré : « Oui » et ce sport cochés', async () => {
+    await renderStep((onNext) => <SportStep mode="onboarding" onNext={onNext} />, {
+      me: newcomer({ onboardingStep: 'sport' }),
+      profile: { goal: 'muscle', sportCode: 'running' },
+    });
+    await until(() => isChecked('Oui') && isChecked('Course à pied'));
+    expect(button('Suivant').disabled).toBe(false);
+  });
+
+  it('« Autre » enregistré : « Ton sport » rempli avec le libellé', async () => {
+    await renderStep((onNext) => <SportStep mode="onboarding" onNext={onNext} />, {
+      me: newcomer({ onboardingStep: 'sport' }),
+      profile: { goal: 'muscle', sportCode: 'other', sportOtherLabel: 'Pétanque' },
+    });
+    await until(() => isChecked('Autre'));
+    expect((screen.getByLabelText('Ton sport') as HTMLInputElement).value).toBe('Pétanque');
+    expect(button('Suivant').disabled).toBe(false);
   });
 
   it('« Autre » + « Pétanque » : 15 sports, libellé de 40 caractères au plus', async () => {

@@ -124,6 +124,37 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(t.server.patches).toHaveLength(1);
   });
 
+  it('« Non » au sport enregistré, puis « Retour » depuis le lieu : « Non » toujours coché', async () => {
+    const t = await openFlow(newcomer({ onboardingStep: 'goal' }));
+    await seedProfile(t.db, { goal: 'muscle' });
+    await t.render();
+    await until(() => currentStep() === 'sport');
+    await screen.findByRole('radio', { name: 'Non' });
+    choose('Non');
+    fireEvent.click(button('Suivant'));
+    await until(() => currentStep() === 'place_kind');
+    expect(t.server.patches).toEqual([{ sportCode: null, sportOtherLabel: null, onboardingStep: 'sport' }]);
+    fireEvent.click(button('Retour'));
+    await until(() => currentStep() === 'sport');
+    await until(() => isChecked('Non'));
+    expect(button('Suivant').disabled).toBe(false);
+  });
+
+  it('sport enregistré, puis « Retour » depuis le lieu : « Oui » et le sport toujours cochés', async () => {
+    const t = await openFlow(newcomer({ onboardingStep: 'goal' }));
+    await seedProfile(t.db, { goal: 'muscle' });
+    await t.render();
+    await until(() => currentStep() === 'sport');
+    await screen.findByRole('radio', { name: 'Oui' });
+    choose('Oui');
+    choose('Course à pied');
+    fireEvent.click(button('Suivant'));
+    await until(() => currentStep() === 'place_kind');
+    fireEvent.click(button('Retour'));
+    await until(() => currentStep() === 'sport');
+    await until(() => isChecked('Oui') && isChecked('Course à pied'));
+  });
+
   it("reprise sans lieu principal : 'place_kind', aucun type coché (le choix n'est pas gardé)", async () => {
     const t = await openFlow(newcomer({ onboardingStep: 'place_kind' }));
     await seedProfile(t.db, { goal: 'muscle' });
