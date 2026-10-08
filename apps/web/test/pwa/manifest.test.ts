@@ -54,6 +54,8 @@ describe('manifeste PWA', () => {
       scope: '/',
       lang: 'fr',
     });
+    // Identité de l'appli installée fixée, indépendante de start_url (R-PWA-7).
+    expect(m.id).toBe('/');
     expect(m).toMatchObject({
       description: 'Suivi de musculation entre proches',
       dir: 'ltr',
@@ -110,9 +112,11 @@ describe('manifeste PWA', () => {
     expect(count).toMatchObject({ otherColor: 0, whiteOutsideSafeZone: 0 });
   });
 
-  it('index.html relie le manifeste, l’icône Apple et la couleur du thème', () => {
+  it('index.html relie le manifeste, l’icône de l’onglet, l’icône Apple et la couleur du thème', () => {
     const html = readFileSync(join(WEB, 'index.html'), 'utf8');
     expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest">');
+    // Icône déjà en précache : pas de requête /favicon.ico (404 journalisé), même hors ligne.
+    expect(html).toContain('<link rel="icon" type="image/png" href="/icons/icon-192.png">');
     expect(html).toContain('<link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png">');
     expect(html).toContain('<meta name="theme-color" content="#0f766e">');
   });

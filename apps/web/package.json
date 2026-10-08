@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --root ../.. --project web",
-    "build": "vite build"
+    "build": "vite build --configLoader runner"
   },
   "dependencies": {
     "@appsport/contracts": "workspace:*",
