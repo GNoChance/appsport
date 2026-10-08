@@ -11,6 +11,21 @@ interface StoredResponse {
   headers: [string, string][];
 }
 
+/** Panne injectée : l'erreur à lever (QuotaExceededError…), ou `undefined` pour laisser faire. */
+export type FakeFailure = Error | undefined;
+
+export interface FakeCacheStorageOptions {
+  /** 'https://appsport.test' par défaut. */
+  origin?: string;
+  /** `Cache.put` de `url` (absolue) dans `cacheName` : lève l'erreur rendue, sans rien écrire. */
+  failPut?: (cacheName: string, url: string) => FakeFailure;
+  /** `caches.delete(cacheName)` : rejette avec l'erreur rendue, sans rien supprimer. */
+  failDelete?: (cacheName: string) => FakeFailure;
+}
+
+/** Erreur d'un stockage plein, comme celle des navigateurs. */
+export const quotaExceeded = () => new DOMException('Quota exceeded', 'QuotaExceededError');
+
 /** Clé de cache : URL absolue sans fragment ; un chemin se résout sur l'origine, comme dans un SW. */
 function keyOf(request: RequestInfo | URL, origin: string): string {
   const url = new URL(typeof request === 'string' || request instanceof URL ? request : request.url, origin);
@@ -21,9 +36,13 @@ function keyOf(request: RequestInfo | URL, origin: string): string {
 class FakeCache implements Cache {
   readonly #entries = new Map<string, StoredResponse>();
   readonly #origin: string;
+  readonly #name: string;
+  readonly #failPut: FakeCacheStorageOptions['failPut'];
 
-  constructor(origin: string) {
+  constructor(origin: string, name: string, failPut: FakeCacheStorageOptions['failPut']) {
     this.#origin = origin;
+    this.#name = name;
+    this.#failPut = failPut;
   }
 
   async match(request: RequestInfo | URL): Promise<Response | undefined> {
@@ -44,10 +63,13 @@ class FakeCache implements Cache {
     return [...this.#entries.keys()].map((url) => new Request(url));
   }
 
-  /** Consomme le corps, comme `Cache.put`. */
+  /** Consomme le corps, comme `Cache.put` ; un corps illisible ou une panne injectée n'écrivent rien. */
   async put(request: RequestInfo | URL, response: Response): Promise<void> {
+    const key = keyOf(request, this.#origin);
+    const failure = this.#failPut?.(this.#name, key);
+    if (failure) throw failure;
     const body = await response.arrayBuffer();
-    this.#entries.set(keyOf(request, this.#origin), {
+    this.#entries.set(key, {
       body,
       status: response.status,
       statusText: response.statusText,
@@ -68,14 +90,18 @@ class FakeCache implements Cache {
   }
 }
 
-/** Cache Storage en mémoire ; `keys()` dans l'ordre de création ; `match` avec `cacheName` ne crée rien. */
-export function createFakeCacheStorage(origin: string = DEFAULT_ORIGIN): CacheStorage {
+/**
+ * Cache Storage en mémoire ; `keys()` dans l'ordre de création ; `match` avec `cacheName` ne crée rien.
+ * `failPut` et `failDelete` simulent un stockage plein ou en panne.
+ */
+export function createFakeCacheStorage(o: FakeCacheStorageOptions = {}): CacheStorage {
+  const origin = o.origin ?? DEFAULT_ORIGIN;
   const caches = new Map<string, FakeCache>();
   return {
     async open(name) {
       let cache = caches.get(name);
       if (!cache) {
-        cache = new FakeCache(origin);
+        cache = new FakeCache(origin, name, o.failPut);
         caches.set(name, cache);
       }
       return cache;
@@ -84,6 +110,8 @@ export function createFakeCacheStorage(origin: string = DEFAULT_ORIGIN): CacheSt
       return caches.has(name);
     },
     async delete(name) {
+      const failure = o.failDelete?.(name);
+      if (failure) throw failure;
       return caches.delete(name);
     },
     async keys() {
@@ -111,6 +139,8 @@ export interface FakeSwScope extends SwScope {
   unregistered: boolean;
   /** URL de chaque `navigate` des fenêtres. */
   navigations: string[];
+  /** Effets dans l'ordre d'appel : 'unregister', 'cache-delete:<nom>', 'navigate:<url>'. */
+  events: string[];
 }
 
 /** Réseau coupé par défaut (`TypeError`, comme `fetch`), jusqu'au premier `setNetwork`. */
@@ -118,15 +148,27 @@ export function createFakeSwScope(
   o: { origin?: string; caches?: CacheStorage; clientUrls?: string[] } = {},
 ): FakeSwScope {
   const origin = o.origin ?? DEFAULT_ORIGIN;
+  const storage = o.caches ?? createFakeCacheStorage({ origin });
   let network: Network = () => Promise.reject(new TypeError('Failed to fetch'));
   const scope: FakeSwScope = {
     origin,
-    caches: o.caches ?? createFakeCacheStorage(origin),
+    // Même stockage, suppressions journalisées dans `events` au moment de l'appel.
+    caches: {
+      open: (name) => storage.open(name),
+      has: (name) => storage.has(name),
+      keys: () => storage.keys(),
+      match: (request, options) => storage.match(request, options),
+      delete: (name) => {
+        scope.events.push(`cache-delete:${name}`);
+        return storage.delete(name);
+      },
+    },
     fetchLog: [],
     skipWaitingCalls: 0,
     claimCalls: 0,
     unregistered: false,
     navigations: [],
+    events: [],
     setNetwork(fn) {
       network = fn;
     },
@@ -142,6 +184,7 @@ export function createFakeSwScope(
       scope.claimCalls++;
     },
     async unregister() {
+      scope.events.push('unregister');
       const wasRegistered = !scope.unregistered;
       scope.unregistered = true;
       return wasRegistered;
@@ -150,6 +193,7 @@ export function createFakeSwScope(
       return (o.clientUrls ?? []).map((url) => ({
         url,
         navigate: async (to: string) => {
+          scope.events.push(`navigate:${to}`);
           scope.navigations.push(to);
           return null;
         },
@@ -165,4 +209,13 @@ export function staticNetwork(files: Record<string, string>): (url: string) => P
     const body = files[new URL(url).pathname];
     return body === undefined ? new Response('not found', { status: 404 }) : new Response(body);
   };
+}
+
+/** Promesse résolue à la main : `release()` la libère. */
+export function deferred(): { promise: Promise<void>; release(): void } {
+  let release = () => {};
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
 }

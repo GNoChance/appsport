@@ -21,7 +21,9 @@ import {
 import {
   createFakeCacheStorage,
   createFakeSwScope,
+  deferred,
   type FakeSwScope,
+  quotaExceeded,
   staticNetwork,
 } from '../support/fake-sw-scope';
 import { createTestLocalDb } from '../support/local-db';
@@ -67,6 +69,11 @@ const health =
   (url: string): Promise<Response> =>
     url === `${ORIGIN}/api/health` ? Promise.resolve(Response.json(body, { status })) : offline();
 
+/** Laisse filer les tâches en cours (réseau factice, Cache Storage, files de promesses). */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 20; i++) await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 async function bodyOf(response: Promise<Response> | null): Promise<string> {
   if (response === null) throw new Error('requête non interceptée');
   return (await response).text();
@@ -92,6 +99,7 @@ async function activeA(o: Parameters<typeof createFakeSwScope>[0] = {}) {
   await h.install();
   await h.activate();
   s.fetchLog.length = 0;
+  s.events.length = 0;
   return { s, h };
 }
 
@@ -293,11 +301,13 @@ describe('handleMessage', () => {
 
   it('GET_STATUS : SwStatus par le MessageChannel ; fichier du manifeste retiré → shellCached false', async () => {
     const { s, h } = await activeA();
+    // Aucune liste reçue : illustrationsReferenced null, inconnu et non vide (R-SYN-33 condition 3).
     expect(await getStatus(h)).toEqual({
       type: 'STATUS',
       buildHash: 'aaaaaaaaaaaa',
       shellCached: true,
       illustrationsMissing: 0,
+      illustrationsReferenced: null,
       localDbVersion: 1,
     });
     await (await s.caches.open(SHELL_A)).delete('/assets/app-1.js');
@@ -346,7 +356,9 @@ describe('handleMessage', () => {
     await restarted.handleMessage({ type: 'SYNC_ILLUSTRATIONS', files: [] }, null);
     expect(await illustrationPaths(s)).toEqual([]);
     expect(await (await cache.match(REFERENCED_ILLUSTRATIONS_KEY))?.json()).toEqual([]);
-    expect((await restarted.status()).illustrationsMissing).toBe(0);
+    // Liste vide connue : 0 référencée, à distinguer de « aucune liste » (null).
+    expect(await restarted.status()).toMatchObject({ illustrationsMissing: 0, illustrationsReferenced: 0 });
+    expect(await createSwHandlers(s, A).status()).toMatchObject({ illustrationsReferenced: 0 });
   });
 
   it('syncIllustrations sérialisé, 4 téléchargements en parallèle au plus', async () => {
@@ -375,7 +387,102 @@ describe('handleMessage', () => {
     s.setNetwork(ILLUSTRATIONS_NET);
     await h.syncIllustrations(['../api/me', 'x/../../api/me', '', '.', IA]);
     expect(s.fetchLog).toEqual([ORIGIN + ILL(IA)]);
-    expect((await h.status()).illustrationsMissing).toBe(0);
+    expect(await h.status()).toMatchObject({ illustrationsMissing: 0, illustrationsReferenced: 1 });
+  });
+});
+
+describe('liste des illustrations comptée par le statut (R-SYN-32, R-SYN-33 condition 3)', () => {
+  it('SYNC_ILLUSTRATIONS puis GET_STATUS sans attendre la synchro : compté sur la nouvelle liste', async () => {
+    const { s, h } = await activeA();
+    const network = deferred();
+    s.setNetwork(async (url) => {
+      await network.promise;
+      return ILLUSTRATIONS_NET(url);
+    });
+    const running = h.syncIllustrations([IC]);
+    const queued = h.handleMessage({ type: 'SYNC_ILLUSTRATIONS', files: [IA, IB, IA] }, null);
+    // c en cours de téléchargement, [a, b] en file : le statut compte déjà sur [a, b], dédoublonnée.
+    expect(await getStatus(h)).toMatchObject({ illustrationsMissing: 2, illustrationsReferenced: 2 });
+    network.release();
+    await Promise.all([running, queued]);
+    expect(await h.status()).toMatchObject({ illustrationsMissing: 0, illustrationsReferenced: 2 });
+    expect(await illustrationPaths(s)).toEqual([ILL(IA), ILL(IB)]);
+  });
+
+  it('liste non enregistrée, stockage plein : périmées supprimées, statut sur la nouvelle liste, même après redémarrage', async () => {
+    let full = false;
+    const caches = createFakeCacheStorage({
+      failPut: (name) => (full && name === ILLUSTRATIONS_CACHE ? quotaExceeded() : undefined),
+    });
+    const { s, h } = await activeA({ caches });
+    s.setNetwork(ILLUSTRATIONS_NET);
+    await h.syncIllustrations([IC]); // ancien catalogue, entièrement en cache
+    full = true;
+    await expect(h.syncIllustrations([IA, IB])).resolves.toBeUndefined();
+    // c supprimée avant l'écriture de la liste : la place libérée ne dépend pas de cette écriture.
+    expect(await illustrationPaths(s)).toEqual([]);
+    expect(await h.status()).toMatchObject({ illustrationsMissing: 2, illustrationsReferenced: 2 });
+    // Redémarrage : seule l'ancienne liste est enregistrée, mais c n'est plus là : rien ne passe pour prêt.
+    expect(await createSwHandlers(s, A).status()).toMatchObject({ illustrationsMissing: 1 });
+  });
+
+  it('écriture de la liste en échec seule : illustrations téléchargées, statut sur la liste reçue', async () => {
+    const caches = createFakeCacheStorage({
+      failPut: (_, url) => (url === ORIGIN + REFERENCED_ILLUSTRATIONS_KEY ? quotaExceeded() : undefined),
+    });
+    const { s, h } = await activeA({ caches });
+    s.setNetwork(ILLUSTRATIONS_NET);
+    await expect(h.syncIllustrations([IA, IB])).resolves.toBeUndefined();
+    expect(await illustrationPaths(s)).toEqual([ILL(IA), ILL(IB)]);
+    expect(await h.status()).toMatchObject({ illustrationsMissing: 0, illustrationsReferenced: 2 });
+  });
+
+  it('illustration refusée par le stockage plein : ignorée, toujours manquante', async () => {
+    const caches = createFakeCacheStorage({
+      failPut: (_, url) => (url === ORIGIN + ILL(IB) ? quotaExceeded() : undefined),
+    });
+    const { s, h } = await activeA({ caches });
+    s.setNetwork(ILLUSTRATIONS_NET);
+    await expect(h.syncIllustrations([IA, IB])).resolves.toBeUndefined();
+    expect(await illustrationPaths(s)).toEqual([ILL(IA)]);
+    expect(await h.status()).toMatchObject({ illustrationsMissing: 1, illustrationsReferenced: 2 });
+  });
+
+  it('téléchargement rejeté (réseau) : ignoré, la synchro se résout, une manquante', async () => {
+    const { s, h } = await activeA();
+    s.setNetwork((url) => (url.endsWith(IB) ? offline() : ILLUSTRATIONS_NET(url)));
+    await expect(h.syncIllustrations([IA, IB])).resolves.toBeUndefined();
+    expect(await illustrationPaths(s)).toEqual([ILL(IA)]);
+    expect(await h.status()).toMatchObject({ illustrationsMissing: 1 });
+  });
+
+  it('téléchargement rejeté pendant que les autres continuent : la synchro suivante attend leur fin', async () => {
+    const { s, h } = await activeA();
+    const slowA = deferred();
+    s.setNetwork(async (url) => {
+      if (url.endsWith(IB)) throw new TypeError('Failed to fetch');
+      if (url.endsWith(IA)) await slowA.promise;
+      return ILLUSTRATIONS_NET(url);
+    });
+    const first = h.syncIllustrations([IA, IB]);
+    const second = h.syncIllustrations([IA, IC]);
+    await flush();
+    expect(s.fetchLog.filter((u) => u.endsWith(IC))).toEqual([]);
+    slowA.release();
+    await expect(first).resolves.toBeUndefined();
+    await second;
+    expect(s.fetchLog.filter((u) => u.endsWith(IC))).toHaveLength(1);
+    expect(await illustrationPaths(s)).toEqual([ILL(IA), ILL(IC)]);
+  });
+
+  it("illustration servie du réseau malgré un stockage plein : rien en cache, l'image s'affiche", async () => {
+    const caches = createFakeCacheStorage({
+      failPut: (name) => (name === ILLUSTRATIONS_CACHE ? quotaExceeded() : undefined),
+    });
+    const { s, h } = await activeA({ caches });
+    s.setNetwork(ILLUSTRATIONS_NET);
+    expect(await bodyOf(h.handleFetch(get(ILL(IA))))).toBe('<svg>a</svg>');
+    expect(await illustrationPaths(s)).toEqual([]);
   });
 });
 

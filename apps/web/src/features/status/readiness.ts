@@ -24,11 +24,22 @@ export const NOT_READY: Readiness = {
 };
 
 /**
+ * Le SW compte sur la liste du catalogue local : une liste inconnue (`null`) ou d'un autre nombre
+ * d'illustrations (catalogue précédent) ne vaut pas « en cache ». Absente : bouchon sans SW.
+ */
+function countsLocalCatalog(sw: SwStatus, illustrationCount: number): boolean {
+  return sw.illustrationsReferenced === undefined || sw.illustrationsReferenced === illustrationCount;
+}
+
+/**
  * « Prêt hors ligne » si et seulement si : coquille du build courant en précache, catalogue local
- * à la dernière version connue du serveur, illustrations en cache, pull réussi il y a moins de 24 h.
+ * à la dernière version connue du serveur, illustrations de ce catalogue en cache, pull réussi il y a
+ * moins de 24 h.
  */
 export function computeReadiness(i: {
   sw: SwStatus | null;
+  /** Illustrations distinctes du catalogue local. */
+  illustrationCount: number;
   catalogVersion: string | null;
   serverCatalogVersion: string | null;
   lastPullOkAt: string | null;
@@ -38,7 +49,8 @@ export function computeReadiness(i: {
   const checks = {
     shell: i.sw?.shellCached === true,
     catalog: i.catalogVersion !== null && i.catalogVersion === i.serverCatalogVersion,
-    illustrations: i.sw !== null && i.sw.illustrationsMissing === 0,
+    illustrations:
+      i.sw !== null && i.sw.illustrationsMissing === 0 && countsLocalCatalog(i.sw, i.illustrationCount),
     recentPull: !Number.isNaN(pulledAt) && i.now - pulledAt < RECENT_PULL_MS,
   };
   return { ready: checks.shell && checks.catalog && checks.illustrations && checks.recentPull, checks };

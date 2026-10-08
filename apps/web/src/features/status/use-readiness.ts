@@ -33,13 +33,18 @@ export function useReadiness(): {
 
   const refresh = useCallback(async () => {
     const call = ++latest.current;
-    const [sw, inputs] = await Promise.all([
+    const [sw, inputs, files] = await Promise.all([
       services.swStatus().catch(() => null),
       repos.status.readinessInputs(),
+      repos.status.illustrationFiles(),
     ]);
     // Un calcul plus récent a pu finir avant celui-ci.
     if (!mounted.current || call !== latest.current) return;
-    setState({ readiness: computeReadiness({ sw, ...inputs, now: services.now() }), loaded: true });
+    const illustrationCount = new Set(files).size;
+    setState({
+      readiness: computeReadiness({ sw, ...inputs, illustrationCount, now: services.now() }),
+      loaded: true,
+    });
   }, [services, repos]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recalcul voulu à chaque état de synchro

@@ -20,6 +20,9 @@ function isSwStatus(v: unknown): v is SwStatus {
     typeof s.buildHash === 'string' &&
     typeof s.shellCached === 'boolean' &&
     typeof s.illustrationsMissing === 'number' &&
+    (s.illustrationsReferenced === undefined ||
+      s.illustrationsReferenced === null ||
+      typeof s.illustrationsReferenced === 'number') &&
     (s.localDbVersion === undefined || typeof s.localDbVersion === 'number')
   );
 }

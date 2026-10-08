@@ -69,6 +69,30 @@ describe('OfflineReadyIndicator', () => {
     expect(indicator().textContent).toContain('Illustrations à télécharger');
   });
 
+  it('SW sans liste ou avec la liste d’un autre catalogue : « Illustrations à télécharger »', async () => {
+    const db = await dbWith(HOUR);
+    await db.table('illustrations').bulkPut([
+      { id: 'a', file: 'a.11111111.svg' },
+      { id: 'b', file: 'b.22222222.svg' },
+      { id: 'b2', file: 'b.22222222.svg' },
+    ]);
+    for (const illustrationsReferenced of [null, 3]) {
+      const { unmount } = await renderWithServices(<OfflineReadyIndicator />, {
+        db,
+        swStatus: { ...DEFAULT_SW_STATUS, illustrationsReferenced },
+      });
+      await until(shows('Illustrations à télécharger'));
+      expect(indicator().getAttribute('data-state')).toBe('not-ready');
+      unmount();
+    }
+    // Deux illustrations distinctes dans le catalogue local, deux dans la liste du SW : prêt.
+    await renderWithServices(<OfflineReadyIndicator />, {
+      db,
+      swStatus: { ...DEFAULT_SW_STATUS, illustrationsReferenced: 2 },
+    });
+    await until(stateIs('ready'));
+  });
+
   it('catalogue en retard : « Catalogue à télécharger »', async () => {
     const db = await dbWith(HOUR);
     await setMeta(db, 'serverCatalogVersion', 'cat-2');

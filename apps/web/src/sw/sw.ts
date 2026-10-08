@@ -75,8 +75,10 @@ export function planIllustrationSync(
 
 const isApi = (path: string) => path === '/api' || path.startsWith('/api/');
 const illustrationPath = (file: string) => ILLUSTRATIONS_PATH + file;
-const safeFiles = (files: readonly unknown[]): string[] =>
-  files.filter((f): f is string => typeof f === 'string' && SAFE_FILE_RE.test(f));
+/** Noms valides (l'URL reste sous /illustrations/) et distincts : une illustration partagée compte une fois. */
+const referencedList = (files: readonly unknown[]): string[] => [
+  ...new Set(files.filter((f): f is string => typeof f === 'string' && SAFE_FILE_RE.test(f))),
+];
 
 /** Au plus `limit` appels de `fn` en cours ; les workers se partagent un seul itérateur. */
 async function forEachLimited<T>(items: readonly T[], limit: number, fn: (item: T) => Promise<void>) {
@@ -90,8 +92,14 @@ async function forEachLimited<T>(items: readonly T[], limit: number, fn: (item: 
 export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): SwHandlers {
   const shellCache = SHELL_CACHE_PREFIX + manifest.buildHash;
   const shellFiles = new Set(manifest.files);
-  let syncQueue: Promise<void> = Promise.resolve();
+  let syncQueue: Promise<unknown> = Promise.resolve();
   let syncsPending = 0;
+  /**
+   * Dernière liste reçue par ce SW : elle fait foi dès son arrivée, avant même d'être enregistrée (synchro en
+   * file, écriture refusée par un stockage plein). Perdue au redémarrage du SW : la liste enregistrée prend
+   * le relais, et la page la renvoie à chaque démarrage (T37).
+   */
+  let latestReferenced: string[] | null = null;
 
   // `caches.match` avec `cacheName` ne crée pas le cache, contrairement à `caches.open`.
   const fromShell = (path: string) => scope.caches.match(path, { cacheName: shellCache });
@@ -170,10 +178,15 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
     if (!res) return null;
     try {
       const files: unknown = await res.json();
-      return Array.isArray(files) ? safeFiles(files) : null;
+      return Array.isArray(files) ? referencedList(files) : null;
     } catch {
       return null;
     }
+  }
+
+  /** Liste que le statut et les reprises comptent : la dernière reçue, sinon celle enregistrée. */
+  async function currentReferenced(): Promise<string[] | null> {
+    return latestReferenced ?? (await readReferenced());
   }
 
   async function cachedIllustrations(cache: Cache): Promise<string[]> {
@@ -182,23 +195,27 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
       .filter((path) => path.startsWith(ILLUSTRATIONS_PATH));
   }
 
-  /** `files` null : reprise sur la liste déjà enregistrée (après un échec ou un redémarrage du SW). */
-  async function runSync(files: readonly string[] | null): Promise<void> {
-    const cache = await scope.caches.open(ILLUSTRATIONS_CACHE);
-    let referenced: string[];
-    if (files === null) {
-      const stored = await readReferenced();
-      if (stored === null) return;
-      referenced = stored;
-    } else {
-      referenced = safeFiles(files);
-      const list = new Response(JSON.stringify(referenced), {
-        headers: { 'Content-Type': 'application/json' },
-      });
+  async function saveReferenced(cache: Cache, referenced: readonly string[]): Promise<void> {
+    const list = new Response(JSON.stringify(referenced), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    try {
       await cache.put(REFERENCED_ILLUSTRATIONS_KEY, list);
+    } catch {
+      // Stockage plein : la liste en mémoire fait foi ; l'écriture est retentée à la prochaine synchro.
     }
+  }
+
+  /** `files` null : reprise sur la liste courante (après un échec ou un redémarrage du SW). */
+  async function runSync(files: readonly string[] | null): Promise<void> {
+    const received = files ?? latestReferenced;
+    const referenced = received ?? (await readReferenced());
+    if (referenced === null) return;
+    const cache = await scope.caches.open(ILLUSTRATIONS_CACHE);
     const plan = planIllustrationSync(referenced.map(illustrationPath), await cachedIllustrations(cache));
-    await Promise.all(plan.toDelete.map((path) => cache.delete(path)));
+    // Suppressions d'abord : elles libèrent la place que la liste et les téléchargements vont prendre.
+    await Promise.allSettled(plan.toDelete.map((path) => cache.delete(path)));
+    if (received !== null) await saveReferenced(cache, received);
     await forEachLimited(plan.toFetch, PARALLEL_DOWNLOADS, async (path) => {
       try {
         const res = await scope.fetch(path);
@@ -222,23 +239,34 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
     return hits.every((hit) => hit !== undefined);
   }
 
-  async function illustrationsMissing(): Promise<number> {
-    const referenced = await readReferenced();
-    if (!referenced?.length) return 0;
+  /** `referenced` null : aucune liste, inconnu et non vide (la page doit renvoyer la sienne). */
+  async function illustrationsStatus(): Promise<{ missing: number; referenced: number | null }> {
+    const referenced = await currentReferenced();
+    if (referenced === null) return { missing: 0, referenced: null };
+    if (!(await scope.caches.has(ILLUSTRATIONS_CACHE))) {
+      return { missing: referenced.length, referenced: referenced.length };
+    }
     const cache = await scope.caches.open(ILLUSTRATIONS_CACHE);
     const plan = planIllustrationSync(referenced.map(illustrationPath), await cachedIllustrations(cache));
-    return plan.toFetch.length;
+    return { missing: plan.toFetch.length, referenced: referenced.length };
   }
 
   async function status(): Promise<SwStatus> {
-    const [shell, missing] = await Promise.all([shellCached(), illustrationsMissing()]);
+    const [shell, illustrations] = await Promise.all([shellCached(), illustrationsStatus()]);
     return {
       type: 'STATUS',
       buildHash: manifest.buildHash,
       shellCached: shell,
-      illustrationsMissing: missing,
+      illustrationsMissing: illustrations.missing,
+      illustrationsReferenced: illustrations.referenced,
       localDbVersion: manifest.localDbVersion,
     };
+  }
+
+  /** La liste reçue fait foi tout de suite, même si une synchro la précède dans la file. */
+  function syncIllustrations(files: readonly string[]): Promise<void> {
+    latestReferenced = referencedList(files);
+    return enqueueSync(latestReferenced);
   }
 
   async function handleMessage(msg: PageToSw, port: MessagePort | null): Promise<void> {
@@ -246,7 +274,7 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
       case 'SKIP_WAITING':
         return scope.skipWaiting();
       case 'SYNC_ILLUSTRATIONS':
-        return enqueueSync(msg.files);
+        return syncIllustrations(msg.files);
       case 'GET_STATUS': {
         const current = await status();
         port?.postMessage(current);
@@ -307,7 +335,7 @@ export function createSwHandlers(scope: SwScope, manifest: PrecacheManifest): Sw
     handleFetch,
     handleMessage,
     status,
-    syncIllustrations: (files) => enqueueSync(files),
+    syncIllustrations,
     checkKillSwitch,
   };
 }
