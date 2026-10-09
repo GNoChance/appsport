@@ -39,7 +39,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           count=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success" --jq '.total_count')
-          if [ "${count:-0}" -lt 1 ]; then
+          # Échoue fermée : une réponse vide ou non entière (null…) vaut un refus, jamais une publication.
+          if ! [[ "$count" =~ ^[0-9]+$ ]] || (( count < 1 )); then
             echo "La CI du commit ${GITHUB_SHA} n'est pas verte : publication refusée. Relancer ce job quand la CI de main sera verte."
             exit 1
           fi
