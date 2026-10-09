@@ -203,6 +203,7 @@ status_merge_locked() {
   base=$(in_ops_dir read_status_json) || base=""
   if [ -z "$base" ]; then base='{}'; fi
   tmp=$(mktemp "$3/status.XXXXXX") || return 1
+  # shellcheck disable=SC2016 # variables du filtre jq, pas du shell
   if "$JQ" --arg k "$1" --argjson v "$2" '.[$k] = $v' <<<"$base" >"$tmp" &&
     chmod 0640 "$tmp" && "$CHOWN" 1000:1000 "$tmp" && in_ops_dir mv -f -T "$tmp" status.json; then
     return 0

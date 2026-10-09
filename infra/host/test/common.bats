@@ -4,7 +4,7 @@
 HEALTH=http://127.0.0.1:3000/api/health
 
 setup() {
-  load helpers
+  source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
   COMMON="$HOST_DIR/lib/common.sh"
   STATUS_FILE="$APPSPORT_ROOT/data/ops/status.json"

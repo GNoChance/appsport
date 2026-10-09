@@ -57,10 +57,11 @@ setup() {
   [[ "$output" == *"KO : /api/health ne répond pas 200 après 2 min (voir P8)."* ]]
   [ "$(count_calls "curl -fsS --max-time 2 $HEALTH")" -eq 3 ]
   [ "$(count_calls "curl *$HEALTH")" -eq 3 ]
-  # 2 s entre deux essais, aucune pause après le dernier.
+  # Chaque essai complété jusqu'à sa tranche de 4 s (2 × HEALTH_POLL_S moins la durée de la sonde, qui échoue
+  # aussitôt : 4 s, ou 3 si une seconde a basculé), aucune pause après le dernier.
   assert_calls_in_order \
-    "curl -fsS --max-time 2 $HEALTH" "sleep 2" \
-    "curl -fsS --max-time 2 $HEALTH" "sleep 2" \
+    "curl -fsS --max-time 2 $HEALTH" "sleep [34]" \
+    "curl -fsS --max-time 2 $HEALTH" "sleep [34]" \
     "curl -fsS --max-time 2 $HEALTH"
   [ "$(count_calls "sleep *")" -eq 2 ]
   assert_calls_in_order "docker compose * up -d" "curl * https://hc.test/alive/fail"

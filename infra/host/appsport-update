@@ -62,6 +62,7 @@ show_active_sessions() {
   if [ "$n" -eq 0 ]; then log "Aucune séance en cours depuis moins de 3 h."; fi
 }
 
+# shellcheck disable=SC2016 # variables du filtre jq, pas du shell
 deploy_json() {
   "$JQ" -cn --arg at "$(now_iso)" --arg v "$1" --arg p "$2" --argjson ok "$3" \
     '{at: $at, version: $v, previousVersion: $p, ok: $ok}'
