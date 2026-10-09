@@ -25,6 +25,11 @@ afterEach(() => {
 const snapshots = (dir: string) => join(dir, 'snapshots');
 
 describe('takeSnapshot', () => {
+  it('fuseau du processus épinglé, ni UTC ni Paris (vitest.config.ts)', () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('America/New_York');
+    expect(new Date('2026-10-06T22:30:00.000Z').getDate()).toBe(6);
+  });
+
   it('daily : date civile de Paris, copie en journal DELETE, sans -wal ni .partial', async () => {
     ops = await createOpsDataDir();
     mkdirSync(snapshots(ops.dir));
