@@ -118,7 +118,8 @@ describe('job CI image', () => {
   const job = parse(read('.github/workflows/ci.yml')).jobs.image;
 
   it("bloquant : construit l'image depuis la racine puis vérifie son contrat", () => {
-    expect(job).toMatchObject({ 'runs-on': 'ubuntu-latest' });
+    // Borné : un conteneur bloqué ne tient pas le job jusqu'aux 6 h par défaut de GitHub.
+    expect(job).toMatchObject({ 'runs-on': 'ubuntu-latest', 'timeout-minutes': 20 });
     expect(job).not.toHaveProperty('continue-on-error');
     expect(job.steps[0]).toEqual({ uses: 'actions/checkout@v4' });
     expect(job.steps.slice(1)).toEqual([
