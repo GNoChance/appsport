@@ -51,7 +51,21 @@ describe('infra/compose.yaml', () => {
     expect(app.healthcheck.test.join(' ')).toContain('http://127.0.0.1:3000/api/health');
   });
 
-  it('ni privilège, ni réseau hôte, ni capacité ajoutée, ni build, ni port exposé', () => {
+  it('clés du service fermées : ni privilège, ni réseau hôte, ni capacité, ni build, ni port exposé', () => {
+    // Liste fermée : pid, ipc, userns_mode, devices, security_opt, cgroup… échouent tant qu'on ne les a pas décidés.
+    expect(Object.keys(app).sort()).toEqual([
+      'env_file',
+      'healthcheck',
+      'image',
+      'mem_limit',
+      'ports',
+      'read_only',
+      'restart',
+      'stop_grace_period',
+      'tmpfs',
+      'user',
+      'volumes',
+    ]);
     for (const key of ['privileged', 'network_mode', 'cap_add', 'build', 'expose']) {
       expect(app).not.toHaveProperty(key);
     }
@@ -61,16 +75,23 @@ describe('infra/compose.yaml', () => {
 describe('infra/Dockerfile', () => {
   const dockerfile = read('infra/Dockerfile');
   const finalStage = dockerfile.slice(dockerfile.lastIndexOf('FROM node:24-slim'));
+  // Lignes exactes : un commentaire ou une commande voisine (pnpm build:server) ne compte pas.
+  const lines = dockerfile.split(/\r?\n/);
+  const finalLines = finalStage.split(/\r?\n/);
 
   it('étape de build : pnpm install --frozen-lockfile, prénom du porteur passé avant pnpm build', () => {
     expect(dockerfile).toMatch(/^# syntax=docker\/dockerfile:1$/m);
-    const buildStage = dockerfile.indexOf('FROM node:24 AS build');
-    const pnpmBuild = dockerfile.indexOf('pnpm build');
-    const ownerArg = dockerfile.search(/^ARG VITE_OWNER_FIRST_NAME$/m);
+    const buildStage = lines.indexOf('FROM node:24 AS build');
+    const install = lines.indexOf('RUN pnpm install --frozen-lockfile');
+    const ownerArg = lines.indexOf('ARG VITE_OWNER_FIRST_NAME');
+    const pnpmBuild = lines.indexOf('RUN pnpm build');
+    const finalFrom = lines.indexOf('FROM node:24-slim');
     expect(buildStage).toBeGreaterThanOrEqual(0);
-    expect(dockerfile).toContain('pnpm install --frozen-lockfile');
+    expect(install).toBeGreaterThan(buildStage);
     expect(ownerArg).toBeGreaterThan(buildStage);
     expect(pnpmBuild).toBeGreaterThan(ownerArg);
+    expect(pnpmBuild).toBeGreaterThan(install);
+    expect(finalFrom).toBeGreaterThan(pnpmBuild);
   });
 
   it('étape finale node:24-slim : server.mjs, public/ et data/ seulement, sans node_modules', () => {
@@ -88,14 +109,16 @@ describe('infra/Dockerfile', () => {
     const env =
       // biome-ignore lint/suspicious/noTemplateCurlyInString: variable de Dockerfile, pas de JavaScript
       'ENV NODE_ENV=production APP_VERSION=${VERSION} PORT=3000 HOST=0.0.0.0 APPSPORT_DATA_DIR=/data APPSPORT_PUBLIC_DIR=/app/public APPSPORT_CONTENT_DIR=/app/data';
-    expect(finalStage).toContain(env);
-    expect(finalStage.indexOf(env)).toBeGreaterThan(finalStage.indexOf('ARG VERSION=dev'));
+    expect(finalLines).toContain(env);
+    expect(finalLines.indexOf(env)).toBeGreaterThan(finalLines.indexOf('ARG VERSION=dev'));
     expect(finalStage).toMatch(/^USER 1000$/m);
     expect(finalStage).toMatch(/^EXPOSE 3000$/m);
-    expect(finalStage).toContain(
+    expect(finalLines).toContain(
       `HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD ${JSON.stringify(['node', '-e', HEALTH_PROBE])}`,
     );
-    expect(finalStage).toContain('CMD ["node","/app/server.mjs"]');
+    // Une seule commande de démarrage et aucun ENTRYPOINT qui la détournerait (instructions insensibles à la casse).
+    expect(dockerfile).not.toMatch(/^\s*ENTRYPOINT\b/im);
+    expect(dockerfile.match(/^\s*CMD\b.*$/gim)).toEqual(['CMD ["node","/app/server.mjs"]']);
   });
 });
 
@@ -115,12 +138,16 @@ it('.dockerignore écarte node_modules, .git, les builds, les rapports et docs d
 });
 
 describe('job CI image', () => {
-  const job = parse(read('.github/workflows/ci.yml')).jobs.image;
+  const workflow = parse(read('.github/workflows/ci.yml'));
+  const job = workflow.jobs.image;
 
   it("bloquant : construit l'image depuis la racine puis vérifie son contrat", () => {
+    // Ni if:, ni continue-on-error:, ni needs: le job tourne sur chaque PR et son échec bloque.
+    expect(Object.keys(job).sort()).toEqual(['runs-on', 'steps', 'timeout-minutes']);
+    expect(job['runs-on']).toBe('ubuntu-latest');
     // Borné : un conteneur bloqué ne tient pas le job jusqu'aux 6 h par défaut de GitHub.
-    expect(job).toMatchObject({ 'runs-on': 'ubuntu-latest', 'timeout-minutes': 20 });
-    expect(job).not.toHaveProperty('continue-on-error');
+    expect(job['timeout-minutes']).toBe(20);
+    expect(Object.keys(workflow.on)).toContain('pull_request');
     expect(job.steps[0]).toEqual({ uses: 'actions/checkout@v4' });
     expect(job.steps.slice(1)).toEqual([
       { run: 'docker build -f infra/Dockerfile --build-arg VERSION=v0.0.0-ci -t appsport:ci .' },
