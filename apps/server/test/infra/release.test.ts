@@ -1,5 +1,7 @@
 /* biome-ignore-all lint/suspicious/noTemplateCurlyInString: expressions GitHub Actions et variables shell, pas de JavaScript */
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -15,17 +17,60 @@ type Step = {
   with?: Record<string, unknown>;
 };
 
+/** Le bash du runner GitHub ; sous Windows, celui de Git for Windows (jamais le bash de WSL). */
+const resolveBash = (): string => {
+  if (process.platform !== 'win32') return 'bash';
+  const execPath = spawnSync('git', ['--exec-path'], { encoding: 'utf8' }).stdout.trim();
+  return join(execPath, '..', '..', '..', 'bin', 'bash.exe');
+};
+const BASH = resolveBash();
+
+/**
+ * Faux git et gh, en fonctions shell : elles passent avant le PATH, donc aucun vrai git ni gh n'est appelé.
+ * Chaque appel est tracé sur stderr ; le code de sortie et la sortie de gh viennent des variables STUB_*.
+ */
+const STUBS = [
+  'git() { echo "git $*" >&2; case "$1" in fetch) return 0;; merge-base) return "$STUB_MERGE_BASE_EXIT";; *) return 99;; esac; }',
+  'gh() { echo "gh $*" >&2; printf \'%s\\n\' "$STUB_GH_OUT"; return "$STUB_GH_EXIT"; }',
+].join('\n');
+
+const SHA = '0123456789abcdef0123456789abcdef01234567';
+
+type GuardRun = { status: number | null; stdout: string; calls: string[] };
+
+/** Exécute le script d'une garde comme le runner (`bash -e`), avec l'environnement d'un push de tag. */
+const runGuard = (script: string, env: Record<string, string>): GuardRun => {
+  const tag = env.GITHUB_REF_NAME ?? 'v1.2.3';
+  const result = spawnSync(BASH, ['--noprofile', '--norc', '-e', '-c', `${STUBS}\n${script}`], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GITHUB_REF: `refs/tags/${tag}`,
+      GITHUB_REF_NAME: tag,
+      GITHUB_SHA: SHA,
+      GITHUB_REPOSITORY: 'GNoChance/appsport',
+      STUB_MERGE_BASE_EXIT: '0',
+      STUB_GH_OUT: '1',
+      STUB_GH_EXIT: '0',
+      ...env,
+    },
+  });
+  if (result.error) throw result.error;
+  return { status: result.status, stdout: result.stdout, calls: result.stderr.split('\n').filter(Boolean) };
+};
+
 describe('.github/workflows/release.yml', () => {
   const releaseText = read('.github/workflows/release.yml');
   const release = parse(releaseText);
   const steps: Step[] = release.jobs.publish.steps;
-  const runText = steps.map((step) => step.run ?? '').join('\n');
-  const usesIndex = (prefix: string): number => steps.findIndex((step) => step.uses?.startsWith(prefix));
-  const runIndex = (needle: string): number => steps.findIndex((step) => step.run?.includes(needle));
-  const bpIndex = usesIndex('docker/build-push-action@');
-  const stepAt = (index: number): Step => {
-    const found = steps[index];
-    if (!found) throw new Error(`étape ${index} absente de release.yml`);
+  const stepNamed = (name: string): Step => {
+    const found = steps.find((step) => step.name === name);
+    if (!found) throw new Error(`étape « ${name} » absente de release.yml`);
+    return found;
+  };
+  const usesStep = (uses: string): Step => {
+    const found = steps.find((step) => step.uses === uses);
+    if (!found) throw new Error(`étape ${uses} absente de release.yml`);
     return found;
   };
 
@@ -35,69 +80,114 @@ describe('.github/workflows/release.yml', () => {
 
   it('permissions minimales : lecture du dépôt et des actions, écriture des paquets', () => {
     expect(release.permissions).toEqual({ contents: 'read', packages: 'write', actions: 'read' });
+    // le job n'a ni permissions, ni if, ni continue-on-error, ni env propres : rien ne remplace ces droits
+    expect(Object.keys(release.jobs.publish).sort()).toEqual(['runs-on', 'steps']);
   });
 
   it('un seul job publish sur ubuntu-latest, étapes dans l’ordre', () => {
     expect(Object.keys(release.jobs)).toEqual(['publish']);
     expect(release.jobs.publish['runs-on']).toBe('ubuntu-latest');
-    expect(steps[0]).toMatchObject({ uses: 'actions/checkout@v4', with: { 'fetch-depth': 0 } });
-    const order = [
-      runIndex('^v[0-9]+\\.[0-9]+\\.[0-9]+$'),
-      runIndex('git fetch origin main'),
-      runIndex('git merge-base --is-ancestor'),
-      runIndex('gh api'),
-      usesIndex('docker/setup-buildx-action@v3'),
-      usesIndex('docker/login-action@v3'),
-      usesIndex('docker/build-push-action@v6'),
-    ];
-    expect(order.every((index) => index > 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(steps).toHaveLength(7);
+    // exactement ces étapes, dans cet ordre : aucune étape de déploiement après la publication (R-OPS-13)
+    expect(steps.map((step) => step.uses ?? step.name)).toEqual([
+      'actions/checkout@v4',
+      'Garde du tag',
+      'Garde de main',
+      'Garde CI',
+      'docker/setup-buildx-action@v3',
+      'docker/login-action@v3',
+      'docker/build-push-action@v6',
+    ]);
+    // ni if, ni continue-on-error, ni shell sur aucune étape : une garde qui échoue arrête le job
+    expect(steps.map((step) => Object.keys(step).sort())).toEqual([
+      ['uses', 'with'],
+      ['name', 'run'],
+      ['name', 'run'],
+      ['env', 'name', 'run'],
+      ['uses'],
+      ['uses', 'with'],
+      ['uses', 'with'],
+    ]);
+    expect(steps[0]?.with).toEqual({ 'fetch-depth': 0 });
   });
 
   it('garde du tag : vX.Y.Z strict, sinon « Tag invalide »', () => {
-    expect(runText).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$');
-    expect(runText).toContain('Tag invalide : $GITHUB_REF_NAME');
-  });
-
-  it('garde de main : le commit tagué doit être un ancêtre de origin/main', () => {
-    const guard = stepAt(runIndex('git merge-base')).run ?? '';
-    expect(guard.indexOf('git fetch origin main')).toBeLessThan(guard.indexOf('git merge-base'));
-    expect(runText).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
-    expect(runText).toContain("Le commit n'est pas sur main : publication refusée.");
-  });
-
-  it('garde CI : au moins un run vert de ci.yml pour ce commit, avant toute construction', () => {
-    const ciGuardIndex = runIndex('gh api');
-    const ciGuard = stepAt(ciGuardIndex);
-    expect(ciGuard.env).toEqual({ GH_TOKEN: '${{ github.token }}' });
-    expect(ciGuard.run).toContain(
-      'gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success"',
-    );
-    expect(ciGuard.run).toContain("--jq '.total_count'");
-    expect(ciGuard.run).toContain(
-      "La CI du commit ${GITHUB_SHA} n'est pas verte : publication refusée. Relancer ce job quand la CI de main sera verte.",
-    );
-    // les trois gardes précèdent docker/build-push-action
-    for (const needle of ['Tag invalide', 'git merge-base', 'gh api']) {
-      expect(runIndex(needle)).toBeLessThan(bpIndex);
+    const run = stepNamed('Garde du tag').run ?? '';
+    expect(run).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$');
+    expect(run).toContain('Tag invalide : $GITHUB_REF_NAME');
+    for (const tag of ['v1.2.3', 'v10.0.27']) {
+      expect(runGuard(run, { GITHUB_REF_NAME: tag }), tag).toEqual({ status: 0, stdout: '', calls: [] });
+    }
+    for (const tag of ['v1.2.3-rc1', 'v1.2', 'v1.2.3.4', '1.2.3', 'refs/tags/v1.2.3']) {
+      expect(runGuard(run, { GITHUB_REF_NAME: tag }), tag).toEqual({
+        status: 1,
+        stdout: `Tag invalide : ${tag}\n`,
+        calls: [],
+      });
     }
   });
 
+  it('garde de main : le commit tagué doit être un ancêtre de origin/main', () => {
+    const run = stepNamed('Garde de main').run ?? '';
+    expect(run).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
+    expect(run).toContain("Le commit n'est pas sur main : publication refusée.");
+    const calls = ['git fetch origin main', `git merge-base --is-ancestor ${SHA} origin/main`];
+    expect(runGuard(run, { STUB_MERGE_BASE_EXIT: '0' })).toEqual({ status: 0, stdout: '', calls });
+    expect(runGuard(run, { STUB_MERGE_BASE_EXIT: '1' })).toEqual({
+      status: 1,
+      stdout: "Le commit n'est pas sur main : publication refusée.\n",
+      calls,
+    });
+  });
+
+  it('garde CI : au moins un run vert de ci.yml pour ce commit, avant toute construction', () => {
+    const ciGuard = stepNamed('Garde CI');
+    expect(ciGuard.env).toEqual({ GH_TOKEN: '${{ github.token }}' });
+    const run = ciGuard.run ?? '';
+    expect(run).toContain(
+      'gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success"',
+    );
+    expect(run).toContain("--jq '.total_count'");
+    expect(run).toContain(
+      "La CI du commit ${GITHUB_SHA} n'est pas verte : publication refusée. Relancer ce job quand la CI de main sera verte.",
+    );
+    const calls = [
+      `gh api repos/GNoChance/appsport/actions/workflows/ci.yml/runs?head_sha=${SHA}&status=success --jq .total_count`,
+    ];
+    const refused = `La CI du commit ${SHA} n'est pas verte : publication refusée. Relancer ce job quand la CI de main sera verte.\n`;
+    for (const out of ['1', '3']) {
+      expect(runGuard(run, { STUB_GH_OUT: out }), out).toEqual({ status: 0, stdout: '', calls });
+    }
+    for (const out of ['0', '']) {
+      expect(runGuard(run, { STUB_GH_OUT: out }), `« ${out} »`).toEqual({
+        status: 1,
+        stdout: refused,
+        calls,
+      });
+    }
+    // gh en échec (réseau, 404) : le job s'arrête aussi, sur l'erreur de gh
+    const failed = runGuard(run, { STUB_GH_OUT: '', STUB_GH_EXIT: '1' });
+    expect(failed.status).not.toBe(0);
+    expect(failed.calls).toEqual(calls);
+  });
+
   it('connexion à ghcr.io avec le jeton du workflow, construction et publication de l’image amd64 du tag', () => {
-    expect(stepAt(usesIndex('docker/login-action@v3')).with).toEqual({
+    expect(usesStep('docker/login-action@v3').with).toEqual({
       registry: 'ghcr.io',
       username: '${{ github.actor }}',
       password: '${{ github.token }}',
     });
-    expect(stepAt(bpIndex).with).toMatchObject({
+    // carte complète : ni cache-to, ni outputs, ni autre tag ne publient une autre référence
+    const buildPush = usesStep('docker/build-push-action@v6');
+    expect(buildPush.with).toEqual({
       context: '.',
       file: 'infra/Dockerfile',
       platforms: 'linux/amd64',
       push: true,
       tags: 'ghcr.io/gnochance/appsport:${{ github.ref_name }}',
+      'build-args':
+        'VERSION=${{ github.ref_name }}\nVITE_OWNER_FIRST_NAME=${{ vars.VITE_OWNER_FIRST_NAME }}\n',
     });
-    expect(String(stepAt(bpIndex).with?.['build-args']).split('\n').filter(Boolean)).toEqual([
+    expect(String(buildPush.with?.['build-args']).split('\n').filter(Boolean)).toEqual([
       'VERSION=${{ github.ref_name }}',
       'VITE_OWNER_FIRST_NAME=${{ vars.VITE_OWNER_FIRST_NAME }}',
     ]);
