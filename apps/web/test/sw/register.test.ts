@@ -1,4 +1,5 @@
 import type { HealthResponse } from '@appsport/contracts';
+import { makeOp } from '@appsport/server/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type AppDb, LOCAL_DB_VERSION } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
@@ -22,6 +23,7 @@ const SKIP_WAITING: PageToSw = { type: 'SKIP_WAITING' };
 const GET_STATUS: PageToSw = { type: 'GET_STATUS' };
 const FILES = ['a.11111111.svg'];
 const SYNC_ILLUSTRATIONS: PageToSw = { type: 'SYNC_ILLUSTRATIONS', files: FILES };
+const NOTE_ID = '01920000-0000-7000-8000-000000000001';
 
 interface FakeDoc {
   doc: Pick<Document, 'visibilityState' | 'addEventListener'>;
@@ -121,10 +123,29 @@ describe('registerServiceWorker : recherche de mise à jour (R-PWA-2)', () => {
     expect(f.registration.updateCalls).toBe(2);
     await vi.advanceTimersByTimeAsync(1000);
     await until(() => f.registration.updateCalls === 3);
+    await vi.advanceTimersByTimeAsync(HOUR_MS);
+    await until(() => f.registration.updateCalls === 4);
     page.hide();
     await vi.advanceTimersByTimeAsync(HOUR_MS);
     await settled();
-    expect(f.registration.updateCalls).toBe(3);
+    expect(f.registration.updateCalls).toBe(4);
+  });
+
+  it('page restée visible depuis le lancement → une recherche par heure, minuterie réarmée à chaque fois', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    start(f);
+    await until(() => f.registration.updateCalls === 1);
+    await vi.advanceTimersByTimeAsync(HOUR_MS - 1);
+    await turns();
+    expect(f.registration.updateCalls).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(() => f.registration.updateCalls === 2);
+    await vi.advanceTimersByTimeAsync(HOUR_MS);
+    await until(() => f.registration.updateCalls === 3);
+    await vi.advanceTimersByTimeAsync(HOUR_MS);
+    await until(() => f.registration.updateCalls === 4);
+    await settled();
+    expect(f.registration.updateCalls).toBe(4);
   });
 
   it("register refusé (sw.js absent, type MIME, CSP) → un avertissement console, nom de l'erreur seulement", async () => {
@@ -414,6 +435,19 @@ describe('registerServiceWorker : applyUpdate (R-PWA-4, R-PWA-3)', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it('séance terminée (meta.activeSessionId remis à null) → un seul SKIP_WAITING au SW proposé', async () => {
+    await setMeta(db, 'activeSessionId', 's1');
+    await setMeta(db, 'activeSessionId', null);
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    const worker = f.installUpdate();
+    await until(() => c.getState().available);
+    await c.applyUpdate();
+    expect(skipWaitings(worker)).toEqual([SKIP_WAITING]);
+    f.fireControllerChange();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it('sans SW en attente → rien, sans erreur', async () => {
     const f = createFakeSwContainer({ controller: true });
     const c = start(f);
@@ -437,6 +471,53 @@ describe('registerServiceWorker : 426 (R-PWA-5, R-VER-2)', () => {
     await settled();
     expect(f.registration.updateCalls).toBe(2);
     expect(c.getState().forced).toBe(true);
+  });
+
+  it('426 reçu avant la création du contrôleur (pendant la sonde) → forced tout de suite et recherche en plus', async () => {
+    sync = createFakeSyncEngine({ connection: 'protocol_unsupported' });
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    expect(c.getState()).toEqual({ available: false, forced: true });
+    await until(() => f.registration.updateCalls === 2);
+    await settled();
+    expect(f.registration.updateCalls).toBe(2);
+  });
+
+  it('nouveau passage à protocol_unsupported après un retour en ligne → nouvelle recherche', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    await until(() => f.registration.updateCalls === 1);
+    sync.set({ connection: 'protocol_unsupported' });
+    await until(() => f.registration.updateCalls === 2);
+    sync.set({ connection: 'online' });
+    await settled();
+    expect(f.registration.updateCalls).toBe(2);
+    expect(c.getState().forced).toBe(true);
+    sync.set({ connection: 'protocol_unsupported' });
+    await until(() => f.registration.updateCalls === 3);
+    await settled();
+    expect(f.registration.updateCalls).toBe(3);
+    expect(c.getState().forced).toBe(true);
+  });
+
+  it('426 → outbox intacte', async () => {
+    const op = makeOp({
+      userId: 'u1',
+      entity: 'fixture_note',
+      id: NOTE_ID,
+      kind: 'create',
+      fields: { title: 't' },
+    });
+    await db.outbox.add(op);
+    const before = await db.outbox.toArray();
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    await settled();
+    sync.set({ connection: 'protocol_unsupported' });
+    f.installUpdate();
+    await until(() => c.getState().available);
+    await settled();
+    expect(await db.outbox.toArray()).toEqual(before);
   });
 
   it('426 puis nouvelle version trouvée → available et forced', async () => {
@@ -516,6 +597,30 @@ describe('bootServiceWorker', () => {
     expect(f.controllerMessages).toEqual([]);
   });
 
+  it('swKill vrai sans rien à nettoyer (incident en cours, déjà nettoyé) → toujours aucun enregistrement', async () => {
+    const f = createFakeSwContainer({ registrations: 0 });
+    const registerSpy = vi.spyOn(f.container, 'register');
+    const caches = createFakeCacheStorage();
+    await caches.open(LOCAL_DB_MARKER_CACHE);
+    await caches.open('autre');
+    await boot(f, health(true), caches);
+    await settled();
+    expect(registerSpy).not.toHaveBeenCalled();
+    expect(swControllerStore.get()).toBeNull();
+    expect(f.unregisterCalls).toBe(0);
+    expect((await caches.keys()).sort()).toEqual([LOCAL_DB_MARKER_CACHE, 'autre']);
+    expect(reload).not.toHaveBeenCalled();
+    expect(f.controllerMessages).toEqual([]);
+  });
+
+  it('426 déjà reçu par la synchro au démarrage (avant la fin de la sonde) → contrôleur publié forced', async () => {
+    sync = createFakeSyncEngine({ connection: 'protocol_unsupported' });
+    const f = createFakeSwContainer({ controller: true });
+    await boot(f, health(false));
+    expect(swControllerStore.get()?.getState()).toEqual({ available: false, forced: true });
+    await until(() => f.registration.updateCalls === 2);
+  });
+
   it.each([
     ['sonde sans réponse (null)', null],
     ['swKill faux', health(false)],
@@ -552,6 +657,31 @@ describe('bootServiceWorker', () => {
     await until(() => f.controllerMessages.length === 3);
     expect(f.controllerMessages).toEqual([SYNC_ILLUSTRATIONS, SYNC_ILLUSTRATIONS, SYNC_ILLUSTRATIONS]);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('R-SYN-32 : liste relue à chaque controllerchange et envoyée au nouveau contrôleur', async () => {
+    const later = ['a.11111111.svg', 'b.22222222.svg'];
+    const illustrationFiles = vi
+      .fn<() => Promise<string[]>>()
+      .mockResolvedValueOnce([...FILES])
+      .mockResolvedValueOnce(later);
+    const f = createFakeSwContainer({ controller: true });
+    await bootServiceWorker({
+      db,
+      status: { illustrationFiles },
+      sync,
+      fetchHealth: async () => health(false),
+      container: f.container,
+      killEnv: { serviceWorker: f.container, caches: createFakeCacheStorage(), reload },
+    });
+    f.setController(true);
+    f.fireControllerChange();
+    await until(() => f.controllerMessages.length === 2);
+    expect(illustrationFiles).toHaveBeenCalledTimes(2);
+    expect(f.controllerHistory).toEqual([
+      [SYNC_ILLUSTRATIONS],
+      [{ type: 'SYNC_ILLUSTRATIONS', files: later }],
+    ]);
   });
 
   it("sans contrôleur → rien ; envoyé dès qu'un contrôleur apparaît (première installation)", async () => {

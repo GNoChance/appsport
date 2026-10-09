@@ -15,9 +15,14 @@ export interface FakeSwWorker extends SwWorkerLike {
 export interface FakeSwContainer {
   container: SwContainerLike;
   registration: SwRegistrationLike & { updateCalls: number };
-  /** Contrôleur présent (`true`) ou absent ; ses messages vont dans `controllerMessages`. */
+  /**
+   * Contrôleur présent (`true`, un nouvel objet à chaque appel) ou absent ; ses messages vont dans
+   * `controllerMessages` (tous contrôleurs confondus) et dans sa propre entrée de `controllerHistory`.
+   */
   setController(on: boolean): void;
   controllerMessages: PageToSw[];
+  /** Messages reçus par chaque contrôleur, dans l'ordre où ils ont été installés. */
+  controllerHistory: PageToSw[][];
   /**
    * Nouvelle version trouvée : `updatefound` avec le SW en `installing`, puis le SW passe en attente
    * (`installed`, `statechange`) ; l'ancien SW en attente devient `redundant`.
@@ -122,8 +127,20 @@ export function createFakeSwContainer(
     },
     registration,
     controllerMessages: [],
+    controllerHistory: [],
     setController(on) {
-      controller = on ? { postMessage: (m) => fake.controllerMessages.push(m) } : null;
+      if (!on) {
+        controller = null;
+        return;
+      }
+      const own: PageToSw[] = [];
+      fake.controllerHistory.push(own);
+      controller = {
+        postMessage: (m) => {
+          own.push(m);
+          fake.controllerMessages.push(m);
+        },
+      };
     },
     installUpdate(opts = {}) {
       const worker = createWorker('installing', opts);
