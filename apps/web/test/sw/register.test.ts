@@ -163,7 +163,7 @@ describe('registerServiceWorker : recherche de mise à jour (R-PWA-2)', () => {
     expect(logged).not.toContain('x.test');
     expect(logged).not.toContain('build=1');
     expect(f.registration.updateCalls).toBe(0);
-    expect(c.getState()).toEqual({ available: false, forced: false });
+    expect(c.getState()).toEqual({ available: false, forced: false, dismissed: false });
   });
 });
 
@@ -477,7 +477,7 @@ describe('registerServiceWorker : 426 (R-PWA-5, R-VER-2)', () => {
     sync = createFakeSyncEngine({ connection: 'protocol_unsupported' });
     const f = createFakeSwContainer({ controller: true });
     const c = start(f);
-    expect(c.getState()).toEqual({ available: false, forced: true });
+    expect(c.getState()).toEqual({ available: false, forced: true, dismissed: false });
     await until(() => f.registration.updateCalls === 2);
     await settled();
     expect(f.registration.updateCalls).toBe(2);
@@ -617,7 +617,7 @@ describe('bootServiceWorker', () => {
     sync = createFakeSyncEngine({ connection: 'protocol_unsupported' });
     const f = createFakeSwContainer({ controller: true });
     await boot(f, health(false));
-    expect(swControllerStore.get()?.getState()).toEqual({ available: false, forced: true });
+    expect(swControllerStore.get()?.getState()).toEqual({ available: false, forced: true, dismissed: false });
     await until(() => f.registration.updateCalls === 2);
   });
 
