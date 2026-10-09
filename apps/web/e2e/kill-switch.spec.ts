@@ -3,7 +3,7 @@ import {
   ILLUSTRATIONS_CACHE_PREFIX,
   SHELL_CACHE_PREFIX,
 } from '../src/sw/precache-manifest';
-import { acrossReload, BUILD_DIRS, shellLabel } from './support/builds';
+import { acrossReload, BUILD_DIRS } from './support/builds';
 import { expect, test } from './support/fixtures';
 import { setupOnboardedAdmin } from './support/flows';
 import {
@@ -30,12 +30,13 @@ test("interrupteur d'urgence : SW et caches retirés sans boucle, base intacte, 
 }) => {
   const page = await setupOnboardedAdmin(server, context);
   const userId = await metaValue(page, 'userId');
-  if (typeof userId !== 'string') throw new Error('meta.userId absent après l’onboarding');
+  if (typeof userId !== 'string') throw new Error("meta.userId absent après l'onboarding");
   const op = fakeOutboxOp(userId);
   const doomed = async () =>
     (await cacheNames(page)).filter(
       (n) => n.startsWith(SHELL_CACHE_PREFIX) || n.startsWith(ILLUSTRATIONS_CACHE_PREFIX),
     );
+  const controlled = () => page.evaluate(() => navigator.serviceWorker?.controller != null);
 
   await test.step('opération en attente, coquille et illustrations en cache', async () => {
     // La panne d'abord : sinon le moteur pousserait l'opération avant elle.
@@ -52,28 +53,39 @@ test("interrupteur d'urgence : SW et caches retirés sans boucle, base intacte, 
   });
 
   await test.step('interrupteur actif : plus de SW ni de caches, page affichée, pas de boucle', async () => {
-    let navigations = 0;
-    page.on('framenavigated', (frame) => {
-      if (frame === page.mainFrame()) navigations++;
+    // Chargements de document de la page (requêtes de navigation, chemin seul) : une navigation dans le
+    // même document (replaceState du routeur) n'en fait pas, un chargement coupé par un autre en fait une.
+    const navigations: string[] = [];
+    page.on('request', (request) => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame())
+        navigations.push(new URL(request.url()).pathname);
     });
+    // Même build A sur le serveur et dans le cache : le libellé ne dirait pas d'où vient la page, le
+    // contrôleur si (un document servi par le SW A en désinstallation reste contrôlé par lui).
     await server.restart({ SW_KILL_SWITCH: '1' });
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    // `commit` : la navigation de l'interrupteur peut partir avant le DOMContentLoaded du rechargement.
+    await page.reload({ waitUntil: 'commit' });
     // Le rechargement demandé, puis celui de l'interrupteur (par le SW ou par la page, R-PWA-6).
-    await expect.poll(() => navigations, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => navigations.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
     await expect.poll(() => acrossReload(page, () => registrationCount(page)), { timeout: 15_000 }).toBe(0);
     await expect.poll(() => acrossReload(page, doomed), { timeout: 15_000 }).toEqual([]);
-    // Page servie par le réseau, appli démarrée.
-    await expect(page.getByTestId('connection-status')).toBeAttached();
-    expect(await shellLabel(page)).toBe('A');
-    // Aucun rechargement de plus : aucune navigation et le témoin posé dans la page survit.
-    const before = navigations;
+    // Page rechargée depuis le réseau, à son adresse, hors de tout SW, et appli démarrée.
+    expect(new URL(page.url()).pathname).toBe('/');
+    await expect(page.getByTestId('connection-status')).toBeVisible();
+    expect(await controlled()).toBe(false);
+    // Aucun rechargement de plus : le témoin posé dans la page survit à la fenêtre.
     await page.evaluate(() => {
       (window as { e2eSameDocument?: boolean }).e2eSameDocument = true;
     });
     await page.waitForTimeout(NO_LOOP_MS);
-    expect(navigations - before, 'navigations après l’interrupteur').toBe(0);
+    // Rechargement unique : celui demandé plus un seul de l'interrupteur, sur toute l'étape.
+    expect(navigations, 'chargements depuis le rechargement demandé, interrupteur compris').toEqual([
+      '/',
+      '/',
+    ]);
     expect(await page.evaluate(() => (window as { e2eSameDocument?: boolean }).e2eSameDocument)).toBe(true);
     expect(await registrationCount(page)).toBe(0);
+    expect(await controlled()).toBe(false);
   });
 
   await test.step('IndexedDB jamais touché', async () => {

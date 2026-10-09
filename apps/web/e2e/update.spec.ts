@@ -45,7 +45,7 @@ test('mise à jour : B attend pendant la séance, puis remplace A au clic sans t
   expect(await label()).toBe('A');
 
   const userId = await metaValue(page, 'userId');
-  if (typeof userId !== 'string') throw new Error('meta.userId absent après l’onboarding');
+  if (typeof userId !== 'string') throw new Error("meta.userId absent après l'onboarding");
   const op = fakeOutboxOp(userId);
 
   await test.step('séance en cours et opération en attente sur A', async () => {

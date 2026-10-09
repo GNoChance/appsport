@@ -22,7 +22,7 @@ test("426 : file d'envoi gardée, bandeau non fermable, mise à jour vers B puis
   expect(await shellLabel(page)).toBe('A');
 
   const userId = await metaValue(page, 'userId');
-  if (typeof userId !== 'string') throw new Error('meta.userId absent après l’onboarding');
+  if (typeof userId !== 'string') throw new Error("meta.userId absent après l'onboarding");
   const op = fakeOutboxOp(userId);
 
   await test.step("426 sur la synchro : état protocol_unsupported, file d'envoi gardée (R-VER-2)", async () => {
