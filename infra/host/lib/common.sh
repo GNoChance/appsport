@@ -187,6 +187,10 @@ restic_backup_all() {
   return "$failed"
 }
 
+# Tag vX.Y.Z : seule forme admise comme ref git et dans les noms d'instantané ou de liste. deploy.env et
+# deploy.log reviennent de restic et s'éditent en P4 : relus, jamais une option git ni un chemin hors de data/.
+valid_version() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+
 current_version() {
   [ -r "$APPSPORT_ROOT/deploy.env" ] || return 1
   sed -n 's/^APPSPORT_VERSION=//p' "$APPSPORT_ROOT/deploy.env" | tail -n1

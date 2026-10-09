@@ -24,7 +24,7 @@ parse_args() {
       --yes) YES=1 ;;
       --rollback) MODE=rollback ;;
       *)
-        if [ -z "$NEW" ] && [[ "$arg" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then NEW=$arg; else usage; fi
+        if [ -z "$NEW" ] && valid_version "$arg"; then NEW=$arg; else usage; fi
         ;;
     esac
   done
@@ -84,13 +84,16 @@ main() {
       die "Aucun déploiement réussi à annuler."
     fi
     read -r _ prev cur _ <<<"$line"
+    if ! valid_version "$prev" || ! valid_version "$cur"; then
+      die "Dernier déploiement réussi illisible dans $APPSPORT_ROOT/deploy.log. Rien n'a été changé."
+    fi
     [ "$(current_version)" = "$cur" ] || die "La version en place n'est pas $cur."
     confirm "Revenir de $cur à $prev ?"
     rollback "$prev" "$cur" manual
     return $?
   fi
   health_json >/dev/null || die "L'appli ne répond pas 200 sur /api/health : voir P8. Rien n'a été changé."
-  if ! prev=$(current_version) || [ -z "$prev" ]; then
+  if ! prev=$(current_version) || ! valid_version "$prev"; then
     die "Version en place illisible dans $APPSPORT_ROOT/deploy.env. Rien n'a été changé."
   fi
   [ "$NEW" != "$prev" ] || die "$NEW est déjà déployée."

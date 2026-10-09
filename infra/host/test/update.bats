@@ -245,6 +245,32 @@ remember_files() {
   assert_nothing_changed
 }
 
+@test "versions illisibles dans deploy.log ou deploy.env : refus, ni option git ni chemin hors du volume" {
+  # deploy.log et deploy.env reviennent de restic et s'éditent en P4 : relus, ils sont validés comme vX.Y.Z.
+  write_deploy_env_for_test v1.3.0
+  echo "2026-10-08T20:00:00Z ../../../etc v1.3.0 ok" >>"$APPSPORT_ROOT/deploy.log"
+  remember_files
+  run "$UPDATE" --rollback --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Dernier déploiement réussi illisible dans $APPSPORT_ROOT/deploy.log. Rien n'a été changé."* ]]
+  assert_nothing_changed
+
+  reset_calls
+  write_deploy_env_for_test --orphan
+  echo "2026-10-08T21:00:00Z v1.2.0 --orphan ok" >>"$APPSPORT_ROOT/deploy.log"
+  remember_files
+  run "$UPDATE" --rollback --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Dernier déploiement réussi illisible dans $APPSPORT_ROOT/deploy.log. Rien n'a été changé."* ]]
+  assert_nothing_changed
+
+  reset_calls
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Version en place illisible dans $APPSPORT_ROOT/deploy.env. Rien n'a été changé."* ]]
+  assert_nothing_changed
+}
+
 @test "version mal formée : usage, code 2, aucune commande" {
   run "$UPDATE" v1.3
   [ "$status" -eq 2 ]
