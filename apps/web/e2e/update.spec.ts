@@ -67,21 +67,36 @@ test('mise à jour : B attend pendant la séance, puis remplace A au clic sans t
   });
 
   await test.step('Review Focus 5 : rechargé à froid en ligne puis sans réseau, A tant que B attend', async () => {
+    // Le label vient d'une meta d'index.html, présente même si le JS ou le CSS ne charge pas : on vérifie
+    // aussi que l'application s'est affichée (R-PWA-8), et son état hors ligne quand le réseau est coupé.
+    const connection = page.getByTestId('connection-status');
     await reload();
     expect(await label()).toBe('A');
+    await expect(connection).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     // Requêtes sans réponse (VPN coupé) : la coquille vient du cache, identique sous Chromium et WebKit.
     server.setFault({ kind: 'blackhole' });
     await reload();
     expect(await label()).toBe('A');
+    await expect(connection).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    // navigator.onLine reste vrai : 'unknown' tant que la première requête n'a pas expiré, puis 'offline'.
+    await expect(connection).toHaveAttribute('data-state', /^(offline|unknown)$/);
     // Requêtes retenues libérées, puis la panne du push rétablie, sans requête traitée entre les deux.
     server.setFault(null);
     server.setFault(PUSH_FAULT);
-    // context.setOffline : WebKit fait échouer toute navigation sous le hors-ligne émulé, même servie par
-    // le SW (« WebKit encountered an internal error », constaté en T38) ; Chromium seul.
-    if (browserName !== 'webkit') {
+    if (browserName === 'webkit') {
+      test.info().annotations.push({
+        type: 'webkit-setOffline',
+        description:
+          'context.setOffline(true) + rechargement non exécuté sous WebKit : toute navigation sous le hors-ligne ' +
+          'émulé y échoue (« WebKit encountered an internal error »), même servie par le SW (constaté en T38). ' +
+          'Le rechargement à froid sans réseau y est couvert par le trou noir du proxy ci-dessus (01 §9.1.6, Review Focus 5).',
+      });
+    } else {
       await context.setOffline(true);
       await reload();
       expect(await label()).toBe('A');
+      await expect(connection).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      await expect(connection).toHaveAttribute('data-state', 'offline', { timeout: 5_000 });
       await context.setOffline(false);
     }
     await waitForWaitingWorker(page);
