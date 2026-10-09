@@ -9,6 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { isBuiltin } from 'node:module';
 import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -22,25 +23,57 @@ const REPO_DATA_DIR = fileURLToPath(new URL('../../../../data', import.meta.url)
 const VERSION = 'v9.9.9-test';
 const INDEX_HTML = '<!doctype html><title>appsport</title>';
 
+/**
+ * spawnSync bloque la boucle d'événements du worker : le délai de Vitest ne peut pas l'interrompre. Chaque
+ * appel a donc sa propre limite, puis SIGKILL.
+ */
+const SYNC_LIMITS = { timeout: 30_000, killSignal: 'SIGKILL' } as const;
+
+/**
+ * Seules variables du système transmises aux processus du bundle. Rien d'autre ne passe : ni la clé
+ * Anthropic (aucun réseau externe en test), ni NODE_PATH, que le lanceur pnpm de vitest pointe vers
+ * node_modules/.pnpm/node_modules (le `require` du bandeau y trouverait hono ou zod hors du dépôt), ni
+ * NODE_OPTIONS.
+ */
+const SYSTEM_ENV = new Set(['PATH', 'SYSTEMROOT', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE']);
+const LEAKS = ['NODE_PATH', 'NODE_OPTIONS', 'ANTHROPIC_API_KEY', 'COACH_MODEL', 'SW_KILL_SWITCH'];
+
+function childEnv(own: Record<string, string>): Record<string, string | undefined> {
+  const system = Object.entries(process.env).filter(([key]) => SYSTEM_ENV.has(key.toUpperCase()));
+  return { ...Object.fromEntries(system), ...own };
+}
+
+/** Un processus terminé seul (ni échec de lancement, ni délai dépassé) avec le code 0. */
+function expectSuccess(result: SpawnSyncReturns<string>): void {
+  expect(result.error, result.stderr).toBeUndefined();
+  expect(result.signal, result.stderr).toBeNull();
+  expect(result.status, result.stderr).toBe(0);
+}
+
 let build: SpawnSyncReturns<string>;
 
 beforeAll(() => {
   rmSync(DIST_DIR, { recursive: true, force: true });
-  build = spawnSync(process.execPath, ['build.mjs'], { cwd: SERVER_DIR, encoding: 'utf8' });
+  build = spawnSync(process.execPath, ['build.mjs'], { cwd: SERVER_DIR, encoding: 'utf8', ...SYNC_LIMITS });
 }, 60_000);
 
 /**
  * Le code du bundle sans ses commentaires : esbuild garde la JSDoc des dépendances, dont les exemples
  * (`import { Hono } from 'hono'`) ne sont pas des imports. Minifié (commentaires retirés) puis réimprimé
- * avec ses espaces, pour que `"from" in x` ne devienne pas `"from"in x`.
+ * avec ses espaces, pour que `"from" in x` ne devienne pas `"from"in x`. Sans `format` : en ESM, esbuild
+ * renommerait le `require` du bandeau en `require2`, que le relevé des require ne verrait plus.
  */
 async function withoutComments(src: string): Promise<string> {
-  const options = { loader: 'js', format: 'esm', target: 'node24', legalComments: 'none' } as const;
+  const options = { loader: 'js', target: 'node24', legalComments: 'none' } as const;
   const minified = await transform(src, { ...options, minifyWhitespace: true });
   return (await transform(minified.code, options)).code;
 }
 
-/** Imports réels (statiques, de bord, dynamiques, require) du fichier, lus par le parseur d'esbuild. */
+/**
+ * Imports du fichier (statiques, de bord, dynamiques), lus par le parseur d'esbuild. Le `require` du
+ * bandeau et le `__require` d'esbuild sont des liaisons locales : leurs appels n'y figurent pas, d'où
+ * `requiredModules`.
+ */
 async function bundleImports(file: string): Promise<{ inputs: string[]; imports: string[] }> {
   const { metafile } = await esbuild({
     entryPoints: [file],
@@ -59,12 +92,18 @@ async function bundleImports(file: string): Promise<{ inputs: string[]; imports:
   };
 }
 
+/** Modules chargés par `require('x')` ou `__require('x')` ; le `CreateRequire(` du bandeau n'en est pas un. */
+function requiredModules(src: string): string[] {
+  return [...src.matchAll(/\b(?:__)?require\s*\(\s*['"]([^'"]+)['"]/g)].map((match) => match[1] ?? '');
+}
+
 it('node build.mjs produit un seul server.mjs ESM, sans import hors node:*', async () => {
-  expect(build.status, build.stderr).toBe(0);
+  expectSuccess(build);
   expect(readdirSync(DIST_DIR)).toEqual(['server.mjs']);
   const src = await withoutComments(readFileSync(join(DIST_DIR, 'server.mjs'), 'utf8'));
   expect(src).toMatch(/^export \{/m);
   expect(src).not.toMatch(/(?:from|import\()\s*['"](?!node:)[a-z@][^'"]*['"]/);
+  expect(requiredModules(src).filter((specifier) => !isBuiltin(specifier))).toEqual([]);
   const { inputs, imports } = await bundleImports(join(DIST_DIR, 'server.mjs'));
   expect(inputs).toHaveLength(1);
   expect(imports).toContain('node:sqlite');
@@ -99,18 +138,78 @@ async function waitForHealth(url: string, child: ChildProcess, logs: () => strin
   }
 }
 
-/** Arrête le serveur et attend la fin du processus : sous Windows, la base reste verrouillée avant. */
+/** Vrai si `exited` se résout avant `ms` millisecondes. */
+async function within(exited: Promise<void>, ms: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+  });
+  try {
+    return await Promise.race([exited.then(() => true), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Arrête le serveur et attend la fin du processus (sous Windows, la base reste verrouillée avant) :
+ * SIGTERM, puis SIGKILL s'il tourne encore après 10 s.
+ */
 async function stop(child: ChildProcess | undefined): Promise<void> {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  const exited = new Promise((resolve) => child.once('exit', resolve));
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
   child.kill();
-  await exited;
+  if (await within(exited, 10_000)) return;
+  child.kill('SIGKILL');
+  await within(exited, 5_000);
+}
+
+type Running = { child: ChildProcess; port: number; logs: () => string };
+
+function launch(
+  serverPath: string,
+  dir: string,
+  port: number,
+  env: Record<string, string | undefined>,
+): Running {
+  let output = '';
+  const child = spawn(process.execPath, [serverPath], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout?.on('data', (chunk) => {
+    output += chunk;
+  });
+  child.stderr?.on('data', (chunk) => {
+    output += chunk;
+  });
+  return { child, port, logs: () => output };
+}
+
+/**
+ * Lance le serveur sur un port choisi juste avant, puis attend /api/health. Un seul nouvel essai si un autre
+ * processus a pris le port entre-temps. Chaque processus lancé va dans `launched`, que l'appelant arrête.
+ */
+async function startHealthy(
+  serverPath: string,
+  dir: string,
+  envFor: (port: number) => Record<string, string | undefined>,
+  launched: Running[],
+): Promise<{ running: Running; health: Response }> {
+  for (let attempt = 1; ; attempt++) {
+    const port = await freePort();
+    const running = launch(serverPath, dir, port, envFor(port));
+    launched.push(running);
+    try {
+      const health = await waitForHealth(`http://127.0.0.1:${port}/api/health`, running.child, running.logs);
+      return { running, health };
+    } catch (error) {
+      if (attempt >= 2 || !running.logs().includes('EADDRINUSE')) throw error;
+    }
+  }
 }
 
 it('server.mjs seul, hors du dépôt et sans node_modules : init, db:check puis /api/health', async () => {
-  expect(build.status, build.stderr).toBe(0);
+  expectSuccess(build);
   const dir = mkdtempSync(join(tmpdir(), 'appsport-bundle-'));
-  let server: ChildProcess | undefined;
+  const launched: Running[] = [];
   try {
     expect(ancestors(dir).filter((d) => existsSync(join(d, 'node_modules')))).toEqual([]);
     const serverPath = join(dir, 'server.mjs');
@@ -120,38 +219,40 @@ it('server.mjs seul, hors du dépôt et sans node_modules : init, db:check puis 
     mkdirSync(join(dir, 'public'));
     writeFileSync(join(dir, 'public', 'index.html'), INDEX_HTML);
     cpSync(REPO_DATA_DIR, join(dir, 'content'), { recursive: true });
-    const port = await freePort();
-    const env = {
-      ...process.env,
+    const own = {
       NODE_ENV: 'production',
-      APP_ORIGIN: `http://127.0.0.1:${port}`,
       APP_VERSION: VERSION,
       HOST: '127.0.0.1',
-      PORT: String(port),
       APPSPORT_DATA_DIR: join(dir, 'data'),
       APPSPORT_PUBLIC_DIR: join(dir, 'public'),
       APPSPORT_CONTENT_DIR: join(dir, 'content'),
-      SW_KILL_SWITCH: undefined,
     };
+    // Les commandes n'écoutent pas : leur origine n'a pas besoin du port du serveur.
+    const cliEnv = childEnv({ ...own, APP_ORIGIN: 'http://127.0.0.1' });
+    const serverEnv = (port: number) =>
+      childEnv({ ...own, APP_ORIGIN: `http://127.0.0.1:${port}`, PORT: String(port) });
+    const ownKeys = new Set([...Object.keys(own), 'APP_ORIGIN', 'PORT']);
+    for (const env of [cliEnv, serverEnv(3000)]) {
+      const inherited = Object.keys(env).filter(
+        (key) => !SYSTEM_ENV.has(key.toUpperCase()) && !ownKeys.has(key),
+      );
+      expect(inherited).toEqual([]);
+      for (const key of LEAKS) expect(env).not.toHaveProperty(key);
+    }
     const cli = (command: string) =>
-      spawnSync(process.execPath, [serverPath, command], { cwd: dir, env, encoding: 'utf8' });
+      spawnSync(process.execPath, [serverPath, command], {
+        cwd: dir,
+        env: cliEnv,
+        encoding: 'utf8',
+        ...SYNC_LIMITS,
+      });
 
-    const init = cli('init');
-    expect(init.status, init.stderr).toBe(0);
+    expectSuccess(cli('init'));
     expect(existsSync(join(dir, 'data', 'appsport.db'))).toBe(true);
-    const check = cli('db:check');
-    expect(check.status, check.stderr).toBe(0);
+    expectSuccess(cli('db:check'));
 
-    let output = '';
-    server = spawn(process.execPath, [serverPath], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] });
-    server.stdout?.on('data', (chunk) => {
-      output += chunk;
-    });
-    server.stderr?.on('data', (chunk) => {
-      output += chunk;
-    });
-    const health = await waitForHealth(`http://127.0.0.1:${port}/api/health`, server, () => output);
-    expect(health.status, output).toBe(200);
+    const { running, health } = await startHealthy(serverPath, dir, serverEnv, launched);
+    expect(health.status, running.logs()).toBe(200);
     expect(await health.json()).toMatchObject({
       status: 'ok',
       version: VERSION,
@@ -160,10 +261,15 @@ it('server.mjs seul, hors du dépôt et sans node_modules : init, db:check puis 
       minProtocol: 1,
       swKill: false,
     });
-    const home = await fetch(`http://127.0.0.1:${port}/`);
+    const home = await fetch(`http://127.0.0.1:${running.port}/`);
     expect(await home.text()).toBe(INDEX_HTML);
   } finally {
-    await stop(server);
-    rmSync(dir, { recursive: true, maxRetries: 5 });
+    for (const { child } of launched) await stop(child);
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    } catch (error) {
+      // Un dossier temporaire resté verrouillé ne doit pas masquer l'échec réel du test.
+      console.warn(`dossier temporaire non supprimé : ${dir} (${String(error)})`);
+    }
   }
 }, 60_000);
