@@ -184,6 +184,20 @@ describe('registerServiceWorker : version disponible (R-PWA-2, R-PWA-9, R-DEP-4)
     expect(f.controllerMessages).toEqual([]);
   });
 
+  it('R-DEP-4 : réponse sans localDbVersion (SW antérieur au champ) → jamais proposé, pas de SKIP_WAITING', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    await settled();
+    const worker = f.installUpdate({ localDbVersion: null });
+    await until(() => worker.messages.length > 0);
+    await settled();
+    expect(worker.messages).toEqual([GET_STATUS]);
+    expect(c.getState().available).toBe(false);
+    await c.applyUpdate();
+    expect(skipWaitings(worker)).toEqual([]);
+    expect(f.controllerMessages).toEqual([]);
+  });
+
   it("SW en attente muet → false après 1 s, applyUpdate n'envoie pas SKIP_WAITING", async () => {
     const f = createFakeSwContainer({ controller: true });
     const c = start(f);

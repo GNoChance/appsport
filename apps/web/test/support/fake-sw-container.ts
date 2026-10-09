@@ -21,10 +21,10 @@ export interface FakeSwContainer {
   /**
    * Nouvelle version trouvée : `updatefound` avec le SW en `installing`, puis le SW passe en attente
    * (`installed`, `statechange`) ; l'ancien SW en attente devient `redundant`.
-   * `localDbVersion` : LOCAL_DB_VERSION par défaut ; `silent` : ne répond pas à GET_STATUS (voir
-   * `FakeSwWorker.silent`).
+   * `localDbVersion` : LOCAL_DB_VERSION par défaut, `null` pour un SW antérieur au champ (réponse à
+   * GET_STATUS sans `localDbVersion`) ; `silent` : ne répond pas à GET_STATUS (voir `FakeSwWorker.silent`).
    */
-  installUpdate(o?: { localDbVersion?: number; silent?: boolean }): FakeSwWorker;
+  installUpdate(o?: FakeWorkerOptions): FakeSwWorker;
   fireControllerChange(): void;
   /**
    * Le SW en attente est activé par une autre fenêtre (clic sur « Mettre à jour ») : il quitte l'attente
@@ -35,7 +35,12 @@ export interface FakeSwContainer {
   unregisterCalls: number;
 }
 
-function createWorker(state: string, o: { localDbVersion?: number; silent?: boolean } = {}) {
+interface FakeWorkerOptions {
+  localDbVersion?: number | null;
+  silent?: boolean;
+}
+
+function createWorker(state: string, o: FakeWorkerOptions = {}) {
   const listeners: (() => void)[] = [];
   const worker: FakeSwWorker & { setState(s: string): void } = {
     state,
@@ -51,8 +56,8 @@ function createWorker(state: string, o: { localDbVersion?: number; silent?: bool
         shellCached: true,
         illustrationsMissing: 0,
         illustrationsReferenced: null,
-        localDbVersion: o.localDbVersion ?? LOCAL_DB_VERSION,
       };
+      if (o.localDbVersion !== null) status.localDbVersion = o.localDbVersion ?? LOCAL_DB_VERSION;
       port?.postMessage(status);
     },
     addEventListener(_type, fn) {
