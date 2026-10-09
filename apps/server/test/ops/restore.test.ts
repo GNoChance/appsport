@@ -6,9 +6,11 @@ import {
   openSync,
   readdirSync,
   rmSync,
+  statSync,
   writeSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { isUuidV7 } from '@appsport/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../../src/db/open';
@@ -37,6 +39,24 @@ async function prepare(): Promise<{ ops: OpsDataDir; snapshot: string }> {
     'daily',
   );
   return { ops, snapshot };
+}
+
+/**
+ * Compte les marqueurs 'apres-instantane' d'une copie jetable des fichiers `sources` (suffixe → chemin),
+ * pour ne jamais ouvrir les originaux : la fermeture reporterait leur WAL dans la base.
+ */
+function countMarkersInCopy(dir: string, sources: Partial<Record<'' | '-wal' | '-shm', string>>): unknown {
+  mkdirSync(dir);
+  const path = join(dir, 'db');
+  for (const [suffix, source] of Object.entries(sources)) copyFileSync(source, `${path}${suffix}`);
+  const sqlite = new DatabaseSync(path);
+  try {
+    // Base principale seule : la table elle-même peut n'exister que dans le WAL.
+    if (!sqlite.prepare("SELECT 1 FROM sqlite_master WHERE name = 'marker'").get()) return { c: 0 };
+    return sqlite.prepare("SELECT count(*) AS c FROM marker WHERE label = 'apres-instantane'").get();
+  } finally {
+    sqlite.close();
+  }
 }
 
 /** Rien n'a bougé : ni copie en cours, ni base remplacée. */
@@ -73,6 +93,12 @@ describe('restoreSnapshot', () => {
     expect(readdirSync(replacedDir)).toEqual(['appsport.db']);
     expect(sha256(join(replacedDir, 'appsport.db'))).toBe(oldHash);
     expect(readdirSync(ops.dir).filter((name) => name.includes('.restoring'))).toEqual([]);
+    // Étape 4 : la copie restaurée repasse en journal DELETE, sans -wal ni -shm à côté.
+    expect(readOnly(ops.dbPath, (s) => s.prepare('PRAGMA journal_mode').get())).toEqual({
+      journal_mode: 'delete',
+    });
+    expect(existsSync(`${ops.dbPath}-wal`)).toBe(false);
+    expect(existsSync(`${ops.dbPath}-shm`)).toBe(false);
 
     const restored = openDatabase(ops.dbPath);
     try {
@@ -178,6 +204,11 @@ describe('restoreSnapshot', () => {
     for (const suffix of ['', '-wal', '-shm'])
       copyFileSync(`${ops.dbPath}${suffix}`, join(crash, `db${suffix}`));
     ops.close();
+    // Le marqueur n'existe que dans le WAL copié : sinon l'absence du marqueur après restauration ne prouverait rien.
+    expect(statSync(join(crash, 'db-wal')).size).toBeGreaterThan(0);
+    const crashPair = { '': join(crash, 'db'), '-wal': join(crash, 'db-wal'), '-shm': join(crash, 'db-shm') };
+    expect(countMarkersInCopy(join(ops.dir, 'crash-pair'), crashPair)).toEqual({ c: 1 });
+    expect(countMarkersInCopy(join(ops.dir, 'crash-main'), { '': join(crash, 'db') })).toEqual({ c: 0 });
     for (const suffix of ['', '-wal', '-shm'])
       copyFileSync(join(crash, `db${suffix}`), `${ops.dbPath}${suffix}`);
 
