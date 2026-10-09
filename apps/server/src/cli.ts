@@ -230,22 +230,29 @@ function sentinelMissing(config: AppConfig, ctx: CliContext): boolean {
   return true;
 }
 
-/** Copie à chaud, sans migration (un `pre-vX.Y.Z` est pris par l'ancienne version), puis élagage. */
+/**
+ * Copie à chaud, sans migration (un `pre-vX.Y.Z` est pris par l'ancienne version), puis élagage. L'élagage
+ * passe même si l'instantané échoue (base absente, disque plein) : rien ne doit rester plus de 30 jours
+ * (R-OPS-10, R-OPS-16), y compris des données supprimées ou retirées depuis.
+ */
 async function runSnapshot(args: string[], ctx: CliContext): Promise<number> {
   const tag = parseFlags(args).flags.tag ?? '';
   assertSnapshotTag(tag);
   const config = loadConfig(ctx.env);
   if (sentinelMissing(config, ctx)) return 1;
-  assertStartupPreconditions(config);
   const dataDir = resolve(config.dataDir);
-  const { sqlite } = openDatabase(config.dbPath);
   let path: string;
   try {
-    path = await takeSnapshot({ sqlite, dataDir, clock: systemClock }, tag);
+    assertStartupPreconditions(config);
+    const { sqlite } = openDatabase(config.dbPath);
+    try {
+      path = await takeSnapshot({ sqlite, dataDir, clock: systemClock }, tag);
+    } finally {
+      sqlite.close();
+    }
   } finally {
-    sqlite.close();
+    await pruneSnapshots(dataDir, systemClock.now());
   }
-  await pruneSnapshots(dataDir, systemClock.now());
   ctx.out(`Instantané écrit : ${path}`);
   return 0;
 }

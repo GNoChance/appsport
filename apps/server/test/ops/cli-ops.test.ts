@@ -1,6 +1,7 @@
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
@@ -9,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { parisDate } from '@appsport/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from '../../src/cli';
 import { readOnly, sha256 } from './helpers';
@@ -31,6 +33,18 @@ const cli = (...argv: string[]) =>
   );
 const snapshotsDir = () => join(dir, 'snapshots');
 const listSnapshots = () => (existsSync(snapshotsDir()) ? readdirSync(snapshotsDir()).sort() : []);
+/** Nom `daily-` attendu à l'instant présent : date civile de Paris selon l'horloge système. */
+const dailyNameNow = () => `daily-${parisDate(new Date()).replaceAll('-', '')}.db`;
+
+/** Crée sous snapshots/ un fichier (ou un dossier) daté de `days` jours. */
+function agedEntry(name: string, days: number, kind: 'file' | 'dir' = 'file'): void {
+  mkdirSync(snapshotsDir(), { recursive: true });
+  const path = join(snapshotsDir(), name);
+  if (kind === 'dir') mkdirSync(path);
+  else writeFileSync(path, '');
+  const mtime = new Date(Date.now() - days * 86_400_000);
+  utimesSync(path, mtime, mtime);
+}
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'appsport-cli-ops-'));
@@ -58,9 +72,14 @@ async function snapshotDaily(): Promise<string> {
 }
 
 describe('snapshot', () => {
-  it('--tag daily : instantané daily-AAAAMMJJ.db, chemin absolu', async () => {
+  it('--tag daily : daily-AAAAMMJJ.db du jour (Paris, horloge système), chemin absolu', async () => {
+    const before = dailyNameNow();
     expect(await cli('snapshot', '--tag', 'daily')).toBe(0);
-    expect(lines.at(-1)).toMatch(/^Instantané écrit : .*[\\/]snapshots[\\/]daily-\d{8}\.db$/);
+    // Deux noms admis si minuit (Paris) passe pendant la commande.
+    const expected = [before, dailyNameNow()].map(
+      (name) => `Instantané écrit : ${join(dir, 'snapshots', name)}`,
+    );
+    expect(expected).toContain(lines.at(-1));
     const path = SNAPSHOT_LINE.exec(lines.at(-1) ?? '')?.[1] as string;
     expect(path).toBe(resolve(path));
     expect(readOnly(path, (s) => s.prepare('PRAGMA integrity_check').all())).toEqual([
@@ -112,15 +131,36 @@ describe('snapshot', () => {
       ['daily-20000101.db', 'daily-20000102.db', latest.slice(snapshotsDir().length + 1)].sort(),
     );
   });
+
+  it("instantané en échec → l'élagage passe quand même (R-OPS-10 : rien de plus de 30 jours)", async () => {
+    agedEntry('daily-20000101.db', 40);
+    agedEntry('pre-v0.1.0.db', 40);
+    agedEntry('replaced-20000101T000000Z', 40, 'dir');
+    agedEntry('daily-20000102.db', 2);
+    rmSync(dbPath);
+    expect(await cli('snapshot', '--tag', 'daily')).toBe(1);
+    expect(errors.at(-1)).toMatch(/^Base introuvable/);
+    expect(listSnapshots()).toEqual(['daily-20000102.db']);
+  });
 });
 
 describe('restore', () => {
   it('nouvelle époque, base remplacée gardée, rappel de privacy:reapply', async () => {
     const snapshot = await snapshotDaily();
+    const start = Date.now();
     expect(await cli('restore', snapshot)).toBe(0);
-    expect(lines.at(-3)).toMatch(
-      /^Base remplacée conservée 30 jours dans .*[\\/]snapshots[\\/]replaced-\d{8}T\d{6}Z\.$/,
+    const end = Date.now();
+    const prefix = `Base remplacée conservée 30 jours dans ${join(dir, 'snapshots', 'replaced-')}`;
+    expect(lines.at(-3)?.startsWith(prefix), lines.at(-3)).toBe(true);
+    const stamp = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.$/.exec(
+      lines.at(-3)?.slice(prefix.length) ?? '',
     );
+    expect(stamp, lines.at(-3)).not.toBeNull();
+    // Horodatage UTC de l'horloge système, tronqué à la seconde : pris pendant la commande.
+    const [, y, mo, d, h, mi, s] = stamp as RegExpExecArray;
+    const at = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:${s}Z`);
+    expect(at).toBeGreaterThanOrEqual(start - 1000);
+    expect(at).toBeLessThanOrEqual(end);
     expect(lines.at(-2)).toMatch(
       /^Restauration terminée\. Nouvelle époque : [0-9a-f-]{36} \(epoch_base_rev \d+\)\.$/,
     );
