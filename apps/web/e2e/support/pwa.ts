@@ -85,40 +85,61 @@ type IdbAction =
   | { op: 'put'; store: string; value: unknown }
   | { op: 'version' };
 
-/** Accès direct à la base Dexie de la page (IndexedDB natif, version courante, sans montée de version). */
+/**
+ * Accès direct à la base Dexie de la page (IndexedDB natif, version courante, sans montée de version).
+ * Rejette, au lieu de pendre jusqu'au délai du test, si la base ou le magasin manque ou si une requête
+ * échoue ; la connexion est toujours refermée pour ne pas bloquer une montée de version de Dexie.
+ */
 function idb(page: Page, action: IdbAction): Promise<unknown> {
   return page.evaluate(
     ({ name, action }) =>
       new Promise<unknown>((resolve, reject) => {
         const open = indexedDB.open(name);
+        // Base absente : l'ouvrir sans version la créerait vide en v1, ce qui fausserait Dexie ensuite.
+        open.onupgradeneeded = () => {
+          open.transaction?.abort();
+          reject(new Error(`base ${name} absente`));
+        };
+        open.onblocked = () => reject(new Error(`ouverture de la base ${name} bloquée`));
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const db = open.result;
+          const fail = (error: unknown) => {
+            db.close();
+            reject(error);
+          };
           if (action.op === 'version') {
             db.close();
             resolve(db.version);
             return;
           }
-          const tx = db.transaction(action.store, action.op === 'put' ? 'readwrite' : 'readonly');
-          const store = tx.objectStore(action.store);
-          const request =
-            action.op === 'getAll'
-              ? store.getAll()
-              : action.op === 'get'
-                ? store.get(action.key)
-                : store.put(action.value);
-          let result: unknown;
-          request.onsuccess = () => {
-            result = request.result;
-          };
-          tx.oncomplete = () => {
-            db.close();
-            resolve(result);
-          };
-          tx.onerror = () => {
-            db.close();
-            reject(tx.error);
-          };
+          if (!db.objectStoreNames.contains(action.store)) {
+            fail(new Error(`magasin ${action.store} absent de la base ${name}`));
+            return;
+          }
+          // transaction() et put() lèvent de façon synchrone (DataError, DataCloneError…).
+          try {
+            const tx = db.transaction(action.store, action.op === 'put' ? 'readwrite' : 'readonly');
+            const store = tx.objectStore(action.store);
+            const request =
+              action.op === 'getAll'
+                ? store.getAll()
+                : action.op === 'get'
+                  ? store.get(action.key)
+                  : store.put(action.value);
+            let result: unknown;
+            request.onsuccess = () => {
+              result = request.result;
+            };
+            request.onerror = () => fail(request.error);
+            tx.oncomplete = () => {
+              db.close();
+              resolve(result);
+            };
+            tx.onabort = () => fail(tx.error ?? new Error(`transaction sur ${action.store} annulée`));
+          } catch (error) {
+            fail(error);
+          }
         };
       }),
     { name: LOCAL_DB_NAME, action },
@@ -144,9 +165,17 @@ export async function metaValue(page: Page, key: string): Promise<unknown> {
   return row?.value;
 }
 
-/** Retour au premier plan (`visibilitychange`, page visible) : déclencheur de synchro (R-SYN-29). */
+/**
+ * Retour au premier plan (`visibilitychange`, page visible) : déclencheur de synchro (R-SYN-29).
+ * Le moteur ignore l'événement si la page n'est pas visible : erreur plutôt qu'un appel sans effet.
+ */
 export async function triggerForeground(page: Page): Promise<void> {
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  const visibility = await page.evaluate(() => {
+    if (document.visibilityState === 'visible') document.dispatchEvent(new Event('visibilitychange'));
+    return document.visibilityState;
+  });
+  if (visibility !== 'visible')
+    throw new Error(`triggerForeground : page ${visibility}, le moteur ignorerait l'événement (R-SYN-29).`);
 }
 
 const FAKE_TS = '2026-10-06T10:00:00.000Z';

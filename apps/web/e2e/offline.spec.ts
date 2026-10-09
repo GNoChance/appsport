@@ -17,6 +17,11 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
   // Pas de navigation sous `setOffline` : WebKit y fait échouer même une navigation servie par le SW
   // (« WebKit encountered an internal error »). Le rechargement à froid hors ligne passe par l'étape suivante.
   await test.step('réseau coupé (context.setOffline)', async () => {
+    // Preuve du déclencheur « premier plan » (R-SYN-29) : la dernière synchro a réussi (aucune reprise
+    // programmée), l'outbox est vide (pas de cycle à 60 s) et l'événement `offline` n'en lance pas ;
+    // seul le cycle déclenché ici peut faire passer l'état à 'offline' dans les 5 s.
+    await expect(connection).toHaveAttribute('data-state', 'online');
+    await expect(page.getByTestId('pending-counter')).toHaveAttribute('data-count', '0');
     await context.setOffline(true);
     await triggerForeground(page);
     await expect(connection).toHaveAttribute('data-state', 'offline', { timeout: 5_000 });
@@ -39,6 +44,8 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
     await page.goto(`${server.url}/profile`, { waitUntil: 'domcontentloaded' });
     await expect(username).toHaveValue('camille');
     server.setFault(null);
+    // Accélère seulement le retour : les échecs du trou noir ont déjà programmé une reprise (2 s, 4 s…)
+    // qui suffirait à repasser 'online'. La preuve du déclencheur est à l'étape précédente.
     await triggerForeground(page);
     await expect(connection).toHaveAttribute('data-state', 'online', { timeout: 15_000 });
   });
