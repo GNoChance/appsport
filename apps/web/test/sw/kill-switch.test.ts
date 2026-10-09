@@ -1,5 +1,5 @@
 import type { HealthResponse } from '@appsport/contracts';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import { getMeta, setMeta } from '../../src/local-db/meta';
 import { applyKillSwitchIfNeeded, probeHealth } from '../../src/sw/kill-switch';
 import { LOCAL_DB_MARKER_CACHE, LOCAL_DB_MARKER_KEY } from '../../src/sw/precache-manifest';
@@ -36,6 +36,13 @@ async function seededCaches(o: Parameters<typeof createFakeCacheStorage>[0] = {}
   return caches;
 }
 
+/** Trace console du rechargement (diagnostic sur téléphone, P8) : attendue, gardée hors de la sortie des tests. */
+let info: MockInstance<typeof console.info>;
+
+beforeEach(() => {
+  info = vi.spyOn(console, 'info').mockImplementation(() => {});
+});
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -64,6 +71,8 @@ describe('applyKillSwitchIfNeeded (R-PWA-6)', () => {
     expect(await caches.keys()).toEqual([LOCAL_DB_MARKER_CACHE, 'autre']);
     expect(await caches.match(LOCAL_DB_MARKER_KEY, { cacheName: LOCAL_DB_MARKER_CACHE })).toBeDefined();
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.invocationCallOrder[0]).toBeLessThan(reload.mock.invocationCallOrder[0] ?? 0);
     expect(deleteDatabase).not.toHaveBeenCalled();
     expect(await getMeta(db, 'userId')).toBe('u1');
   });
@@ -76,6 +85,7 @@ describe('applyKillSwitchIfNeeded (R-PWA-6)', () => {
     const reload = vi.fn();
     expect(await applyKillSwitchIfNeeded(KILL, { serviceWorker: f.container, caches, reload })).toBe(false);
     expect(reload).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
   });
 
   it('deuxième passage après le rechargement → plus rien à faire, pas de boucle', async () => {

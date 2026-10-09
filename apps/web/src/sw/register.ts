@@ -107,6 +107,12 @@ export const swControllerStore = {
   },
 };
 
+/** Nom d'une erreur (`SecurityError`, `TypeError`…), sans son message. */
+function errorName(error: unknown): string {
+  const name = (error as { name?: unknown } | null)?.name;
+  return typeof name === 'string' && name !== '' ? name : typeof error;
+}
+
 /** Navigateur sans service worker (contexte non sécurisé, navigateur ancien) : jamais de mise à jour. */
 function inertController(): SwController {
   return {
@@ -128,9 +134,10 @@ function inertController(): SwController {
  * décision 5) : un SW muet ou de schéma plus ancien ne reçoit jamais SKIP_WAITING (R-DEP-4). Un SW muet est
  * redemandé à la recherche suivante.
  *
- * `applyUpdate` (R-PWA-4) envoie un seul SKIP_WAITING au SW proposé, sauf pendant une séance (R-PWA-3), et
- * la page ne se recharge qu'au `controllerchange` qui suit, une seule fois. Un `controllerchange` sans
- * clic (première installation, clic dans une autre fenêtre) ne recharge jamais.
+ * `applyUpdate` (R-PWA-4) envoie un seul SKIP_WAITING au SW proposé s'il attend encore, sauf pendant une
+ * séance (R-PWA-3), et la page ne se recharge qu'au `controllerchange` qui suit, une seule fois. Un
+ * `controllerchange` sans clic (première installation, clic dans une autre fenêtre) ne recharge jamais. Si
+ * le SW visé est remplacé avant de s'activer, le clic suivant vise le nouveau.
  *
  * « Plus tard » (`dismiss`) est gardé ici et non dans le bandeau : il survit au démontage du cadre connecté
  * (pages publiques, gardes) jusqu'au prochain lancement, et ne vaut que pour le SW proposé à ce moment-là.
@@ -161,6 +168,8 @@ export function registerServiceWorker(opts: {
   let dismissedWorker: SwWorkerLike | null = null;
   let reloading = false;
   let reloaded = false;
+  /** SW qui a reçu SKIP_WAITING, tant que son `controllerchange` n'est pas arrivé. */
+  let skipTarget: SwWorkerLike | null = null;
   let evaluation = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** Réponse de chaque SW en attente : true (proposable), false (schéma plus ancien), null (muet). */
@@ -188,7 +197,15 @@ export function registerServiceWorker(opts: {
   function watch(worker: SwWorkerLike): void {
     if (watched.has(worker)) return;
     watched.add(worker);
-    worker.addEventListener('statechange', () => void reevaluate());
+    worker.addEventListener('statechange', () => {
+      // SW visé remplacé par une version plus récente avant son activation : aucun controllerchange ne
+      // viendra, le clic suivant doit pouvoir viser le nouveau (R-PWA-4).
+      if (worker === skipTarget && worker.state === 'redundant' && !reloaded) {
+        skipTarget = null;
+        reloading = false;
+      }
+      void reevaluate();
+    });
   }
 
   function verdictOf(worker: SwWorkerLike): Promise<boolean | null> {
@@ -231,8 +248,13 @@ export function registerServiceWorker(opts: {
         });
         return reg;
       },
-      // sw.js introuvable ou refusé : pas de mise à jour proposée, l'appli tourne quand même.
-      () => null,
+      // sw.js introuvable ou refusé (type MIME, CSP) : pas de mise à jour proposée, l'appli tourne quand même.
+      // Trace pour le diagnostic sur téléphone (R-TST-4, P8) : le nom de l'erreur seul, jamais son message
+      // (il peut porter l'URL).
+      (error: unknown) => {
+        console.warn('[appsport] enregistrement du service worker refusé :', errorName(error));
+        return null;
+      },
     );
 
   async function reevaluate(): Promise<void> {
@@ -270,12 +292,18 @@ export function registerServiceWorker(opts: {
       (id) => (id ?? null) !== null,
       () => true,
     );
+    const reg = await registration;
     if (inSession || reloading || offered !== target) return;
+    // Le SW proposé a pu être remplacé (ou activé ailleurs) avant que sa réévaluation n'aboutisse, jusqu'à
+    // 1 s : seul celui qui attend encore reçoit SKIP_WAITING, sans quoi le bouton resterait sans effet.
+    if (target.state !== 'installed' || reg?.waiting !== target) return;
     reloading = true;
+    skipTarget = target;
     try {
       target.postMessage({ type: 'SKIP_WAITING' });
     } catch {
       reloading = false;
+      skipTarget = null;
     }
   }
 

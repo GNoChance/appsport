@@ -126,6 +126,24 @@ describe('registerServiceWorker : recherche de mise à jour (R-PWA-2)', () => {
     await settled();
     expect(f.registration.updateCalls).toBe(3);
   });
+
+  it("register refusé (sw.js absent, type MIME, CSP) → un avertissement console, nom de l'erreur seulement", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const f = createFakeSwContainer({ controller: true });
+    vi.spyOn(f.container, 'register').mockRejectedValue(
+      new DOMException('Failed to register a ServiceWorker: https://x.test/sw.js?build=1', 'SecurityError'),
+    );
+    const c = start(f);
+    await until(() => warn.mock.calls.length > 0);
+    await settled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = (warn.mock.calls[0] ?? []).map(String).join(' ');
+    expect(logged).toContain('SecurityError');
+    expect(logged).not.toContain('x.test');
+    expect(logged).not.toContain('build=1');
+    expect(f.registration.updateCalls).toBe(0);
+    expect(c.getState()).toEqual({ available: false, forced: false });
+  });
 });
 
 describe('registerServiceWorker : version disponible (R-PWA-2, R-PWA-9, R-DEP-4)', () => {
@@ -329,6 +347,51 @@ describe('registerServiceWorker : applyUpdate (R-PWA-4, R-PWA-3)', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it('clic avant la réponse de la version suivante → rien au SW remplacé ; le clic suivant va au nouveau', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    await settled();
+    const first = f.installUpdate();
+    await until(() => c.getState().available);
+    // La nouvelle version n'a pas encore répondu à GET_STATUS : `first`, remplacé, est encore le dernier proposé.
+    const second = f.installUpdate({ silent: true });
+    await until(() => second.messages.length > 0);
+    await c.applyUpdate();
+    expect(skipWaitings(first)).toEqual([]);
+    expect(skipWaitings(second)).toEqual([]);
+    await settled();
+    second.silent = false;
+    page.hide();
+    page.show();
+    await until(() => c.getState().available);
+    await c.applyUpdate();
+    expect(skipWaitings(second)).toEqual([SKIP_WAITING]);
+    expect(skipWaitings(first)).toEqual([]);
+    f.fireControllerChange();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('SW visé remplacé avant son activation (sans controllerchange) → le clic suivant va au nouveau', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    await settled();
+    const first = f.installUpdate();
+    await until(() => c.getState().available);
+    await c.applyUpdate();
+    expect(skipWaitings(first)).toEqual([SKIP_WAITING]);
+    const second = f.installUpdate();
+    await until(() => second.messages.length > 0);
+    await settled();
+    expect(c.getState().available).toBe(true);
+    await c.applyUpdate();
+    expect(skipWaitings(second)).toEqual([SKIP_WAITING]);
+    expect(skipWaitings(first)).toEqual([SKIP_WAITING]);
+    expect(reload).not.toHaveBeenCalled();
+    f.fireControllerChange();
+    f.fireControllerChange();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it('controllerchange sans applyUpdate (clients.claim de la première installation) → pas de rechargement', async () => {
     const f = createFakeSwContainer({ controller: false });
     start(f);
@@ -438,6 +501,7 @@ describe('bootServiceWorker', () => {
   }
 
   it('swKill vrai → interrupteur appliqué, aucun enregistrement, aucun contrôleur publié', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const f = createFakeSwContainer({ controller: true });
     const registerSpy = vi.spyOn(f.container, 'register');
     const caches = createFakeCacheStorage();
@@ -448,6 +512,7 @@ describe('bootServiceWorker', () => {
     expect(f.unregisterCalls).toBe(1);
     expect(await caches.keys()).toEqual([LOCAL_DB_MARKER_CACHE]);
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledTimes(1);
     expect(f.controllerMessages).toEqual([]);
   });
 

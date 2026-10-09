@@ -80,6 +80,8 @@ export async function applyKillSwitchIfNeeded(
     : false;
 
   if (!unregistered && !deleted) return false;
+  // Trace pour le diagnostic sur téléphone (R-TST-4, P8) : sinon ce rechargement unique passe inaperçu.
+  console.info("[appsport] interrupteur d'urgence : service worker et caches retirés, rechargement");
   reload();
   return true;
 }
