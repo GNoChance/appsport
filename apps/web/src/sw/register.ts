@@ -40,10 +40,14 @@ export interface SwContainerLike {
   addEventListener(t: 'controllerchange', fn: () => void): void;
 }
 
-/** `available` : une version plus récente attend le clic ; `forced` : un 426 a été reçu (R-PWA-5). */
+/**
+ * `available` : une version plus récente attend le clic ; `forced` : un 426 a été reçu (R-PWA-5) ;
+ * `dismissed` : « Plus tard » sur la version proposée, jamais vrai une fois forcé.
+ */
 export interface UpdateState {
   available: boolean;
   forced: boolean;
+  dismissed: boolean;
 }
 
 export interface SwController {
@@ -53,6 +57,11 @@ export interface SwController {
   checkForUpdate(): Promise<void>;
   applyUpdate(): Promise<void>;
   markForced(): void;
+  /**
+   * « Plus tard » : masque la version proposée jusqu'au prochain lancement, quel que soit l'écran ; une
+   * version différente trouvée ensuite, ou un 426, la repropose.
+   */
+  dismiss(): void;
 }
 
 export const SW_URL = '/sw.js';
@@ -61,7 +70,7 @@ export const UPDATE_INTERVAL_MS = 3_600_000;
 /** Délai de réponse du SW en attente à GET_STATUS (ADR 0001 décision 5). */
 const WAITING_STATUS_TIMEOUT_MS = 1000;
 
-export const NO_UPDATE: UpdateState = Object.freeze({ available: false, forced: false });
+export const NO_UPDATE: UpdateState = Object.freeze({ available: false, forced: false, dismissed: false });
 
 /**
  * Bandeau de mise à jour (R-PWA-2, R-PWA-3, R-PWA-5) : jamais pendant une séance ni pendant l'onboarding,
@@ -106,6 +115,7 @@ function inertController(): SwController {
     checkForUpdate: async () => {},
     applyUpdate: async () => {},
     markForced: () => {},
+    dismiss: () => {},
   };
 }
 
@@ -121,6 +131,9 @@ function inertController(): SwController {
  * `applyUpdate` (R-PWA-4) envoie un seul SKIP_WAITING au SW proposé, sauf pendant une séance (R-PWA-3), et
  * la page ne se recharge qu'au `controllerchange` qui suit, une seule fois. Un `controllerchange` sans
  * clic (première installation, clic dans une autre fenêtre) ne recharge jamais.
+ *
+ * « Plus tard » (`dismiss`) est gardé ici et non dans le bandeau : il survit au démontage du cadre connecté
+ * (pages publiques, gardes) jusqu'au prochain lancement, et ne vaut que pour le SW proposé à ce moment-là.
  *
  * Un 426 (`protocol_unsupported`, R-VER-2) rend le bandeau non fermable et relance une recherche ; l'outbox
  * n'est pas touchée.
@@ -144,6 +157,8 @@ export function registerServiceWorker(opts: {
   const listeners = new Set<(s: UpdateState) => void>();
   /** Seul destinataire possible de SKIP_WAITING : le SW en attente qui a répondu. */
   let offered: SwWorkerLike | null = null;
+  /** SW en attente écarté par « Plus tard » ; un autre SW proposé ensuite ne l'est pas. */
+  let dismissedWorker: SwWorkerLike | null = null;
   let reloading = false;
   let reloaded = false;
   let evaluation = 0;
@@ -152,9 +167,19 @@ export function registerServiceWorker(opts: {
   const verdicts = new WeakMap<SwWorkerLike, Promise<boolean | null>>();
   const watched = new WeakSet<SwWorkerLike>();
 
-  function setState(patch: Partial<UpdateState>): void {
-    const next = { ...state, ...patch };
-    if (next.available === state.available && next.forced === state.forced) return;
+  /** `dismissed` est déduit : la version proposée est celle écartée, et aucun 426 (R-PWA-5). */
+  function setState(patch: Partial<Omit<UpdateState, 'dismissed'>>): void {
+    const available = patch.available ?? state.available;
+    const forced = patch.forced ?? state.forced;
+    const dismissed = available && !forced && offered !== null && offered === dismissedWorker;
+    const next: UpdateState = { available, forced, dismissed };
+    if (
+      next.available === state.available &&
+      next.forced === state.forced &&
+      next.dismissed === state.dismissed
+    ) {
+      return;
+    }
     state = next;
     for (const fn of [...listeners]) fn(state);
   }
@@ -265,6 +290,11 @@ export function registerServiceWorker(opts: {
     checkForUpdate,
     applyUpdate,
     markForced: () => setState({ forced: true }),
+    dismiss() {
+      if (!offered || state.forced) return;
+      dismissedWorker = offered;
+      setState({});
+    },
   };
 
   container.addEventListener('controllerchange', () => {

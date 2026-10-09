@@ -133,7 +133,7 @@ describe('registerServiceWorker : version disponible (R-PWA-2, R-PWA-9, R-DEP-4)
     const f = createFakeSwContainer({ controller: true, waiting: true });
     const c = start(f);
     await until(() => c.getState().available);
-    expect(c.getState()).toEqual({ available: true, forced: false });
+    expect(c.getState()).toEqual({ available: true, forced: false, dismissed: false });
     const waiting = f.registration.waiting as FakeSwWorker;
     expect(waiting.messages).toContainEqual(GET_STATUS);
     expect(f.controllerMessages).not.toContainEqual(GET_STATUS);
@@ -145,7 +145,7 @@ describe('registerServiceWorker : version disponible (R-PWA-2, R-PWA-9, R-DEP-4)
     await settled();
     f.installUpdate();
     await settled();
-    expect(c.getState()).toEqual({ available: false, forced: false });
+    expect(c.getState()).toEqual({ available: false, forced: false, dismissed: false });
   });
 
   it('installUpdate() → { available: true, forced: false }, abonnés prévenus', async () => {
@@ -157,7 +157,7 @@ describe('registerServiceWorker : version disponible (R-PWA-2, R-PWA-9, R-DEP-4)
     expect(c.getState().available).toBe(false);
     const worker = f.installUpdate();
     await until(() => c.getState().available);
-    expect(c.getState()).toEqual({ available: true, forced: false });
+    expect(c.getState()).toEqual({ available: true, forced: false, dismissed: false });
     expect(seen).toEqual([true]);
     expect(worker.messages).toEqual([GET_STATUS]);
   });
@@ -253,6 +253,65 @@ describe('registerServiceWorker : version disponible (R-PWA-2, R-PWA-9, R-DEP-4)
   });
 });
 
+describe('registerServiceWorker : « Plus tard » (dismiss)', () => {
+  it('masque la version proposée pour ce lancement ; « Mettre à jour » reste possible', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    const worker = f.installUpdate();
+    await until(() => c.getState().available);
+    const seen: boolean[] = [];
+    c.subscribe((s) => seen.push(s.dismissed));
+    c.dismiss();
+    expect(c.getState()).toEqual({ available: true, forced: false, dismissed: true });
+    expect(seen).toEqual([true]);
+    // Une recherche qui retrouve le même SW en attente ne le repropose pas.
+    page.hide();
+    page.show();
+    await until(() => f.registration.updateCalls === 2);
+    await settled();
+    expect(c.getState().dismissed).toBe(true);
+    await c.applyUpdate();
+    expect(skipWaitings(worker)).toEqual([SKIP_WAITING]);
+  });
+
+  it('une version plus récente trouvée ensuite est proposée de nouveau', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    f.installUpdate();
+    await until(() => c.getState().available);
+    c.dismiss();
+    const second = f.installUpdate();
+    await until(() => !c.getState().dismissed);
+    expect(c.getState()).toEqual({ available: true, forced: false, dismissed: false });
+    await c.applyUpdate();
+    expect(skipWaitings(second)).toEqual([SKIP_WAITING]);
+  });
+
+  it('un 426 annule « Plus tard », et « Plus tard » est ignoré une fois forcé (R-PWA-5)', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    f.installUpdate();
+    await until(() => c.getState().available);
+    c.dismiss();
+    expect(c.getState().dismissed).toBe(true);
+    sync.set({ connection: 'protocol_unsupported' });
+    expect(c.getState()).toEqual({ available: true, forced: true, dismissed: false });
+    c.dismiss();
+    expect(c.getState().dismissed).toBe(false);
+  });
+
+  it('sans version proposée → sans effet, la version trouvée ensuite est proposée', async () => {
+    const f = createFakeSwContainer({ controller: true });
+    const c = start(f);
+    await settled();
+    c.dismiss();
+    expect(c.getState().dismissed).toBe(false);
+    f.installUpdate();
+    await until(() => c.getState().available);
+    expect(c.getState().dismissed).toBe(false);
+  });
+});
+
 describe('registerServiceWorker : applyUpdate (R-PWA-4, R-PWA-3)', () => {
   it('un seul SKIP_WAITING au SW en attente, rechargement au controllerchange, une seule fois', async () => {
     const f = createFakeSwContainer({ controller: true });
@@ -309,7 +368,7 @@ describe('registerServiceWorker : 426 (R-PWA-5, R-VER-2)', () => {
     await until(() => f.registration.updateCalls === 1);
     expect(c.getState().forced).toBe(false);
     sync.set({ connection: 'protocol_unsupported' });
-    expect(c.getState()).toEqual({ available: false, forced: true });
+    expect(c.getState()).toEqual({ available: false, forced: true, dismissed: false });
     await until(() => f.registration.updateCalls === 2);
     sync.set({ pending: 3 });
     await settled();
@@ -324,18 +383,19 @@ describe('registerServiceWorker : 426 (R-PWA-5, R-VER-2)', () => {
     sync.set({ connection: 'protocol_unsupported' });
     f.installUpdate();
     await until(() => c.getState().available);
-    expect(c.getState()).toEqual({ available: true, forced: true });
+    expect(c.getState()).toEqual({ available: true, forced: true, dismissed: false });
   });
 
   it('sans service worker → contrôleur inerte { available: false, forced: false }', async () => {
     expect('serviceWorker' in navigator).toBe(false);
     const c = registerServiceWorker({ db, sync, doc: page.doc, reload });
-    expect(c.getState()).toEqual({ available: false, forced: false });
+    expect(c.getState()).toEqual({ available: false, forced: false, dismissed: false });
     await c.checkForUpdate();
     await c.applyUpdate();
+    c.dismiss();
     c.markForced();
     sync.set({ connection: 'protocol_unsupported' });
-    expect(c.getState()).toEqual({ available: false, forced: false });
+    expect(c.getState()).toEqual({ available: false, forced: false, dismissed: false });
     expect(reload).not.toHaveBeenCalled();
   });
 });

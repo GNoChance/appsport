@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { useLive, useMe } from '../app-services';
 import { useRepos } from '../repos';
 import { Button } from '../ui/Button';
@@ -55,21 +55,21 @@ function useUpdateState(controller: SwController | null): UpdateState {
 }
 
 /**
- * Bandeau du cadre connecté, piloté par le contrôleur publié (`swControllerStore`). « Plus tard » le
- * masque jusqu'au prochain lancement, sauf après un 426. Sans version en attente, rien n'est lu dans la
- * base locale.
+ * Bandeau du cadre connecté, piloté par le contrôleur publié (`swControllerStore`). « Plus tard » est
+ * gardé par le contrôleur : la version proposée reste masquée jusqu'au prochain lancement, même si le
+ * cadre est démonté puis remonté, sauf après un 426 ou si une autre version est trouvée. Sans version en
+ * attente, rien n'est lu dans la base locale.
  */
 export function UpdateBanner() {
   const controller = useSyncExternalStore(swControllerStore.subscribe, swControllerStore.get);
   const update = useUpdateState(controller);
-  const [dismissed, setDismissed] = useState(false);
   if (!controller || !update.available) return null;
   return (
     <AvailableUpdateBanner
       forced={update.forced}
-      dismissed={dismissed}
+      dismissed={update.dismissed}
       onUpdate={() => void controller.applyUpdate()}
-      onDismiss={() => setDismissed(true)}
+      onDismiss={() => controller.dismiss()}
     />
   );
 }

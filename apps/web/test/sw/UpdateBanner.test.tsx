@@ -9,9 +9,14 @@ import { makeMe, renderApp, renderWithServices } from '../support/render';
 const TITLE = 'Nouvelle version disponible';
 const FORCED = "Mets à jour l'appli pour reprendre la synchronisation.";
 
-/** Contrôleur factice : état posé par le test, applyUpdate compté. */
-function fakeController(initial: UpdateState): SwController & { set(s: Partial<UpdateState>): void } {
-  let state = initial;
+/**
+ * Contrôleur factice : état posé par le test, applyUpdate compté. Comme le vrai, « Plus tard » (`dismiss`)
+ * est gardé par le contrôleur et ignoré une fois forcé.
+ */
+function fakeController(
+  initial: Omit<UpdateState, 'dismissed'>,
+): SwController & { set(s: Partial<UpdateState>): void } {
+  let state: UpdateState = { ...initial, dismissed: false };
   const listeners = new Set<(s: UpdateState) => void>();
   return {
     getState: () => state,
@@ -24,7 +29,10 @@ function fakeController(initial: UpdateState): SwController & { set(s: Partial<U
     checkForUpdate: async () => {},
     applyUpdate: vi.fn(async () => {}),
     markForced() {
-      this.set({ forced: true });
+      this.set({ forced: true, dismissed: false });
+    },
+    dismiss() {
+      if (!state.forced) this.set({ dismissed: true });
     },
     set(patch) {
       state = { ...state, ...patch };
@@ -129,9 +137,40 @@ describe('UpdateBanner (R-PWA-2, R-PWA-3, R-PWA-5)', () => {
     expect(button('Plus tard')).toBeNull();
     expect(banner()?.textContent).toContain(FORCED);
   });
+
+  it('« Plus tard » tient au contrôleur : un bandeau remonté reste masqué', async () => {
+    const controller = fakeController({ available: true, forced: false });
+    swControllerStore.set(controller);
+    const first = await renderWithServices(<UpdateBanner />);
+    await screen.findByTestId('update-banner');
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard' }));
+    expect(controller.getState().dismissed).toBe(true);
+    first.unmount();
+    await renderWithServices(<UpdateBanner />);
+    await settle();
+    expect(banner()).toBeNull();
+  });
 });
 
 describe('cadres (AppShell, PublicShell)', () => {
+  it('« Plus tard » sur /, passage par /help (PublicShell) puis retour : toujours masqué ; un 426 le rend', async () => {
+    const controller = fakeController({ available: true, forced: false });
+    swControllerStore.set(controller);
+    await renderApp({ path: '/' });
+    await screen.findByTestId('update-banner');
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard' }));
+    expect(banner()).toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: 'Aide' }));
+    await screen.findByRole('heading', { level: 1, name: 'Aide' });
+    fireEvent.click(screen.getByRole('link', { name: 'appsport' }));
+    await screen.findByRole('navigation', { name: 'Navigation principale' });
+    await settle();
+    expect(banner()).toBeNull();
+    act(() => controller.markForced());
+    const shown = await screen.findByTestId('update-banner');
+    expect(shown.getAttribute('data-dismissible')).toBe('false');
+  });
+
   it('AppShell : le bandeau en premier', async () => {
     swControllerStore.set(fakeController({ available: true, forced: false }));
     await renderApp({ path: '/' });
