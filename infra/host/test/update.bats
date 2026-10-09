@@ -19,6 +19,30 @@ deployed_version() { sed -n 's/^APPSPORT_VERSION=//p' "$APPSPORT_ROOT/deploy.env
 # Aucun up -d n'a vu APPSPORT_VERSION dans l'environnement (compose la préférerait à deploy.env).
 assert_up_env_unset() { [ -s "$STATE/up-env" ] && ! grep -qvx unset "$STATE/up-env"; }
 
+# Second scénario dans le même test : hôte sain en v1.2.0 repris de zéro (règles, appels et état effacés).
+reset_host() {
+  rm -rf "${T:?}"/*
+  # $T/bin sorti du PATH et des chemins mémorisés : wrap_windows_jq doit retrouver le vrai jq, pas son enveloppe.
+  PATH=${PATH//"$T/bin:"/}
+  hash -r
+  setup_host
+}
+
+# Disque plein : deploy.log devient un répertoire, toute écriture (>>) échoue.
+break_deploy_log() {
+  rm -f "$APPSPORT_ROOT/deploy.log"
+  mkdir "$APPSPORT_ROOT/deploy.log"
+}
+
+# Volume plein ou en lecture seule pour deploy.env : son temporaire (mktemp) ne peut plus être créé.
+break_deploy_env_writes() {
+  local real
+  real=$(command -v mktemp)
+  printf '#!/usr/bin/env bash\ncase "$*" in *.deploy.env.*) echo "mktemp: No space left on device" >&2; exit 1 ;; esac\nexec "%s" "$@"\n' \
+    "$real" >"$T/bin/mktemp"
+  chmod +x "$T/bin/mktemp"
+}
+
 # Les préconditions refusées ne touchent ni au dépôt, ni à l'image, ni à deploy.env, ni à deploy.log.
 assert_nothing_changed() {
   refute_call "git *"
@@ -81,6 +105,12 @@ remember_files() {
   [[ "$output" == *"RESTIC_PASSWORD_FILE=$APPSPORT_ROOT/secrets/restic.pass"* ]]
   [[ "$output" == *"RESTIC_CACHE_DIR=$APPSPORT_ROOT/cache/restic"* ]]
   [[ "$output" != *"APPSPORT_VERSION="* ]]
+
+  # Valeurs par défaut de wait_health (setup_host les surcharge) : 30 essais de 2 s séparés par sleep 2.
+  run env -u HEALTH_TIMEOUT_S -u HEALTH_POLL_S -u SLEEP \
+    bash -c 'source "$1" && echo "$HEALTH_TIMEOUT_S $HEALTH_POLL_S $SLEEP"' _ "$HOST_DIR/lib/common.sh"
+  [ "$status" -eq 0 ]
+  [ "$output" = "120 2 sleep" ]
 }
 
 @test "confirmation « n » : abandon, code 1, aucun git" {
@@ -99,6 +129,16 @@ remember_files() {
   [ "$status" -eq 0 ]
   [ "$(deployed_version)" = "v1.3.0" ]
   [[ "$(last_deploy_line)" =~ \ v1\.2\.0\ v1\.3\.0\ ok$ ]]
+
+  # deploy.log non inscriptible : avertissement, le succès est quand même inscrit dans .deploy.
+  reset_host
+  set_healthy_versions v1.2.0 v1.3.0
+  break_deploy_log
+  run "$UPDATE" v1.3.0 <<<"o"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Avertissement : deploy.log non écrit."* ]]
+  [[ "$output" == *"Déploiement de v1.3.0 réussi."* ]]
+  jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == true' "$STATUS_FILE"
 }
 
 @test "volume non monté : code 1, rien n'a été changé" {
@@ -141,6 +181,15 @@ remember_files() {
   refute_call "docker compose * up *"
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ pull-failed$ ]]
+
+  # deploy.log non inscriptible : avertissement, et le message « Rien n'a été changé » s'affiche quand même.
+  reset_host
+  on docker '* pull app' 1
+  break_deploy_log
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Avertissement : deploy.log non écrit."* ]]
+  [[ "$output" == *"Échec du téléchargement de l'image v1.3.0 (jeton GHCR expiré ? voir P5). Rien n'a été changé."* ]]
 }
 
 @test "sauvegarde pre-deploy en échec : pas de up, backup-failed, deploy.env inchangé" {
@@ -152,6 +201,15 @@ remember_files() {
   refute_call "docker compose * up *"
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ backup-failed$ ]]
+
+  # deploy.log non inscriptible : avertissement, et le message d'échec s'affiche quand même.
+  reset_host
+  on restic "-r $OFFSITE backup *" 1
+  break_deploy_log
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Avertissement : deploy.log non écrit."* ]]
+  [[ "$output" == *"Échec de l'instantané ou de la sauvegarde pre-deploy. Le service n'a pas été modifié."* ]]
 }
 
 @test "nouvelle version KO, image précédente saine : retour image seule, ni restore ni privacy, rolled-back-image" {
@@ -167,6 +225,27 @@ remember_files() {
   refute_call "* privacy:*"
   refute_call "docker compose * stop *"
   assert_up_env_unset
+  [ "$(deployed_version)" = "v1.2.0" ]
+  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-image$ ]]
+  jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == false' "$STATUS_FILE"
+
+  # deploy.env non écrit (volume plein ou en lecture seule) : échec de l'étape 5, même retour arrière,
+  # le dépôt revient à v1.2.0 et deploy.log garde une trace (R-DEP-3 étapes 5 et 7).
+  reset_host
+  set_healthy_versions v1.2.0 v1.3.0
+  break_deploy_env_writes
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"deploy.env non écrit : retour arrière automatique."* ]]
+  assert_calls_in_order \
+    "restic -r $OFFSITE backup --tag pre-deploy *" \
+    "git -C $APPSPORT_REPO checkout --quiet v1.2.0" \
+    "docker compose * up -d" \
+    "curl *$HEALTH"
+  [ "$(count_calls "docker compose * up -d")" -eq 1 ]
+  [ "$(cat "$STATE/image")" = "v1.2.0" ]
+  refute_call "* restore *"
+  refute_call "* privacy:*"
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-image$ ]]
   jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == false' "$STATUS_FILE"
@@ -194,6 +273,20 @@ remember_files() {
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-restore$ ]]
   jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == false' "$STATUS_FILE"
   [ -z "$(compgen -G "$APPSPORT_ROOT/data/ops/privacy-*.json" || true)" ]
+  [ ! -e "$APPSPORT_ROOT/reapply-pending" ]
+
+  # Liste privacy non supprimable : avertissement, le retour arrière va jusqu'au bout et reste consigné.
+  reset_host
+  set_healthy_versions "v1.2.0@restored"
+  on docker '* privacy:reapply *' 0 'p=${args##* }; p="$APPSPORT_ROOT/data${p#/data}"; rm -f "$p"; mkdir "$p"'
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Avertissement : liste $APPSPORT_ROOT/data/ops/privacy-v1.3.0-"*".json non supprimée"* ]]
+  [[ "$output" == *"Base restaurée : les téléphones renverront leurs 60 derniers jours."* ]]
+  assert_calls_in_order "* privacy:reapply *" "docker compose * up -d" "curl *$HEALTH"
+  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-restore$ ]]
+  jq -e '.deploy | .version == "v1.3.0" and .ok == false' "$STATUS_FILE"
+  # La réapplication a eu lieu : le marqueur est levé même si la liste reste.
   [ ! -e "$APPSPORT_ROOT/reapply-pending" ]
 }
 

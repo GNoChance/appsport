@@ -73,6 +73,11 @@ checkout_back() {
     log "Attention : le dépôt $APPSPORT_REPO n'a pas pu revenir au tag $1 (git checkout $1 à refaire)."
 }
 
+# deploy.log illisible ou disque plein : avertissement, le message d'échec ou de succès s'affiche quand même.
+record_deploy() {
+  log_deploy "$@" || log "Avertissement : deploy.log non écrit."
+}
+
 main() {
   local line prev cur
   parse_args "$@"
@@ -107,20 +112,25 @@ main() {
   "$GIT" -C "$APPSPORT_REPO" checkout --quiet "$NEW" || die "Tag $NEW introuvable. Rien n'a été changé."
   if ! APPSPORT_VERSION="$NEW" compose pull app; then
     checkout_back "$prev"
-    log_deploy "$prev" "$NEW" pull-failed
+    record_deploy "$prev" "$NEW" pull-failed
     die "Échec du téléchargement de l'image $NEW (jeton GHCR expiré ? voir P5). Rien n'a été changé."
   fi
   if ! app_cli snapshot --tag "pre-$NEW" || ! restic_backup_all pre-deploy; then
     checkout_back "$prev"
-    log_deploy "$prev" "$NEW" backup-failed
+    record_deploy "$prev" "$NEW" backup-failed
     die "Échec de l'instantané ou de la sauvegarde pre-deploy. Le service n'a pas été modifié."
   fi
+  # Étape 5 (R-DEP-3) : à partir d'ici, tout échec passe par le retour arrière, qui ramène le dépôt et consigne.
   RB_TARGET=$prev RB_FROM=$NEW RB_KIND=auto
   trap interrupted INT TERM
-  write_deploy_env "$NEW" || die "deploy.env non écrit. Le service n'a pas été modifié."
+  if ! write_deploy_env "$NEW"; then
+    log "deploy.env non écrit : retour arrière automatique."
+    rollback "$prev" "$NEW" auto
+    return 1
+  fi
   if compose up -d && wait_health "$NEW"; then
     trap - INT TERM
-    log_deploy "$prev" "$NEW" ok
+    record_deploy "$prev" "$NEW" ok
     status_merge deploy "$(deploy_json "$NEW" "$prev" true)" ||
       log "Avertissement : status.json non mis à jour."
     log "Déploiement de $NEW réussi."
@@ -137,12 +147,12 @@ main() {
 finish() {
   local result=$1 ok=true
   if [ "$RB_KIND" = auto ]; then
-    log_deploy "$RB_TARGET" "$RB_FROM" "$result" || log "Avertissement : deploy.log non écrit."
+    record_deploy "$RB_TARGET" "$RB_FROM" "$result"
     status_merge deploy "$(deploy_json "$RB_FROM" "$RB_TARGET" false)" ||
       log "Avertissement : status.json non mis à jour."
   else
     if [ "$result" = rollback-failed ]; then ok=false; fi
-    log_deploy "$RB_FROM" "$RB_TARGET" "$result" || log "Avertissement : deploy.log non écrit."
+    record_deploy "$RB_FROM" "$RB_TARGET" "$result"
     status_merge deploy "$(deploy_json "$RB_TARGET" "$RB_FROM" "$ok")" ||
       log "Avertissement : status.json non mis à jour."
   fi
@@ -168,15 +178,17 @@ interrupted() {
 
 # rollback <cible> <abandonnée> <auto|manual> (R-DEP-4).
 rollback() {
-  local snap mtime since list
+  local snap mtime since stamp list
   RB_TARGET=$1 RB_FROM=$2 RB_KIND=$3
   trap interrupted INT TERM
+  # Chaque échec est consigné (finish) avant le message : rien ne repose sur set -e ici.
   ko() {
     trap - INT TERM
     finish rollback-failed
     die "$1 : suivez P4."
   }
-  write_deploy_env "$1" || ko "deploy.env non écrit"
+  # deploy.env déjà sur la cible (son écriture pour $2 a échoué) : rien à réécrire.
+  write_deploy_env "$1" || [ "$(current_version)" = "$1" ] || ko "deploy.env non écrit"
   "$GIT" -C "$APPSPORT_REPO" checkout --quiet "$1" || ko "Tag $1 introuvable"
   # Image seule : ni restauration ni nouvelle époque (R-VER-7 accepte un schéma plus récent non cassant).
   if compose up -d && wait_health "$1"; then
@@ -190,7 +202,8 @@ rollback() {
   [ -f "$snap" ] || ko "Instantané pre-$2 introuvable"
   mtime=$(stat -c %Y "$snap") || ko "Date de l'instantané pre-$2 illisible"
   since=$(date -u -d "@$((mtime - 300))" +%Y-%m-%dT%H:%M:%SZ) || ko "Date de l'instantané pre-$2 illisible"
-  list="ops/privacy-$2-$(date -u +%Y%m%dT%H%M%SZ).json"
+  stamp=$(date -u +%Y%m%dT%H%M%SZ) || ko "Horodatage de la liste privacy impossible"
+  list="ops/privacy-$2-$stamp.json"
   ensure_ops_dir || ko "data/ops inaccessible"
   # T24 : lecture seule de la base courante, sans migration ni --source.
   app_cli_run privacy:collect --since "$since" --out "/data/$list" || ko "privacy:collect impossible"
@@ -199,9 +212,11 @@ rollback() {
   printf '%s\n' "/data/$list" >"$REAPPLY_MARKER" || ko "Marqueur $REAPPLY_MARKER non écrit"
   { app_cli_run restore "/data/snapshots/pre-$2.db" && app_cli_run privacy:reapply "/data/$list"; } ||
     ko "Restauration ou réapplication impossible"
-  # Liste purgée après réapplication (03 §7), marqueur levé.
-  rm -f "$APPSPORT_ROOT/data/$list" "$REAPPLY_MARKER" ||
-    ko "Liste privacy ou marqueur $REAPPLY_MARKER non supprimé"
+  # Liste purgée après réapplication (03 §7) ; un échec n'interrompt pas le retour arrière.
+  rm -f "$APPSPORT_ROOT/data/$list" ||
+    log "Avertissement : liste $APPSPORT_ROOT/data/$list non supprimée (données personnelles) : supprimez-la à la main."
+  # Réapplication faite : le marqueur est levé, sinon unlock et update refuseraient de relancer app.
+  rm -f "$REAPPLY_MARKER" || ko "Marqueur $REAPPLY_MARKER non supprimé"
   { compose up -d && wait_health "$1"; } || ko "L'image $1 ne répond pas après restauration"
   trap - INT TERM
   finish rolled-back-restore

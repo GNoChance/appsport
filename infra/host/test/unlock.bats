@@ -35,9 +35,11 @@ setup() {
 
 @test "sentinelle absente : KO, pas de up -d, ping alive/fail avec le motif" {
   rm -f "$APPSPORT_ROOT/data/.appsport-volume"
+  # R-OPS-6 étape 5 : KO affiché d'abord, ping ensuite (Healthchecks injoignable : curl peut bloquer 40 s).
+  on curl '* https://hc.test/alive/fail' 0 'echo PING-ALIVE-FAIL >&2'
   run "$UNLOCK"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"KO : sentinelle absente, ce n'est pas le volume appsport."* ]]
+  [[ "$output" == *"KO : sentinelle absente, ce n'est pas le volume appsport."*PING-ALIVE-FAIL* ]]
   refute_call "docker compose * up -d"
   assert_calls_in_order "curl *sentinelle* https://hc.test/alive/fail"
   refute_call "curl * https://hc.test/alive"
@@ -45,12 +47,22 @@ setup() {
 
 @test "santé jamais 200 : KO après exactement 3 essais de 2 s, ping alive/fail" {
   export HEALTH_TIMEOUT_S=12 HEALTH_POLL_S=2
+  # Pause enregistrée (SLEEP=true ne l'est pas) : sans elle, un port fermé épuise les essais en quelques ms.
+  cp "$BATS_TEST_DIRNAME/stub.sh" "$T/bin/sleep"
+  chmod +x "$T/bin/sleep"
+  export SLEEP="$T/bin/sleep"
   set_health 22
   run "$UNLOCK"
   [ "$status" -eq 1 ]
   [[ "$output" == *"KO : /api/health ne répond pas 200 après 2 min (voir P8)."* ]]
   [ "$(count_calls "curl -fsS --max-time 2 $HEALTH")" -eq 3 ]
   [ "$(count_calls "curl *$HEALTH")" -eq 3 ]
+  # 2 s entre deux essais, aucune pause après le dernier.
+  assert_calls_in_order \
+    "curl -fsS --max-time 2 $HEALTH" "sleep 2" \
+    "curl -fsS --max-time 2 $HEALTH" "sleep 2" \
+    "curl -fsS --max-time 2 $HEALTH"
+  [ "$(count_calls "sleep *")" -eq 2 ]
   assert_calls_in_order "docker compose * up -d" "curl * https://hc.test/alive/fail"
   refute_call "curl * https://hc.test/alive"
 }

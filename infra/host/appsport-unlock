@@ -9,10 +9,12 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 luks_open() { "$CRYPTSETUP" status "$LUKS_NAME" >/dev/null 2>&1; }
 
-# KO signalé à Healthchecks (alive/fail, motif joint), puis code 1.
+# KO affiché d'abord (R-OPS-6 étape 5), puis signalé à Healthchecks (alive/fail, motif joint) : un
+# Healthchecks injoignable (curl -m 10 --retry 3) ne retarde pas le message. Code 1.
 ko() {
+  printf 'KO : %s\n' "$1" >&2
   hc_ping alive fail "$2" || true
-  die "KO : $1"
+  exit 1
 }
 
 # Sauvegarde absente de status.json ou de plus de 24 h (machine éteinte ou verrouillée à 03:30).
