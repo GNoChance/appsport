@@ -1,0 +1,8 @@
+# Contexte de infra/Dockerfile : ni dépendances du poste (pnpm install les recrée), ni builds, ni rapports.
+**/node_modules
+.git
+**/dist
+.e2e-data
+test-results
+playwright-report
+docs
