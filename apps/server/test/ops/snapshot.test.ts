@@ -94,6 +94,9 @@ describe('takeSnapshot', () => {
       ).finally(() => {
         settled = true;
       });
+      // Un tour de boucle d'événements avant d'écrire : une copie synchrone (VACUUM INTO, copie brute du
+      // fichier) est déjà finie ici ; seule la sauvegarde SQLite, hors du fil principal, est encore en cours.
+      await new Promise((resolve) => setImmediate(resolve));
       while (!settled) {
         writer.exec('BEGIN IMMEDIATE');
         insertPair();
@@ -109,6 +112,8 @@ describe('takeSnapshot', () => {
       }));
       expect(counts.a).toBe(counts.b);
       expect(counts.a).toBeGreaterThanOrEqual(20_000);
+      // Au moins une paire validée pendant la copie n'y figure pas : copie figée à son point de lecture.
+      expect(counts.a).toBeLessThan(20_000 + during);
       expect(integrity(path)).toEqual(OK);
     } finally {
       writer.close();
