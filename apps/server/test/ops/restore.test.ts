@@ -201,4 +201,48 @@ describe('restoreSnapshot', () => {
     expect(markers).toEqual({ c: 0 });
     expect(integrity(ops.dbPath)).toEqual([{ integrity_check: 'ok' }]);
   });
+
+  it('réparation R-OPS-16 : restaurer replaced-*/appsport.db reprend les transactions de son -wal', async () => {
+    ops = await createOpsDataDir();
+    const snapshot = await takeSnapshot(
+      { sqlite: ops.sqlite, dataDir: ops.dir, clock: new FakeClock('2026-10-07T01:30:00.000Z') },
+      'daily',
+    );
+    // Seule la table marker reste à reporter : le reste de la base est déjà dans le fichier principal.
+    ops.sqlite.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    ops.sqlite.exec("CREATE TABLE marker (label TEXT); INSERT INTO marker (label) VALUES ('dans-le-wal')");
+    // Arrêt brutal : la base et son WAL non reporté sont recopiés avant la fermeture, qui viderait le WAL.
+    const crash = join(ops.dir, 'crash');
+    mkdirSync(crash);
+    for (const suffix of ['', '-wal', '-shm'])
+      copyFileSync(`${ops.dbPath}${suffix}`, join(crash, `db${suffix}`));
+    ops.close();
+    for (const suffix of ['', '-wal', '-shm'])
+      copyFileSync(join(crash, `db${suffix}`), `${ops.dbPath}${suffix}`);
+
+    // Mauvais choix d'instantané en P4, puis réparation depuis la base remplacée.
+    const wrong = await restoreSnapshot({
+      dataDir: ops.dir,
+      snapshotPath: snapshot,
+      ids: seqIds(40),
+      clock: new FakeClock(RESTORED_AT),
+    });
+    const source = join(wrong.replacedDir as string, 'appsport.db');
+    const sourceHashes = [sha256(source), sha256(`${source}-wal`)];
+    await restoreSnapshot({
+      dataDir: ops.dir,
+      snapshotPath: source,
+      ids: seqIds(60),
+      clock: new FakeClock('2026-10-07T20:05:00.000Z'),
+    });
+
+    const markers = readOnly(ops.dbPath, (s) =>
+      s.prepare("SELECT count(*) AS c FROM marker WHERE label = 'dans-le-wal'").get(),
+    );
+    expect(markers).toEqual({ c: 1 });
+    expect(integrity(ops.dbPath)).toEqual([{ integrity_check: 'ok' }]);
+    expect(existsSync(`${ops.dbPath}-wal`)).toBe(false);
+    // La source n'est pas modifiée : la base remplacée reste disponible telle quelle.
+    expect([sha256(source), sha256(`${source}-wal`)]).toEqual(sourceHashes);
+  });
 });

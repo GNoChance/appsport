@@ -1,6 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { backup, DatabaseSync } from 'node:sqlite';
 import { openDatabase } from '../db/open';
 import type { Clock, IdGen } from '../deps';
 import { rotateServerEpoch } from '../sync/epoch';
@@ -20,24 +20,41 @@ export class RestoreError extends Error {
   }
 }
 
-function assertIntact(snapshotPath: string): void {
-  let result: unknown;
+function integrityFailed(): RestoreError {
+  return new RestoreError(
+    'integrity_failed',
+    'Instantané corrompu (PRAGMA integrity_check) : base actuelle laissée intacte.',
+  );
+}
+
+/** `PRAGMA integrity_check` rend exactement `[{ integrity_check: 'ok' }]` ; une exception compte comme un échec. */
+function isIntact(sqlite: DatabaseSync): boolean {
   try {
-    const sqlite = new DatabaseSync(snapshotPath, { readOnly: true });
-    try {
-      result = sqlite.prepare('PRAGMA integrity_check').all();
-    } finally {
-      sqlite.close();
-    }
+    const rows = sqlite.prepare('PRAGMA integrity_check').all() as { integrity_check?: unknown }[];
+    return rows.length === 1 && rows[0]?.integrity_check === 'ok';
   } catch {
-    result = null;
+    return false;
   }
-  const rows = result as { integrity_check?: unknown }[] | null;
-  if (rows?.length !== 1 || rows[0]?.integrity_check !== 'ok') {
-    throw new RestoreError(
-      'integrity_failed',
-      'Instantané corrompu (PRAGMA integrity_check) : base actuelle laissée intacte.',
-    );
+}
+
+/**
+ * Vérifie l'instantané ouvert en lecture seule, puis le copie par l'API de sauvegarde depuis cette même
+ * connexion : les octets copiés sont ceux qui ont été vérifiés, -wal voisin compris. Une copie du seul
+ * fichier principal perdrait les transactions de ce -wal (base remplacée après un arrêt brutal, puis
+ * restaurée pour réparer un mauvais choix, R-OPS-16). La source n'est pas modifiée.
+ */
+async function copyIntactSnapshot(snapshotPath: string, target: string): Promise<void> {
+  let source: DatabaseSync;
+  try {
+    source = new DatabaseSync(snapshotPath, { readOnly: true });
+  } catch {
+    throw integrityFailed();
+  }
+  try {
+    if (!isIntact(source)) throw integrityFailed();
+    await backup(source, target, { rate: 0x7fffffff });
+  } finally {
+    source.close();
   }
 }
 
@@ -62,7 +79,6 @@ export async function restoreSnapshot(o: {
   if (!existsSync(o.snapshotPath)) {
     throw new RestoreError('snapshot_missing', `Instantané introuvable : ${o.snapshotPath}.`);
   }
-  assertIntact(o.snapshotPath);
 
   const dbPath = join(o.dataDir, DB_FILE);
   const restoring = `${dbPath}.restoring`;
@@ -72,9 +88,11 @@ export async function restoreSnapshot(o: {
   removeRestoring();
   let rotated: { epoch: string; baseRev: number };
   try {
-    copyFileSync(o.snapshotPath, restoring);
+    await copyIntactSnapshot(o.snapshotPath, restoring);
     const { sqlite, db } = openDatabase(restoring);
     try {
+      // La copie elle-même est vérifiée : c'est elle qui deviendra la base.
+      if (!isIntact(sqlite)) throw integrityFailed();
       rotated = await rotateServerEpoch(db, { ids: o.ids, clock: o.clock });
       sqlite.exec('PRAGMA journal_mode = DELETE');
     } finally {
