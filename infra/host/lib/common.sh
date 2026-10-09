@@ -37,6 +37,9 @@ export RESTIC_CACHE_DIR="$APPSPORT_ROOT/cache/restic"
 export GIT_SSH_COMMAND="ssh -i $APPSPORT_ROOT/secrets/deploy_key -o IdentitiesOnly=yes"
 # compose lit la version dans deploy.env, que l'environnement du shell écraserait : jamais exportée.
 unset APPSPORT_VERSION
+# Base restaurée sans privacy:reapply réussie (03 §8, 08 §12 P4) : app ne doit pas redémarrer. Fichier root hors de
+# data/, écrit avant restore par appsport-update, levé après la réapplication (ou à la main en P4) ; nomme la liste.
+REAPPLY_MARKER="$APPSPORT_ROOT/reapply-pending"
 
 # HC_ALIVE_URL, HC_BACKUP_URL, HC_RESTORE_TEST_URL, HC_HOST_URL, APPSPORT_URL.
 if [ -r "$HC_ENV" ]; then
@@ -86,6 +89,9 @@ app_cli_run() {
 volume_mounted() { "$MOUNTPOINT" -q "$APPSPORT_ROOT"; }
 
 sentinel_present() { [ -f "$APPSPORT_ROOT/data/.appsport-volume" ]; }
+
+# Garde de tout compose up -d (appsport-unlock, appsport-update) : vraie si une réapplication est en attente.
+reapply_pending() { [ -e "$REAPPLY_MARKER" ]; }
 
 health_json() { "$CURL" -fsS --max-time "${1:-5}" "$HEALTH_URL"; }
 

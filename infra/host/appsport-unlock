@@ -33,6 +33,10 @@ main() {
   fi
   sentinel_present || ko "sentinelle absente, ce n'est pas le volume appsport." "sentinelle absente"
   "$SYSTEMCTL" start docker || ko "Docker ne démarre pas (voir P8)." "docker ne demarre pas"
+  # Base restaurée sans privacy:reapply : ne pas la servir (03 §8) ; Docker reste démarré pour P4.
+  if reapply_pending; then
+    ko "réapplication des suppressions en attente : suivez P4." "reapplication en attente"
+  fi
   compose up -d || ko "docker compose up -d a échoué (voir P8)." "compose up en echec"
   # shellcheck disable=SC2119 # sans version : toute version saine convient
   wait_health || ko "/api/health ne répond pas 200 après 2 min (voir P8)." "api/health ne repond pas 200"

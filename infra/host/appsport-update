@@ -79,6 +79,7 @@ main() {
   take_lock || die "Une autre opération appsport est en cours. Rien n'a été changé."
   volume_mounted || die "Volume non monté : lancez d'abord sudo appsport-unlock. Rien n'a été changé."
   sentinel_present || die "Sentinelle $APPSPORT_ROOT/data/.appsport-volume absente. Rien n'a été changé."
+  ! reapply_pending || die "Réapplication des suppressions en attente : suivez P4."
   if [ "$MODE" = rollback ]; then
     if ! line=$(grep ' ok$' "$APPSPORT_ROOT/deploy.log" | tail -n1) || [ -z "$line" ]; then
       die "Aucun déploiement réussi à annuler."
@@ -167,10 +168,13 @@ rollback() {
   # T24 : lecture seule de la base courante, sans migration ni --source.
   app_cli_run privacy:collect --since "$since" --out "/data/$list" || ko "privacy:collect impossible"
   compose stop app || ko "Arrêt de app impossible"
+  # Avant restore : jusqu'à la réapplication, unlock et update refusent de relancer app (03 §8).
+  printf '%s\n' "/data/$list" >"$REAPPLY_MARKER" || ko "Marqueur $REAPPLY_MARKER non écrit"
   { app_cli_run restore "/data/snapshots/pre-$2.db" && app_cli_run privacy:reapply "/data/$list"; } ||
     ko "Restauration ou réapplication impossible"
-  # Liste purgée après réapplication (03 §7).
-  rm -f "$APPSPORT_ROOT/data/$list"
+  # Liste purgée après réapplication (03 §7), marqueur levé.
+  rm -f "$APPSPORT_ROOT/data/$list" "$REAPPLY_MARKER" ||
+    ko "Liste privacy ou marqueur $REAPPLY_MARKER non supprimé"
   { compose up -d && wait_health "$1"; } || ko "L'image $1 ne répond pas après restauration"
   finish rolled-back-restore
   log "Base restaurée : les téléphones renverront leurs 60 derniers jours."

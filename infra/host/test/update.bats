@@ -194,9 +194,10 @@ remember_files() {
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-restore$ ]]
   jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == false' "$STATUS_FILE"
   [ -z "$(compgen -G "$APPSPORT_ROOT/data/ops/privacy-*.json" || true)" ]
+  [ ! -e "$APPSPORT_ROOT/reapply-pending" ]
 }
 
-@test "restauration impossible : P4, liste privacy gardée, rollback-failed" {
+@test "restauration impossible : P4, liste privacy et marqueur de réapplication gardés, rollback-failed" {
   set_healthy_versions "v1.2.0@restored"
   on docker '* restore *' 1
   run "$UPDATE" v1.3.0 --yes
@@ -204,8 +205,45 @@ remember_files() {
   [[ "$output" == *"Restauration ou réapplication impossible : suivez P4."* ]]
   refute_call "* privacy:reapply *"
   compgen -G "$APPSPORT_ROOT/data/ops/privacy-v1.3.0-*.json"
+  # Écrit avant restore : une restauration partielle ne laisse pas repartir app sans P4.
+  [ -f "$APPSPORT_ROOT/reapply-pending" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rollback-failed$ ]]
   jq -e '.deploy.ok == false' "$STATUS_FILE"
+}
+
+@test "restauration faite, réapplication en échec : marqueur, puis unlock, --rollback et update refusent tout up -d" {
+  set_healthy_versions "v1.2.0@restored"
+  on docker '* privacy:reapply *' 1
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Restauration ou réapplication impossible : suivez P4."* ]]
+  assert_calls_in_order "* restore /data/snapshots/pre-v1.3.0.db" "* privacy:reapply /data/ops/privacy-v1.3.0-*.json"
+  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rollback-failed$ ]]
+  # Marqueur root hors de data/ : il nomme la liste à réappliquer en P4, gardée elle aussi.
+  [[ "$(cat "$APPSPORT_ROOT/reapply-pending")" == /data/ops/privacy-v1.3.0-*.json ]]
+  compgen -G "$APPSPORT_ROOT/data/ops/privacy-v1.3.0-*.json"
+
+  # Redémarrage puis P2 : la base restaurée non réappliquée n'est pas servie (03 §8).
+  reset_calls
+  run "$HOST_DIR/appsport-unlock"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"KO : réapplication des suppressions en attente : suivez P4."* ]]
+  refute_call "docker compose * up *"
+  assert_calls_in_order "curl * https://hc.test/alive/fail"
+
+  # La dernière ligne ok nomme v1.2.0, en place : --rollback passerait sans le marqueur.
+  reset_calls
+  remember_files
+  run "$UPDATE" --rollback --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Réapplication des suppressions en attente : suivez P4."* ]]
+  assert_nothing_changed
+
+  reset_calls
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Réapplication des suppressions en attente : suivez P4."* ]]
+  assert_nothing_changed
 }
 
 @test "retour arrière dont le checkout du tag précédent échoue : P4, rollback-failed" {
