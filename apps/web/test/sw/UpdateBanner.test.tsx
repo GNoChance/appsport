@@ -1,9 +1,12 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { liveQuery } from 'dexie';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setMeta } from '../../src/local-db/meta';
+import type { AppDb } from '../../src/local-db/db';
+import { getMeta, setMeta } from '../../src/local-db/meta';
 import { type SwController, swControllerStore, type UpdateState } from '../../src/sw/register';
 import { UpdateBanner, UpdateBannerView } from '../../src/sw/UpdateBanner';
 import { settle } from '../support/auth';
+import { createTestLocalDb } from '../support/local-db';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
 
 const TITLE = 'Nouvelle version disponible';
@@ -41,11 +44,60 @@ function fakeController(
   };
 }
 
+const BANNER = '[data-testid="update-banner"]';
 const banner = () => screen.queryByTestId('update-banner');
 const button = (name: string) => screen.queryByRole('button', { name });
 
+const watchers: MutationObserver[] = [];
+
+/**
+ * Compte les apparitions du bandeau dans le document à partir de maintenant (avant le rendu) : un
+ * bandeau affiché un instant puis retiré compte (son ajout ou son retrait est observé).
+ */
+function watchBanner(): { seen(): number } {
+  let seen = 0;
+  const hit = (n: Node) => n instanceof Element && (n.matches(BANNER) || n.querySelector(BANNER) !== null);
+  const count = (records: MutationRecord[]) => {
+    for (const r of records) for (const n of [...r.addedNodes, ...r.removedNodes]) if (hit(n)) seen++;
+  };
+  const observer = new MutationObserver(count);
+  observer.observe(document.body, { childList: true, subtree: true });
+  watchers.push(observer);
+  return {
+    seen() {
+      count(observer.takeRecords());
+      return seen;
+    },
+  };
+}
+
+/** Premier résultat d'une lecture observée (liveQuery), comme celles de `useLive` et `useMe`. */
+function firstLive(query: () => Promise<unknown>): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const subscription = liveQuery(query).subscribe({
+      next: () => {
+        resolve();
+        queueMicrotask(() => subscription.unsubscribe());
+      },
+    });
+  });
+}
+
+/**
+ * Attend que les lectures observées du bandeau (séance en cours, utilisateur) aient répondu : les
+ * mêmes lectures, ouvertes après les siennes, ont répondu, puis React a rendu. Une absence constatée
+ * ensuite est une décision du bandeau, pas une base encore muette.
+ */
+async function liveReadsDone(db: AppDb): Promise<void> {
+  await act(async () => {
+    await Promise.all([firstLive(() => getMeta(db, 'activeSessionId')), firstLive(() => getMeta(db, 'me'))]);
+  });
+  await settle();
+}
+
 afterEach(() => {
   swControllerStore.set(null);
+  for (const observer of watchers.splice(0)) observer.disconnect();
 });
 
 describe('UpdateBannerView', () => {
@@ -108,21 +160,48 @@ describe('UpdateBanner (R-PWA-2, R-PWA-3, R-PWA-5)', () => {
     await screen.findByTestId('update-banner');
   });
 
-  it('SW en attente pendant une séance (activeSessionId "s1") → rien, puis bandeau à la fin de la séance', async () => {
+  it('SW en attente : une séance qui commence (activeSessionId "s1") masque le bandeau, même forcé ; il revient à la fin', async () => {
     swControllerStore.set(fakeController({ available: true, forced: true }));
-    const { db } = await renderWithServices(<UpdateBanner />, {});
+    const { db } = await renderWithServices(<UpdateBanner />);
+    await screen.findByTestId('update-banner');
     await act(() => setMeta(db, 'activeSessionId', 's1'));
-    await settle();
-    expect(banner()).toBeNull();
+    await waitFor(() => expect(banner()).toBeNull());
     await act(() => setMeta(db, 'activeSessionId', null));
     await screen.findByTestId('update-banner');
   });
 
-  it('SW en attente pendant l’onboarding → rien, même forcé', async () => {
+  it('SW en attente, séance déjà en cours au montage (activeSessionId "s1") → aucun bandeau, pas même un instant', async () => {
     swControllerStore.set(fakeController({ available: true, forced: true }));
-    await renderWithServices(<UpdateBanner />, { me: makeMe({ onboardingCompletedAt: null }) });
-    await settle();
-    expect(banner()).toBeNull();
+    const db = createTestLocalDb();
+    await setMeta(db, 'activeSessionId', 's1');
+    const watch = watchBanner();
+    await renderWithServices(<UpdateBanner />, { db });
+    await liveReadsDone(db);
+    expect(watch.seen()).toBe(0);
+    // Contrôle positif : la même base, séance finie, affiche le bandeau.
+    await act(() => setMeta(db, 'activeSessionId', null));
+    await screen.findByTestId('update-banner');
+  });
+
+  it('SW en attente : un membre en onboarding ne voit pas le bandeau, même forcé', async () => {
+    swControllerStore.set(fakeController({ available: true, forced: true }));
+    const { db } = await renderWithServices(<UpdateBanner />);
+    await screen.findByTestId('update-banner');
+    await act(() => setMeta(db, 'me', makeMe({ onboardingCompletedAt: null })));
+    await waitFor(() => expect(banner()).toBeNull());
+  });
+
+  it('SW en attente, onboarding en cours au montage → aucun bandeau, pas même un instant, même forcé', async () => {
+    swControllerStore.set(fakeController({ available: true, forced: true }));
+    const watch = watchBanner();
+    const { db } = await renderWithServices(<UpdateBanner />, {
+      me: makeMe({ onboardingCompletedAt: null }),
+    });
+    await liveReadsDone(db);
+    expect(watch.seen()).toBe(0);
+    // Contrôle positif : onboarding fini, le bandeau paraît.
+    await act(() => setMeta(db, 'me', makeMe()));
+    await screen.findByTestId('update-banner');
   });
 
   it('« Plus tard » masque le bandeau ; un 426 ensuite le rend non fermable', async () => {
@@ -179,15 +258,27 @@ describe('cadres (AppShell, PublicShell)', () => {
     expect(shown.parentElement?.querySelector('header')).not.toBeNull();
   });
 
-  it.each([
-    ['onboarding', '/onboarding', makeMe({ onboardingCompletedAt: null })],
-    ['page publique', '/privacy', null],
-  ])('PublicShell (%s) : aucun bandeau', async (_, path, me) => {
+  // Membre onboardé, hors séance, version en attente : seul le cadre décide. (Un membre en onboarding
+  // ne prouverait rien sur PublicShell : la règle masquerait le bandeau de toute façon.)
+  it('PublicShell (page publique, membre onboardé) : aucun bandeau ; puis AppShell : bandeau', async () => {
     swControllerStore.set(fakeController({ available: true, forced: true }));
-    await renderApp({ path, me });
+    const watch = watchBanner();
+    const { db } = await renderApp({ path: '/privacy' });
     // Le cadre est rendu (en-tête) : l'absence du bandeau n'est pas celle d'une page encore vide.
     await screen.findAllByRole('banner');
-    await settle();
-    expect(banner()).toBeNull();
+    await liveReadsDone(db);
+    expect(watch.seen()).toBe(0);
+    // Contrôle positif : même membre, même contrôleur, cadre connecté.
+    fireEvent.click(screen.getByRole('link', { name: 'appsport' }));
+    await screen.findByTestId('update-banner');
+  });
+
+  it('PublicShell (page publique, sans session) : aucun bandeau', async () => {
+    swControllerStore.set(fakeController({ available: true, forced: true }));
+    const watch = watchBanner();
+    const { db } = await renderApp({ path: '/privacy', me: null });
+    await screen.findAllByRole('banner');
+    await liveReadsDone(db);
+    expect(watch.seen()).toBe(0);
   });
 });
