@@ -40,8 +40,11 @@ export async function requireServiceWorker(page: Page): Promise<void> {
   test.skip(true, SW_SKIP_REASON);
 }
 
+/** Page contrôlée par le SW, en 30 s au plus : sans contrôleur, l'échec nomme l'attente, pas le délai du test. */
 export async function waitForController(page: Page): Promise<void> {
-  await page.waitForFunction(() => navigator.serviceWorker?.controller != null);
+  await page.waitForFunction(() => navigator.serviceWorker?.controller != null, undefined, {
+    timeout: 30_000,
+  });
 }
 
 /** `GET_STATUS` au SW qui contrôle la page ; `null` sans contrôleur ou sans réponse en 1 s. */
