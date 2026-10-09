@@ -8,7 +8,7 @@ ISO='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
 ISO_GLOB='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'
 
 setup() {
-  load helpers
+  source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
   UPDATE="$HOST_DIR/appsport-update"
   STATUS_FILE="$APPSPORT_ROOT/data/ops/status.json"

@@ -5,7 +5,7 @@ LUKS_DEVICE=/dev/disk/by-partlabel/appsport-data
 HEALTH=http://127.0.0.1:3000/api/health
 
 setup() {
-  load helpers
+  source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
   UNLOCK="$HOST_DIR/appsport-unlock"
 }
