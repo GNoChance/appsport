@@ -67,12 +67,17 @@ test("interrupteur d'urgence : SW et caches retirés sans boucle, base intacte, 
     await page.reload({ waitUntil: 'commit' });
     // Le rechargement demandé, puis celui de l'interrupteur (par le SW ou par la page, R-PWA-6).
     await expect.poll(() => navigations.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    // La requête part avant que le document ne soit remplacé, ménage déjà fait : l'ancien document, servi
+    // par le SW A, reste affiché jusqu'au commit et reste contrôlé (désenregistrer ne retire pas le
+    // contrôleur). Seul le document chargé depuis le réseau n'a pas de contrôleur : toutes les lectures
+    // qui suivent attendent qu'il soit affiché et chargé.
+    await expect.poll(() => acrossReload(page, controlled), { timeout: 15_000 }).toBe(false);
+    await page.waitForLoadState('load');
     await expect.poll(() => acrossReload(page, () => registrationCount(page)), { timeout: 15_000 }).toBe(0);
     await expect.poll(() => acrossReload(page, doomed), { timeout: 15_000 }).toEqual([]);
     // Page rechargée depuis le réseau, à son adresse, hors de tout SW, et appli démarrée.
     expect(new URL(page.url()).pathname).toBe('/');
     await expect(page.getByTestId('connection-status')).toBeVisible();
-    expect(await controlled()).toBe(false);
     // Aucun rechargement de plus : le témoin posé dans la page survit à la fenêtre.
     await page.evaluate(() => {
       (window as { e2eSameDocument?: boolean }).e2eSameDocument = true;
