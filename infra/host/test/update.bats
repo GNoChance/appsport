@@ -255,6 +255,37 @@ remember_files() {
   jq -e '.deploy | .version == "v1.3.0" and .ok == false' "$STATUS_FILE"
 }
 
+@test "interrompu (Ctrl-C, TERM) pendant le démarrage de v1.3.0 : consigné rollback-failed, P4" {
+  # Le stub de compose up envoie le signal au script, qui le traite dès que up rend la main.
+  on docker '* up -d' 0 '. "$STUB_DEFAULTS"; default_docker "$@"; kill -TERM $PPID'
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Interrompu : suivez P4."* ]]
+  [ "$(count_calls "docker compose * up -d")" -eq 1 ]
+  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rollback-failed$ ]]
+  jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == false' "$STATUS_FILE"
+}
+
+@test "interrompu pendant la sauvegarde pre-deploy : dépôt ramené au tag en place, service intact" {
+  on restic "-r $BACKUP_ROOT/restic backup *" 0 'kill -TERM $PPID'
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Interrompu : le service n'a pas été modifié."* ]]
+  assert_calls_in_order "restic -r $BACKUP_ROOT/restic backup *" "git -C $APPSPORT_REPO checkout --quiet v1.2.0"
+  refute_call "docker compose * up *"
+  [ "$(deployed_version)" = "v1.2.0" ]
+  [[ "$(last_deploy_line)" =~ \ v1\.1\.0\ v1\.2\.0\ ok$ ]]
+}
+
+@test "SSH coupé (HUP) après la confirmation : ignoré, le retour arrière automatique va à son terme" {
+  on docker '* up -d' 0 '. "$STUB_DEFAULTS"; default_docker "$@"; kill -HUP $PPID'
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [ "$(count_calls "docker compose * up -d")" -eq 2 ]
+  [ "$(deployed_version)" = "v1.2.0" ]
+  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-image$ ]]
+}
+
 @test "--rollback manuel, image v1.2.0 saine : image seule, ni restore ni privacy, rolled-back-image" {
   write_deploy_env_for_test v1.3.0
   echo "2026-10-08T20:00:00Z v1.2.0 v1.3.0 ok" >>"$APPSPORT_ROOT/deploy.log"

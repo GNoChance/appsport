@@ -47,7 +47,8 @@ if [ -r "$HC_ENV" ]; then
   . "$HC_ENV"
 fi
 
-log() { printf '%s\n' "$*"; }
+# Terminal disparu (SSH coupé, HUP ignoré par appsport-update) : l'écriture échoue sans arrêter le script.
+log() { printf '%s\n' "$*" 2>/dev/null || true; }
 
 die() {
   printf '%s\n' "$1" >&2

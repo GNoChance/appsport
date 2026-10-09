@@ -90,6 +90,7 @@ main() {
     fi
     [ "$(current_version)" = "$cur" ] || die "La version en place n'est pas $cur."
     confirm "Revenir de $cur à $prev ?"
+    trap '' HUP
     rollback "$prev" "$cur" manual
     return $?
   fi
@@ -100,6 +101,8 @@ main() {
   [ "$NEW" != "$prev" ] || die "$NEW est déjà déployée."
   show_active_sessions
   confirm "Déployer $NEW (version actuelle $prev) ?"
+  trap '' HUP
+  trap 'interrupted_early "$prev"' INT TERM
   "$GIT" -C "$APPSPORT_REPO" fetch --tags || die "git fetch impossible. Rien n'a été changé."
   "$GIT" -C "$APPSPORT_REPO" checkout --quiet "$NEW" || die "Tag $NEW introuvable. Rien n'a été changé."
   if ! APPSPORT_VERSION="$NEW" compose pull app; then
@@ -112,8 +115,11 @@ main() {
     log_deploy "$prev" "$NEW" backup-failed
     die "Échec de l'instantané ou de la sauvegarde pre-deploy. Le service n'a pas été modifié."
   fi
+  RB_TARGET=$prev RB_FROM=$NEW RB_KIND=auto
+  trap interrupted INT TERM
   write_deploy_env "$NEW" || die "deploy.env non écrit. Le service n'a pas été modifié."
   if compose up -d && wait_health "$NEW"; then
+    trap - INT TERM
     log_deploy "$prev" "$NEW" ok
     status_merge deploy "$(deploy_json "$NEW" "$prev" true)" ||
       log "Avertissement : status.json non mis à jour."
@@ -142,11 +148,31 @@ finish() {
   fi
 }
 
+# Après la confirmation, SSH coupé (HUP, hérité ignoré par docker, curl…) : l'opération va à son terme et
+# consigne son résultat. Ctrl-C ou TERM : le script s'arrête dès la commande en cours finie.
+# Avant deploy.env : le service n'a pas changé, le dépôt revient au tag en place.
+# shellcheck disable=SC2317 # appelée par trap
+interrupted_early() {
+  trap - INT TERM
+  checkout_back "$1"
+  die "Interrompu : le service n'a pas été modifié."
+}
+
+# Dès deploy.env : consigné rollback-failed (sinon --rollback refuserait une version en place non consignée).
+# shellcheck disable=SC2317 # appelée par trap
+interrupted() {
+  trap - INT TERM
+  finish rollback-failed
+  die "Interrompu : suivez P4."
+}
+
 # rollback <cible> <abandonnée> <auto|manual> (R-DEP-4).
 rollback() {
   local snap mtime since list
   RB_TARGET=$1 RB_FROM=$2 RB_KIND=$3
+  trap interrupted INT TERM
   ko() {
+    trap - INT TERM
     finish rollback-failed
     die "$1 : suivez P4."
   }
@@ -154,6 +180,7 @@ rollback() {
   "$GIT" -C "$APPSPORT_REPO" checkout --quiet "$1" || ko "Tag $1 introuvable"
   # Image seule : ni restauration ni nouvelle époque (R-VER-7 accepte un schéma plus récent non cassant).
   if compose up -d && wait_health "$1"; then
+    trap - INT TERM
     finish rolled-back-image
     log "Retour à $1 (image seule, sans restauration)."
     return 0
@@ -176,6 +203,7 @@ rollback() {
   rm -f "$APPSPORT_ROOT/data/$list" "$REAPPLY_MARKER" ||
     ko "Liste privacy ou marqueur $REAPPLY_MARKER non supprimé"
   { compose up -d && wait_health "$1"; } || ko "L'image $1 ne répond pas après restauration"
+  trap - INT TERM
   finish rolled-back-restore
   log "Base restaurée : les téléphones renverront leurs 60 derniers jours."
 }
