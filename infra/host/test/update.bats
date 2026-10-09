@@ -16,6 +16,8 @@ setup() {
 
 last_deploy_line() { tail -n1 "$APPSPORT_ROOT/deploy.log"; }
 deployed_version() { sed -n 's/^APPSPORT_VERSION=//p' "$APPSPORT_ROOT/deploy.env"; }
+# Aucun up -d n'a vu APPSPORT_VERSION dans l'environnement (compose la préférerait à deploy.env).
+assert_up_env_unset() { [ -s "$STATE/up-env" ] && ! grep -qvx unset "$STATE/up-env"; }
 
 # Les préconditions refusées ne touchent ni au dépôt, ni à l'image, ni à deploy.env, ni à deploy.log.
 assert_nothing_changed() {
@@ -164,6 +166,7 @@ remember_files() {
   refute_call "* restore *"
   refute_call "* privacy:*"
   refute_call "docker compose * stop *"
+  assert_up_env_unset
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-image$ ]]
   jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == false' "$STATUS_FILE"
@@ -186,6 +189,7 @@ remember_files() {
   # Lecture seule de la base courante (T24) : jamais --source ; depuis l'instantané moins 5 min.
   refute_call "* privacy:collect *--source*"
   assert_calls_in_order "* privacy:collect --since $ISO_GLOB --out *"
+  assert_up_env_unset
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-restore$ ]]
   jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == false' "$STATUS_FILE"
@@ -227,6 +231,7 @@ remember_files() {
     "curl *$HEALTH"
   refute_call "* restore *"
   refute_call "* privacy:*"
+  assert_up_env_unset
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.3\.0\ v1\.2\.0\ rolled-back-image$ ]]
   jq -e '.deploy | .version == "v1.2.0" and .previousVersion == "v1.3.0" and .ok == true' "$STATUS_FILE"
 }

@@ -1,11 +1,12 @@
 # shellcheck shell=bash
 # Comportements par défaut des stubs (stub.sh) : un hôte appsport simulé dans $STATE. T44 l'étend.
 #   luks-open, mounted, running : volume ouvert, monté, service app en marche ;
-#   image : version de l'image en marche (lue dans deploy.env par `compose up`) ;
+#   image : version de l'image en marche (APPSPORT_VERSION du shell, sinon deploy.env, lue par `compose up`) ;
 #   healthy : versions saines (« v » ; « v@restored » : saine tant qu'aucune autre version n'a démarré, schéma
 #   non migré, puis seulement après `restore`) ; started : versions démarrées par `compose up` ;
 #   health-code : code de sortie imposé au curl de santé (set_health) ;
-#   sessions : sortie de sessions:active ; pulled, up-env, restic-env : environnement vu par pull, up, restic.
+#   sessions : sortie de sessions:active ; pulled, up-env (une ligne par up), restic-env : environnement vu
+#   par pull, up, restic.
 
 # Chemin sur l'hôte d'un chemin /data/… du conteneur.
 host_data_path() { printf '%s\n' "$APPSPORT_ROOT/data${1#/data}"; }
@@ -59,8 +60,10 @@ default_docker() {
       if [ -f "$STATE/running" ]; then echo 0123456789ab; fi
       ;;
     up)
-      printf '%s\n' "${APPSPORT_VERSION-unset}" >"$STATE/up-env"
-      sed -n 's/^APPSPORT_VERSION=//p' "$APPSPORT_ROOT/deploy.env" >"$STATE/image"
+      # Comme compose : une variable du shell l'emporte sur --env-file (une fuite démarre une autre image).
+      printf '%s\n' "${APPSPORT_VERSION-unset}" >>"$STATE/up-env"
+      printf '%s\n' "${APPSPORT_VERSION:-$(sed -n 's/^APPSPORT_VERSION=//p' "$APPSPORT_ROOT/deploy.env")}" \
+        >"$STATE/image"
       cat "$STATE/image" >>"$STATE/started"
       touch "$STATE/running"
       ;;
