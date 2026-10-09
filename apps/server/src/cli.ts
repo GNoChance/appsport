@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { CivilDate } from '@appsport/contracts';
 import { usernameKey } from '@appsport/domain';
@@ -16,6 +17,8 @@ import { NodeSqliteDialect } from './db/sqlite-dialect';
 import { type AppDeps, createAppDeps, cryptoIds, systemClock } from './deps';
 import { HttpError } from './http/errors';
 import { createLogger } from './logger';
+import { restoreSnapshot } from './ops/restore';
+import { assertSnapshotTag, pruneSnapshots, takeSnapshot } from './ops/snapshot';
 import {
   canonicalInstant,
   collectPrivacyEvents,
@@ -220,6 +223,54 @@ async function runPrivacyReapply(args: string[], ctx: CliContext): Promise<numbe
   return 0;
 }
 
+/** Volume chiffré non monté : ni instantané ni restauration (message sur stderr). */
+function sentinelMissing(config: AppConfig, ctx: CliContext): boolean {
+  if (existsSync(config.sentinelPath)) return false;
+  ctx.err(`Volume de données absent : sentinelle ${config.sentinelPath} introuvable.`);
+  return true;
+}
+
+/** Copie à chaud, sans migration (un `pre-vX.Y.Z` est pris par l'ancienne version), puis élagage. */
+async function runSnapshot(args: string[], ctx: CliContext): Promise<number> {
+  const tag = parseFlags(args).flags.tag ?? '';
+  assertSnapshotTag(tag);
+  const config = loadConfig(ctx.env);
+  if (sentinelMissing(config, ctx)) return 1;
+  assertStartupPreconditions(config);
+  const dataDir = resolve(config.dataDir);
+  const { sqlite } = openDatabase(config.dbPath);
+  let path: string;
+  try {
+    path = await takeSnapshot({ sqlite, dataDir, clock: systemClock }, tag);
+  } finally {
+    sqlite.close();
+  }
+  await pruneSnapshots(dataDir, systemClock.now());
+  ctx.out(`Instantané écrit : ${path}`);
+  return 0;
+}
+
+/** Service arrêté ; la sentinelle suffit : sur une machine neuve, il n'y a pas encore de base (P4 (b)). */
+async function runRestore(args: string[], ctx: CliContext): Promise<number> {
+  const file = parseFlags(args).positional[0];
+  if (!file) {
+    ctx.err('Instantané manquant : utilise restore <fichier.db>.');
+    return 1;
+  }
+  const config = loadConfig(ctx.env);
+  if (sentinelMissing(config, ctx)) return 1;
+  const result = await restoreSnapshot({
+    dataDir: resolve(config.dataDir),
+    snapshotPath: resolve(file),
+    ids: cryptoIds(),
+    clock: systemClock,
+  });
+  if (result.replacedDir) ctx.out(`Base remplacée conservée 30 jours dans ${result.replacedDir}.`);
+  ctx.out(`Restauration terminée. Nouvelle époque : ${result.epoch} (epoch_base_rev ${result.baseRev}).`);
+  ctx.out('Lancez maintenant privacy:reapply, avant de redémarrer le service.');
+  return 0;
+}
+
 export const COMMANDS: Record<string, CliCommand> = {
   'admin:bootstrap': {
     usage:
@@ -239,6 +290,16 @@ export const COMMANDS: Record<string, CliCommand> = {
     usage:
       'privacy:reapply <fichier.json> : réapplique après une restauration la liste écrite par privacy:collect',
     run: runPrivacyReapply,
+  },
+  snapshot: {
+    usage:
+      'snapshot --tag daily|pre-vX.Y.Z : copie cohérente à chaud dans snapshots/, puis élagage (3 par type, 30 jours au plus)',
+    run: runSnapshot,
+  },
+  restore: {
+    usage:
+      'restore <fichier.db> : service arrêté, remplace la base (gardée 30 jours) et ouvre une nouvelle époque ; puis privacy:reapply',
+    run: runRestore,
   },
   init: {
     usage: "init : crée la base d'un volume neuf (sentinelle requise) et fixe l'époque du serveur",
