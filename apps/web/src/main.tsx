@@ -8,6 +8,10 @@ import { createApiClient } from './api/client';
 import { type AppServices, handleAccountDeleted, ServicesProvider } from './app-services';
 import { bootApp } from './boot';
 import { createAppDb } from './local-db/db';
+import { reposFor } from './repos';
+import { probeHealth } from './sw/kill-switch';
+import { installPersistOnOnboarding } from './sw/persist';
+import { bootServiceWorker } from './sw/register';
 import { getSwStatus } from './sw/sw-client';
 import { createSyncEngine } from './sync/engine';
 import { browserTransport } from './sync/transport';
@@ -33,8 +37,11 @@ const swStatus: AppServices['swStatus'] = import.meta.env.DEV
   ? async () => ({ type: 'STATUS', buildHash: 'dev', shellCached: true, illustrationsMissing: 0 })
   : () => getSwStatus();
 const services: AppServices = { db, api, sync, transport, now: Date.now, newOpId, swStatus };
+const repos = reposFor(services);
 
 bootApp(services);
+// R-SYN-31 : stockage persistant demandé à la fin de l'onboarding, dans l'appli installée.
+installPersistOnOnboarding(repos.status);
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root absent de index.html');
@@ -47,3 +54,9 @@ createRoot(root).render(
     </Router>
   </StrictMode>,
 );
+
+// Production seulement (Vite en développement ne sert pas de SW) ; non attendu : le premier rendu n'attend
+// jamais. Sonde /api/health : interrupteur d'urgence (R-PWA-6), sinon enregistrement du SW.
+if (import.meta.env.PROD) {
+  void bootServiceWorker({ db, status: repos.status, sync, fetchHealth: () => probeHealth(transport) });
+}

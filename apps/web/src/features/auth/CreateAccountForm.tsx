@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { useRepos } from '../../repos';
 import { Banner, Button, Field, formatDate } from '../../ui';
 import styles from './auth.module.css';
+import { isStandalone } from './install-help';
 import { accessErrorMessage, checkNewPassword, USERNAME_MESSAGES } from './messages';
 import { PasswordFields } from './PasswordFields';
 import { useWipeWarning } from './WipeWarning';
@@ -53,6 +54,8 @@ export function CreateAccountForm(p: {
         password: passwords.password,
         termsVersion: PRIVACY_POLICY_VERSION,
       });
+      // R-CPT-2 : stockage persistant demandé à la création, dans l'appli installée seulement.
+      if (isStandalone()) void repos.status.requestPersistentStorage().catch(() => {});
       p.onCreated(me);
     } catch (err) {
       setError(accessErrorMessage(err, p.role));

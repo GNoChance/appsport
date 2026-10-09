@@ -46,15 +46,18 @@ export function createRepos(s: AppServices): Repos {
 
 const cache = new WeakMap<AppServices, Repos>();
 
-/** Dépôts des services courants, un seul jeu par services (référence stable). */
+/** Dépôts de `services`, un seul jeu par services : ceux des écrans et ceux de main.tsx sont les mêmes. */
+export function reposFor(services: AppServices): Repos {
+  let repos = cache.get(services);
+  if (!repos) {
+    repos = createRepos(services);
+    cache.set(services, repos);
+  }
+  return repos;
+}
+
+/** Dépôts des services courants (référence stable). */
 export function useRepos(): Repos {
   const services = useServices();
-  return useMemo(() => {
-    let repos = cache.get(services);
-    if (!repos) {
-      repos = createRepos(services);
-      cache.set(services, repos);
-    }
-    return repos;
-  }, [services]);
+  return useMemo(() => reposFor(services), [services]);
 }

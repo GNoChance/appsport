@@ -3,16 +3,18 @@ import { Link } from 'wouter';
 import { useMe } from '../app-services';
 import { ConnectionStatus } from '../features/status/ConnectionStatus';
 import { PendingCounter, RejectedCounter } from '../features/status/PendingCounter';
+import { UpdateBanner } from '../sw/UpdateBanner';
 import styles from './ui.module.css';
 
 /**
- * Cadre des écrans connectés : navigation, zone d'état (connexion, éléments en attente et refusés,
- * R-SYN-34), liens vers les pages publiques.
+ * Cadre des écrans connectés : bandeau de mise à jour (R-PWA-2), navigation, zone d'état (connexion,
+ * éléments en attente et refusés, R-SYN-34), liens vers les pages publiques.
  */
 export function AppShell(p: { children: ReactNode }) {
   const me = useMe();
   return (
     <div className={styles.shell}>
+      <UpdateBanner />
       <header className={styles.header}>
         <Link href="/" className={styles.brand}>
           appsport
@@ -36,7 +38,7 @@ export function AppShell(p: { children: ReactNode }) {
 
 /**
  * Cadre des pages publiques, lisibles sans session, et de l'onboarding : pas de navigation de
- * compte. `homeLink` faux (onboarding) : la marque est un simple texte, l'accueil ramènerait à
+ * compte ni de bandeau de mise à jour (R-PWA-3). `homeLink` faux (onboarding) : la marque est un simple texte, l'accueil ramènerait à
  * l'onboarding en perdant l'écran en cours.
  */
 export function PublicShell(p: { children: ReactNode; homeLink?: boolean }) {

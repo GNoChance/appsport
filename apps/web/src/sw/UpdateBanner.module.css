@@ -1,0 +1,27 @@
+/* Bandeau de mise à jour (R-PWA-2) : en tête du cadre connecté, au-dessus de l'en-tête. */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-info-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Après un 426 (R-PWA-5) : la synchro est arrêtée tant que l'appli n'est pas mise à jour. */
+.forced {
+  background: var(--color-warning-bg);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto 0 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
