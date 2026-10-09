@@ -63,7 +63,7 @@ show_active_sessions() {
 }
 
 deploy_json() {
-  jq -cn --arg at "$(now_iso)" --arg v "$1" --arg p "$2" --argjson ok "$3" \
+  "$JQ" -cn --arg at "$(now_iso)" --arg v "$1" --arg p "$2" --argjson ok "$3" \
     '{at: $at, version: $v, previousVersion: $p, ok: $ok}'
 }
 
@@ -79,9 +79,15 @@ record_deploy() {
 }
 
 main() {
-  local line prev cur
+  local line prev cur lock=0
   parse_args "$@"
-  take_lock || die "Une autre opération appsport est en cours. Rien n'a été changé."
+  require_cmds "$JQ" "$FLOCK" "$GIT" "$RESTIC" "$CURL"
+  take_lock || lock=$?
+  case $lock in
+    0) ;;
+    2) die "Impossible d'ouvrir $LOCK_FILE : lancez avec sudo." ;;
+    *) die "Une autre opération appsport est en cours. Rien n'a été changé." ;;
+  esac
   volume_mounted || die "Volume non monté : lancez d'abord sudo appsport-unlock. Rien n'a été changé."
   sentinel_present || die "Sentinelle $APPSPORT_ROOT/data/.appsport-volume absente. Rien n'a été changé."
   ! reapply_pending || die "Réapplication des suppressions en attente : suivez P4."
@@ -212,10 +218,10 @@ rollback() {
   printf '%s\n' "/data/$list" >"$REAPPLY_MARKER" || ko "Marqueur $REAPPLY_MARKER non écrit"
   { app_cli_run restore "/data/snapshots/pre-$2.db" && app_cli_run privacy:reapply "/data/$list"; } ||
     ko "Restauration ou réapplication impossible"
-  # Liste purgée après réapplication (03 §7) ; un échec n'interrompt pas le retour arrière.
-  rm -f "$APPSPORT_ROOT/data/$list" ||
+  # Liste purgée après réapplication (03 §7), dans data/ops épinglé ; un échec n'interrompt pas le retour arrière.
+  in_ops_dir rm -f "${list#ops/}" ||
     log "Avertissement : liste $APPSPORT_ROOT/data/$list non supprimée (données personnelles) : supprimez-la à la main."
-  # Réapplication faite : le marqueur est levé, sinon unlock et update refuseraient de relancer app.
+  # Réapplication faite : le marqueur (hors data/, à root) est levé, sinon unlock et update refuseraient de relancer app.
   rm -f "$REAPPLY_MARKER" || ko "Marqueur $REAPPLY_MARKER non supprimé"
   { compose up -d && wait_health "$1"; } || ko "L'image $1 ne répond pas après restauration"
   trap - INT TERM

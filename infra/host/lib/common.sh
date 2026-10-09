@@ -20,6 +20,7 @@
 : "${SMARTCTL:=smartctl}"
 : "${CHOWN:=chown}"
 : "${FLOCK:=flock}"
+: "${JQ:=jq}"
 : "${HEALTH_URL:=http://127.0.0.1:3000/api/health}"
 : "${LUKS_DEVICE:=/dev/disk/by-partlabel/appsport-data}"
 : "${LUKS_NAME:=appsport}"
@@ -57,10 +58,20 @@ die() {
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# require_cmds <commande…> : outils de l'hôte dont dépend un script. Sans jq, une appli saine paraîtrait KO
+# (wait_health) et déclencherait un retour arrière inutile : refus avant toute action.
+require_cmds() {
+  local cmd
+  for cmd in "$@"; do
+    command -v "$cmd" >/dev/null 2>&1 || die "Commande ${cmd##*/} absente de l'hôte. Rien n'a été changé."
+  done
+}
+
 # update, backup et restore-test sont exclusifs ; le descripteur 9 reste ouvert jusqu'à la fin du script.
+# 0 verrou pris, 1 occupé, 2 LOCK_FILE impossible à ouvrir (lancé sans sudo, /run plein).
 take_lock() {
-  exec 9>"$LOCK_FILE" || return 1
-  "$FLOCK" -n 9
+  exec 9>"$LOCK_FILE" || return 2
+  "$FLOCK" -n 9 || return 1
 }
 
 compose() {
@@ -97,19 +108,22 @@ reapply_pending() { [ -e "$REAPPLY_MARKER" ]; }
 health_json() { "$CURL" -fsS --max-time "${1:-5}" "$HEALTH_URL"; }
 
 # 200 avec status ok (et la version demandée) : HEALTH_TIMEOUT_S / (2 × HEALTH_POLL_S) essais d'au plus
-# HEALTH_POLL_S secondes, séparés d'autant (2 min au plus). Version servie dans HEALTH_VERSION.
+# HEALTH_POLL_S secondes, chacun dans une tranche de 2 × HEALTH_POLL_S complétée par un sommeil (2 min au plus,
+# même quand la sonde échoue aussitôt : connexion refusée pendant les migrations). Version dans HEALTH_VERSION.
 # shellcheck disable=SC2034 # HEALTH_VERSION est lue par appsport-unlock
 wait_health() {
-  local want=${1:-} tries i json
+  local want=${1:-} tries i json start left
   tries=$((HEALTH_TIMEOUT_S / (2 * HEALTH_POLL_S)))
   if [ "$tries" -lt 1 ]; then tries=1; fi
   HEALTH_VERSION=""
   for ((i = 1; i <= tries; i++)); do
-    if json=$(health_json "$HEALTH_POLL_S") && [ "$(jq -r '.status' <<<"$json" 2>/dev/null)" = ok ]; then
-      HEALTH_VERSION=$(jq -r '.version // ""' <<<"$json" 2>/dev/null)
+    start=$SECONDS
+    if json=$(health_json "$HEALTH_POLL_S") && [ "$("$JQ" -r '.status' <<<"$json" 2>/dev/null)" = ok ]; then
+      HEALTH_VERSION=$("$JQ" -r '.version // ""' <<<"$json" 2>/dev/null)
       if [ -z "$want" ] || [ "$HEALTH_VERSION" = "$want" ]; then return 0; fi
     fi
-    if [ "$i" -lt "$tries" ]; then "$SLEEP" "$HEALTH_POLL_S"; fi
+    left=$((2 * HEALTH_POLL_S - (SECONDS - start)))
+    if [ "$i" -lt "$tries" ] && [ "$left" -gt 0 ]; then "$SLEEP" "$left"; fi
   done
   return 1
 }
@@ -139,22 +153,58 @@ hc_ping() {
   "$CURL" "${opts[@]}" "$url"
 }
 
+# data/ appartient au conteneur (utilisateur 1000, code non fiable) : root n'y suit jamais un lien symbolique.
+# in_ops_dir <commande…> : lance la commande dans data/ops, répertoire épinglé (cd -P puis chemin physique
+# vérifié) ; un data/ops remplacé par un lien vers l'hôte est refusé, un renommage reste dans le volume.
+in_ops_dir() {
+  local d="$APPSPORT_ROOT/data/ops" root
+  root=$(cd -P "$APPSPORT_ROOT" && pwd -P) || return 1
+  if [ ! -d "$d" ] || [ -L "$d" ]; then
+    log "$d n'est pas un répertoire (lien symbolique ?) : refusé."
+    return 1
+  fi
+  (cd -P "$d" && [ "$(pwd -P)" = "$root/data/ops" ] && "$@")
+}
+
 # data/ops appartient au conteneur (utilisateur 1000), 0750.
 ensure_ops_dir() {
   mkdir -p "$APPSPORT_ROOT/data/ops" &&
-    "$CHOWN" 1000:1000 "$APPSPORT_ROOT/data/ops" &&
-    chmod 0750 "$APPSPORT_ROOT/data/ops"
+    in_ops_dir chmod 0750 . &&
+    "$CHOWN" -h 1000:1000 "$APPSPORT_ROOT/data/ops"
 }
 
-# status_merge <section> <json> : remplace une section de status.json (OpsStatus), écriture atomique.
+# Répertoire de root (0700) sur le même volume que data/ : temporaire et verrou de status.json.
+ops_tmp_dir() {
+  local d="$APPSPORT_ROOT/.ops-tmp"
+  (umask 077 && mkdir -p "$d") && [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"
+}
+
+# Contenu de status.json (objet JSON, vide sinon), lu dans data/ops (in_ops_dir) : le descripteur ouvert doit
+# désigner le fichier même du répertoire, jamais la cible d'un lien posé par le conteneur.
+read_status_json() {
+  if [ ! -f status.json ] || [ -L status.json ]; then return 0; fi
+  exec 7<status.json || return 0
+  [ "$(stat -L -c %d:%i /dev/fd/7)" = "$(stat -c %d:%i status.json)" ] || return 0
+  "$JQ" -c 'if type == "object" then . else {} end' <&7 2>/dev/null
+}
+
+# status_merge <section> <json> : remplace une section de status.json (OpsStatus), écriture atomique,
+# sérialisée par son propre verrou (appsport-check ne prend pas LOCK_FILE).
 status_merge() {
-  local file="$APPSPORT_ROOT/data/ops/status.json" tmp base
+  local dir
   ensure_ops_dir || return 1
-  base=$(jq -c 'if type == "object" then . else {} end' "$file" 2>/dev/null) || base=""
+  dir=$(ops_tmp_dir) || return 1
+  status_merge_locked "$1" "$2" "$dir" 8>"$dir/status.lock"
+}
+
+status_merge_locked() {
+  local tmp base
+  "$FLOCK" -w 30 8 || return 1
+  base=$(in_ops_dir read_status_json) || base=""
   if [ -z "$base" ]; then base='{}'; fi
-  tmp=$(mktemp "$APPSPORT_ROOT/data/ops/.status.XXXXXX") || return 1
-  if jq --arg k "$1" --argjson v "$2" '.[$k] = $v' <<<"$base" >"$tmp" &&
-    chmod 0640 "$tmp" && "$CHOWN" 1000:1000 "$tmp" && mv -f "$tmp" "$file"; then
+  tmp=$(mktemp "$3/status.XXXXXX") || return 1
+  if "$JQ" --arg k "$1" --argjson v "$2" '.[$k] = $v' <<<"$base" >"$tmp" &&
+    chmod 0640 "$tmp" && "$CHOWN" 1000:1000 "$tmp" && in_ops_dir mv -f -T "$tmp" status.json; then
     return 0
   fi
   rm -f "$tmp"

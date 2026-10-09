@@ -75,7 +75,7 @@ remember_files() {
     "restic -r $OFFSITE backup --tag pre-deploy *" \
     "docker compose * up -d" \
     "curl *$HEALTH" \
-    "chown 1000:1000 $APPSPORT_ROOT/data/ops/.status.*"
+    "chown 1000:1000 $APPSPORT_ROOT/.ops-tmp/status.*"
   # Sauvegarde pre-deploy : base vive exclue, instantanés, secrets, deploy.*, état Tailscale ; B2 en sous-shell.
   assert_calls_in_order "restic -r $BACKUP_ROOT/restic backup --tag pre-deploy --exclude $APPSPORT_ROOT/data/appsport.db* $APPSPORT_ROOT/data/snapshots $APPSPORT_ROOT/secrets $APPSPORT_ROOT/deploy.env $APPSPORT_ROOT/deploy.log $TAILSCALE_STATE"
   [ "$(cat "$STATE/restic-env")" = "$(printf '%s none\n%s b2-key-id' "$BACKUP_ROOT/restic" "$OFFSITE")" ]
@@ -259,7 +259,7 @@ remember_files() {
   assert_calls_in_order \
     "docker compose * up -d" \
     "docker compose * up -d" \
-    "chown 1000:1000 $APPSPORT_ROOT/data/ops" \
+    "chown -h 1000:1000 $APPSPORT_ROOT/data/ops" \
     "docker compose * run --rm --no-deps app node /app/server.mjs privacy:collect --since * --out /data/ops/privacy-v1.3.0-*.json" \
     "docker compose * stop app" \
     "docker compose * run --rm --no-deps app node /app/server.mjs restore /data/snapshots/pre-v1.3.0.db" \
