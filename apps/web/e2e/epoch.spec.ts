@@ -48,6 +48,17 @@ async function mirroredDaysPerWeek(page: Page): Promise<unknown> {
   return profile?.daysPerWeek;
 }
 
+/** Époque locale et époque du filigrane (`<époque>:…`), après un cycle de synchro déclenché. */
+async function localEpochs(page: Page): Promise<{ serverEpoch: unknown; watermarkEpoch: string }> {
+  await triggerForeground(page);
+  const serverEpoch = await metaValue(page, 'serverEpoch');
+  const watermark = await metaValue(page, 'watermark');
+  return {
+    serverEpoch,
+    watermarkEpoch: typeof watermark === 'string' ? (watermark.split(':')[0] ?? '') : '',
+  };
+}
+
 // 01 §9.1.6 scénario 7 ; 08 §12 P4 (a) ; R-SYN-25, R-SYN-26, R-SYN-28 : instantané, modification de classe E,
 // restauration avec nouvelle époque, puis le téléphone repart de la base restaurée (le serveur fait foi).
 test('époque : restauration, nouvelle époque et pull complet sans perte de session', async ({
@@ -117,7 +128,16 @@ test('époque : restauration, nouvelle époque et pull complet sans perte de ses
     });
   expect(epoch2).not.toBe(epoch1);
 
-  await test.step('rechargement : nouvelle époque adoptée, le serveur fait foi (R-SYN-28)', async () => {
+  await test.step('nouvelle époque adoptée par la page ouverte, un seul pull complet', async () => {
+    // Le pull complet est terminé (filigrane de l'époque 2 écrit) avant tout rechargement : un rechargement
+    // qui l'interromprait en ferait partir un second (R-SYN-26).
+    await expect
+      .poll(() => localEpochs(page), SYNC_TIMEOUT)
+      .toEqual({ serverEpoch: epoch2, watermarkEpoch: epoch2 });
+    expect(fullPulls, 'un seul pull complet sur la base restaurée').toBe(1);
+  });
+
+  await test.step('rechargement : nouvelle époque conservée, le serveur fait foi (R-SYN-28)', async () => {
     await page.reload();
     await expect(connection).toHaveAttribute('data-state', 'online', SYNC_TIMEOUT);
     await expect.poll(() => metaValue(page, 'serverEpoch'), SYNC_TIMEOUT).toBe(epoch2);
@@ -129,6 +149,6 @@ test('époque : restauration, nouvelle époque et pull complet sans perte de ses
     expect(await idbGetAll(page, 'outbox')).toEqual([]);
     expect(replays, 'renvoi de retrait (T26) : aucun accord retiré').toEqual([]);
     expect(denied, 'aucune session perdue').toEqual([]);
-    expect(fullPulls, 'un seul pull complet sur la base restaurée').toBe(1);
+    expect(fullPulls, 'le rechargement repart du filigrane, sans second pull complet').toBe(1);
   });
 });
