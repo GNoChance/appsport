@@ -172,6 +172,49 @@ describe('pruneSnapshots', () => {
     expect(readdirSync(dir)).toEqual(['replaced-20261001T000000Z']);
   });
 
+  it("base remplacée : l'âge vient de l'horodatage du nom, qu'un accès récent ne rajeunit pas (R-OPS-16, T40-F10)", async () => {
+    scratch = mkdtempSync(join(tmpdir(), 'appsport-prune-'));
+    const dir = snapshots(scratch);
+    mkdirSync(dir);
+    // Ouverte récemment (sqlite3, privacy:collect) : mtime du dossier remis à neuf, données de plus de 30 jours.
+    place(dir, 'replaced-20260906T000000Z', '2026-10-06T00:00:00Z', 'dir');
+    // Nom illisible : repli sur le mtime, récent ici.
+    place(dir, 'replaced-illisible', '2026-10-06T00:00:00Z', 'dir');
+    // Horodatage récent mais mtime ancien : le plus ancien des deux l'emporte.
+    place(dir, 'replaced-20261005T000000Z', '2026-09-01T00:00:00Z', 'dir');
+
+    const removed = await pruneSnapshots(scratch, new Date('2026-10-07T12:00:00Z'));
+    expect([...removed].sort()).toEqual(['replaced-20260906T000000Z', 'replaced-20261005T000000Z']);
+    expect(readdirSync(dir)).toEqual(['replaced-illisible']);
+  });
+
+  it('instantané interrompu (.partial et annexes) : supprimé passé 30 jours, jamais compté (R-OPS-10, T40-F3)', async () => {
+    scratch = mkdtempSync(join(tmpdir(), 'appsport-prune-'));
+    const dir = snapshots(scratch);
+    mkdirSync(dir);
+    place(dir, 'daily-20261001.db.partial', '2026-09-01T03:30:00Z');
+    place(dir, 'daily-20261001.db.partial-journal', '2026-09-01T03:30:00Z');
+    place(dir, 'pre-v1.0.0.db.partial-wal', '2026-09-01T03:30:00Z');
+    // Récent : peut-être en cours d'écriture, laissé en place et hors du compte des 3 derniers.
+    place(dir, 'daily-20261006.db.partial', '2026-10-06T01:30:00Z');
+    for (const day of [3, 4, 5]) place(dir, `daily-2026100${day}.db`, `2026-10-0${day}T01:30:00Z`);
+    place(dir, 'notes.txt', '2026-08-01T00:00:00Z');
+
+    const removed = await pruneSnapshots(scratch, new Date('2026-10-07T12:00:00Z'));
+    expect([...removed].sort()).toEqual([
+      'daily-20261001.db.partial',
+      'daily-20261001.db.partial-journal',
+      'pre-v1.0.0.db.partial-wal',
+    ]);
+    expect(readdirSync(dir).sort()).toEqual([
+      'daily-20261003.db',
+      'daily-20261004.db',
+      'daily-20261005.db',
+      'daily-20261006.db.partial',
+      'notes.txt',
+    ]);
+  });
+
   it('sans dossier snapshots → rien à faire', async () => {
     scratch = mkdtempSync(join(tmpdir(), 'appsport-prune-'));
     expect(await pruneSnapshots(scratch, new Date())).toEqual([]);

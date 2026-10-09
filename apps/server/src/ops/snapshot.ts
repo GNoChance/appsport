@@ -74,13 +74,34 @@ interface Entry {
   name: string;
   path: string;
   mtimeMs: number;
+  /** Point de départ de la limite d'âge : le mtime, ou l'horodatage du nom s'il est plus ancien (`replaced-*`). */
+  agedFromMs: number;
+}
+
+/** Instantané complet : élagué à l'âge et au nombre. */
+const COUNTED_RE = /^(daily|pre)-.+\.db$/;
+/** Reste d'un instantané interrompu par un arrêt brutal (le nom change chaque jour) : élagué à l'âge seul. */
+const PARTIAL_RE = /^(daily|pre)-.+\.db\.partial(-wal|-shm|-journal)?$/;
+const REPLACED_RE = /^replaced-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/;
+
+/**
+ * Horodatage UTC de `replaced-<AAAAMMJJTHHMMSSZ>`, ou `undefined` s'il est illisible. Ouvrir la base remplacée
+ * (sqlite3, privacy:collect) crée puis retire des fichiers dans le dossier : son mtime rajeunit, pas son nom.
+ */
+function replacedStampMs(name: string): number | undefined {
+  const m = REPLACED_RE.exec(name);
+  if (!m) return undefined;
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`;
+  const ms = Date.parse(`${iso}Z`);
+  return Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 19) !== iso ? undefined : ms;
 }
 
 /**
- * Élagage de `<dataDir>/snapshots` : d'abord tout `daily-*.db`, `pre-*.db` et dossier `replaced-*` de plus
- * de `maxAgeDays` jours (rien ne reste plus de 30 jours, 03 §7, R-OPS-10, R-OPS-16), puis seuls les `keep`
- * plus récents de `daily-` et de `pre-` (mtime, puis nom). Les autres fichiers ne sont pas touchés.
- * Rend les noms supprimés.
+ * Élagage de `<dataDir>/snapshots` : d'abord tout `daily-*.db`, `pre-*.db`, reste d'instantané interrompu
+ * (`*.db.partial` et ses -wal, -shm, -journal) et dossier `replaced-*` de plus de `maxAgeDays` jours (rien ne
+ * reste plus de 30 jours, 03 §7, R-OPS-10, R-OPS-16 ; pour `replaced-*`, le plus ancien du mtime et de
+ * l'horodatage du nom), puis seuls les `keep` plus récents de `daily-` et de `pre-` (mtime, puis nom ; les
+ * `.partial` n'y comptent pas). Les autres fichiers ne sont pas touchés. Rend les noms supprimés.
  */
 export async function pruneSnapshots(
   dataDir: string,
@@ -93,12 +114,14 @@ export async function pruneSnapshots(
   const entries: Entry[] = [];
   for (const dirent of readdirSync(dir, { withFileTypes: true })) {
     const { name } = dirent;
-    const managed =
-      (dirent.isFile() && /^(daily|pre)-.+\.db$/.test(name)) ||
-      (dirent.isDirectory() && name.startsWith('replaced-'));
+    const replaced = dirent.isDirectory() && name.startsWith('replaced-');
+    const managed = replaced || (dirent.isFile() && (COUNTED_RE.test(name) || PARTIAL_RE.test(name)));
     if (!managed) continue;
     const path = join(dir, name);
-    entries.push({ name, path, mtimeMs: statSync(path).mtimeMs });
+    const { mtimeMs } = statSync(path);
+    const stampMs = replaced ? replacedStampMs(name) : undefined;
+    const agedFromMs = stampMs === undefined ? mtimeMs : Math.min(mtimeMs, stampMs);
+    entries.push({ name, path, mtimeMs, agedFromMs });
   }
 
   const removed: string[] = [];
@@ -108,13 +131,13 @@ export async function pruneSnapshots(
   };
   const oldest = now.getTime() - maxAgeDays * DAY_MS;
   const kept = entries.filter((entry) => {
-    if (entry.mtimeMs >= oldest) return true;
+    if (entry.agedFromMs >= oldest) return true;
     remove(entry);
     return false;
   });
   for (const prefix of COUNTED_PREFIXES) {
     kept
-      .filter((entry) => entry.name.startsWith(prefix))
+      .filter((entry) => entry.name.startsWith(prefix) && COUNTED_RE.test(entry.name))
       .sort((a, b) => b.mtimeMs - a.mtimeMs || (a.name < b.name ? 1 : a.name > b.name ? -1 : 0))
       .slice(keep)
       .forEach(remove);
