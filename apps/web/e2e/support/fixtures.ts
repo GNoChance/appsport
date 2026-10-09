@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import { type BrowserContext, test as base, expect } from '@playwright/test';
 import { type E2EServer, startE2EServer } from './server';
 
@@ -9,7 +10,7 @@ const CSP_MARKER = 'Content Security Policy';
 interface E2EFixtures {
   /** Options de `startE2EServer` (`test.use({ serverOptions: … })`). */
   serverOptions: Parameters<typeof startE2EServer>[0];
-  /** Serveur neuf par test, fermé (`close()`) à la fin. */
+  /** Serveur neuf par test, fermé (`close()`) à la fin ; `dataDir` supprimé si le test a le résultat attendu. */
   server: E2EServer;
   /**
    * Second appareil : contexte avec les options du projet (appareil, langue, fuseau, SW), surveillé comme
@@ -28,12 +29,17 @@ function watchCsp(context: BrowserContext, violations: string[]): void {
 
 export const test = base.extend<E2EFixtures>({
   serverOptions: [{}, { option: true }],
-  server: async ({ serverOptions }, use) => {
+  server: async ({ serverOptions }, use, testInfo) => {
     const server = await startE2EServer(serverOptions);
     try {
       await use(server);
     } finally {
       await server.close();
+    }
+    // Résultat attendu : données supprimées (≈ 1 Mo par serveur) ; sinon gardées pour l'enquête.
+    // Les reprises couvrent EBUSY sous Windows.
+    if (testInfo.status === testInfo.expectedStatus) {
+      rmSync(server.dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright exige un premier argument déstructuré.

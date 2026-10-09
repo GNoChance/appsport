@@ -11,7 +11,7 @@ export const WEB_DIR = join(REPO_ROOT, 'apps', 'web');
 const SERVER_DIR = join(REPO_ROOT, 'apps', 'server');
 /** Build de production écrit par global-setup. */
 export const DEFAULT_PUBLIC_DIR = join(WEB_DIR, 'dist');
-/** Données des serveurs de test (ignoré par git) : un dossier par serveur, gardé pour l'enquête. */
+/** Données des serveurs de test (ignoré par git) : un dossier par serveur, gardé pour l'enquête si le test échoue. */
 export const E2E_DATA_DIR = join(REPO_ROOT, '.e2e-data');
 
 const HEALTH_TIMEOUT_MS = 30_000;
@@ -29,7 +29,11 @@ export interface E2EServer {
   url: string;
   dataDir: string;
   publicDir: string;
-  /** Arrête le serveur seul : le proxy reste et répond 502, `dataDir` est gardé. */
+  /**
+   * Arrête le serveur seul : le proxy reste et répond 502, `dataDir` est gardé. SIGTERM : arrêt propre
+   * sous Linux (CI), mais arrêt brutal sous Windows (TerminateProcess). Une spec ne doit donc pas compter
+   * sur la fin des requêtes en cours : une réponse coupée est détruite côté navigateur.
+   */
   stop(): Promise<void>;
   /** Relance le serveur, `env` fusionné à l'environnement courant (`''` retire la variable) ; même URL. */
   restart(env?: Record<string, string>): Promise<void>;
@@ -63,12 +67,46 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+// Filet contre les orphelins (un serveur orphelin garde son port et ses fichiers SQLite ouverts).
+// 1. Le worker sort sans fixture de fin (process.exit) : son hook 'exit' tue les enfants encore vivants.
+// 2. Le worker meurt net (SIGKILL, TerminateProcess) : aucun hook ne tourne ; chaque enfant surveille son
+//    parent (préchargé par --import) et sort quand il disparaît. Sous Linux un orphelin est rattaché à un
+//    autre parent (ppid change) ; sous Windows ppid ne change pas, kill(parent, 0) échoue (ESRCH).
+const live = new Set<ChildProcess>();
+let exitHookInstalled = false;
+
+/** Module à précharger (`--import`) : le processus sort dès que `parent` n'est plus son parent vivant. */
+export function parentWatchImport(parent: number): string {
+  const code = `
+const parent = ${parent};
+setInterval(() => {
+  let gone = process.ppid !== parent;
+  if (!gone) try { process.kill(parent, 0); } catch (error) { gone = error.code === 'ESRCH'; }
+  if (gone) process.exit(1);
+}, 500).unref();`;
+  return `data:text/javascript,${encodeURIComponent(code)}`;
+}
+
+/** PID des processus serveur (et CLI) lancés par ce module et encore vivants. */
+export function livePids(): number[] {
+  return [...live].flatMap((child) => (child.pid === undefined ? [] : [child.pid]));
+}
+
 function spawnServer(args: string[], env: Env): ChildProcess {
-  return spawn(process.execPath, ['--import', 'tsx', 'src/main.ts', ...args], {
-    cwd: SERVER_DIR,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const child = spawn(
+    process.execPath,
+    ['--import', parentWatchImport(process.pid), '--import', 'tsx', 'src/main.ts', ...args],
+    { cwd: SERVER_DIR, env, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  live.add(child);
+  child.once('exit', () => live.delete(child));
+  if (!exitHookInstalled) {
+    exitHookInstalled = true;
+    process.once('exit', () => {
+      for (const running of live) running.kill('SIGKILL');
+    });
+  }
+  return child;
 }
 
 function runCli(args: string[], env: Env): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -153,6 +191,42 @@ function endToEnd(headers: IncomingHttpHeaders): IncomingHttpHeaders {
   return Object.fromEntries(Object.entries(headers).filter(([name]) => !HOP_BY_HOP.has(name)));
 }
 
+function reply(res: http.ServerResponse, status: number, type: string, body: string): void {
+  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  res.end(body);
+}
+
+/** Relaie `req` au serveur sur 127.0.0.1:`port` ; injoignable : 502. */
+export function relay(req: http.IncomingMessage, res: http.ServerResponse, port: number): void {
+  const upstream = http.request(
+    {
+      host: '127.0.0.1',
+      port,
+      method: req.method,
+      path: req.url,
+      headers: endToEnd(req.headers),
+      agent: false,
+    },
+    (up) => {
+      res.writeHead(up.statusCode ?? 502, endToEnd(up.headers));
+      // pipe() ne propage pas une coupure : serveur coupé en plein corps → réponse détruite, pas pendante.
+      up.once('close', () => {
+        if (!up.complete) res.destroy();
+      });
+      up.pipe(res);
+    },
+  );
+  // Client parti avant la fin : la requête amont est coupée aussi.
+  res.once('close', () => {
+    if (!res.writableFinished) upstream.destroy();
+  });
+  upstream.once('error', () => {
+    if (res.headersSent) res.destroy();
+    else reply(res, 502, 'text/plain; charset=utf-8', 'Bad Gateway');
+  });
+  req.pipe(upstream);
+}
+
 /**
  * Serveur réel (`node --import tsx src/main.ts`, cwd apps/server) sur une base neuve (`init`), derrière un
  * proxy `node:http` qui relaie tout (Host, Origin, Cookie compris) et simule les pannes : le navigateur
@@ -166,11 +240,6 @@ export async function startE2EServer(
   const held = new Set<Socket>();
   const log: string[] = [];
   const backendPort = await freePort();
-
-  const reply = (res: http.ServerResponse, status: number, type: string, body: string) => {
-    res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
-    res.end(body);
-  };
 
   const handle = (req: http.IncomingMessage, res: http.ServerResponse) => {
     const current = fault;
@@ -190,25 +259,7 @@ export async function startE2EServer(
       reply(res, 502, 'text/plain; charset=utf-8', 'Bad Gateway');
       return;
     }
-    const upstream = http.request(
-      {
-        host: '127.0.0.1',
-        port: backendPort,
-        method: req.method,
-        path: req.url,
-        headers: endToEnd(req.headers),
-        agent: false,
-      },
-      (up) => {
-        res.writeHead(up.statusCode ?? 502, endToEnd(up.headers));
-        up.pipe(res);
-      },
-    );
-    upstream.once('error', () => {
-      if (res.headersSent) res.destroy();
-      else reply(res, 502, 'text/plain; charset=utf-8', 'Bad Gateway');
-    });
-    req.pipe(upstream);
+    relay(req, res, backendPort);
   };
 
   // localhost : IPv4 d'abord, IPv6 en plus quand la machine l'a (le navigateur peut essayer ::1).
