@@ -57,20 +57,39 @@ export async function startServer(
   }
 }
 
-export async function main(argv: string[]): Promise<number> {
+export async function main(
+  argv: string[],
+  start: (env: Record<string, string | undefined>) => Promise<RunningServer> = startServer,
+): Promise<number> {
   if (argv.length > 0) return runCli(argv, process.env);
-  const running = await startServer(process.env);
-  return new Promise<number>((resolve) => {
-    const stop = (): void => {
-      setTimeout(() => process.exit(1), 9000).unref();
-      running.close().then(
-        () => resolve(0),
-        () => process.exit(1),
-      );
-    };
-    process.once('SIGTERM', stop);
-    process.once('SIGINT', stop);
-  });
+  // Écouteurs posés AVANT le démarrage : Node est le PID 1 du conteneur, un SIGTERM reçu
+  // sans écouteur JS serait ignoré par le noyau et `docker stop` finirait en SIGKILL.
+  const { promise: stopSignal, resolve: requestStop } = Promise.withResolvers<NodeJS.Timeout>();
+  const unlisten = (): void => {
+    process.off('SIGTERM', onSignal);
+    process.off('SIGINT', onSignal);
+  };
+  const onSignal = (): void => {
+    unlisten();
+    requestStop(setTimeout(() => process.exit(1), 9000).unref());
+  };
+  process.on('SIGTERM', onSignal);
+  process.on('SIGINT', onSignal);
+  let running: RunningServer;
+  try {
+    running = await start(process.env);
+  } catch (error) {
+    unlisten();
+    throw error;
+  }
+  const watchdog = await stopSignal;
+  try {
+    await running.close();
+  } catch {
+    process.exit(1);
+  }
+  clearTimeout(watchdog);
+  return 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

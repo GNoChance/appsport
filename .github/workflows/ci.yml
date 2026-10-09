@@ -77,3 +77,12 @@ jobs:
             apps/web/playwright-report
             apps/web/test-results
           retention-days: 7
+
+  # Image de production (R-TST-1, bloquant) : construite depuis la racine, puis son contrat (08 §4) vérifié.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f infra/Dockerfile --build-arg VERSION=v0.0.0-ci -t appsport:ci .
+      - run: bash infra/test/image-contract.sh appsport:ci v0.0.0-ci
