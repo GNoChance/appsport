@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# appsport-update (R-DEP-3, R-DEP-4, 08 §8) : sudo appsport-update vX.Y.Z [--yes] | sudo appsport-update --rollback [--yes]
+# Déploie une version taguée ; en cas d'échec, revient à la précédente : image seule d'abord (ni restauration
+# ni nouvelle époque), restauration de l'instantané pre-vX.Y.Z seulement si l'image précédente reste KO.
+# Codes : 0 succès, 1 échec ou abandon, 2 usage.
+# Le git checkout remplace ce fichier en cours d'exécution : tout est en fonctions, lues avant la dernière ligne.
+set -euo pipefail
+# shellcheck source-path=SCRIPTDIR source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+
+MODE=""
+NEW=""
+YES=0
+
+usage() {
+  printf '%s\n' "Usage : appsport-update vX.Y.Z [--yes]" "        appsport-update --rollback [--yes]" >&2
+  exit 2
+}
+
+parse_args() {
+  local arg
+  for arg in "$@"; do
+    case $arg in
+      --yes) YES=1 ;;
+      --rollback) MODE=rollback ;;
+      *)
+        if [ -z "$NEW" ] && [[ "$arg" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then NEW=$arg; else usage; fi
+        ;;
+    esac
+  done
+  if [ "$MODE" = rollback ]; then
+    [ -z "$NEW" ] || usage
+  else
+    [ -n "$NEW" ] || usage
+    MODE=deploy
+  fi
+}
+
+# --yes saute la question ; toute autre réponse que o ou oui abandonne sans rien changer.
+confirm() {
+  local answer=""
+  if [ "$YES" = 1 ]; then return 0; fi
+  printf '%s [o/N] ' "$1"
+  read -r answer || answer=""
+  case $answer in
+    o | O | oui | Oui | OUI) return 0 ;;
+  esac
+  echo
+  die "Abandon : rien n'a été changé."
+}
+
+show_active_sessions() {
+  local out user started n=0
+  out=$(app_cli sessions:active --hours 3) ||
+    die "Impossible de lister les séances en cours. Rien n'a été changé."
+  while IFS=$'\t' read -r user started; do
+    [ -n "$user" ] || continue
+    if [ "$n" -eq 0 ]; then log "Séances en cours depuis moins de 3 h :"; fi
+    log "- $user (début $started)"
+    n=$((n + 1))
+  done <<<"$out"
+  if [ "$n" -eq 0 ]; then log "Aucune séance en cours depuis moins de 3 h."; fi
+}
+
+deploy_json() {
+  jq -cn --arg at "$(now_iso)" --arg v "$1" --arg p "$2" --argjson ok "$3" \
+    '{at: $at, version: $v, previousVersion: $p, ok: $ok}'
+}
+
+# Retour du dépôt au tag en place après un échec de pull ou de sauvegarde (rien d'autre n'a changé).
+checkout_back() {
+  "$GIT" -C "$APPSPORT_REPO" checkout --quiet "$1" ||
+    log "Attention : le dépôt $APPSPORT_REPO n'a pas pu revenir au tag $1 (git checkout $1 à refaire)."
+}
+
+main() {
+  local line prev cur
+  parse_args "$@"
+  take_lock || die "Une autre opération appsport est en cours. Rien n'a été changé."
+  volume_mounted || die "Volume non monté : lancez d'abord sudo appsport-unlock. Rien n'a été changé."
+  sentinel_present || die "Sentinelle $APPSPORT_ROOT/data/.appsport-volume absente. Rien n'a été changé."
+  if [ "$MODE" = rollback ]; then
+    if ! line=$(grep ' ok$' "$APPSPORT_ROOT/deploy.log" | tail -n1) || [ -z "$line" ]; then
+      die "Aucun déploiement réussi à annuler."
+    fi
+    read -r _ prev cur _ <<<"$line"
+    [ "$(current_version)" = "$cur" ] || die "La version en place n'est pas $cur."
+    confirm "Revenir de $cur à $prev ?"
+    rollback "$prev" "$cur" manual
+    return $?
+  fi
+  health_json >/dev/null || die "L'appli ne répond pas 200 sur /api/health : voir P8. Rien n'a été changé."
+  if ! prev=$(current_version) || [ -z "$prev" ]; then
+    die "Version en place illisible dans $APPSPORT_ROOT/deploy.env. Rien n'a été changé."
+  fi
+  [ "$NEW" != "$prev" ] || die "$NEW est déjà déployée."
+  show_active_sessions
+  confirm "Déployer $NEW (version actuelle $prev) ?"
+  "$GIT" -C "$APPSPORT_REPO" fetch --tags || die "git fetch impossible. Rien n'a été changé."
+  "$GIT" -C "$APPSPORT_REPO" checkout --quiet "$NEW" || die "Tag $NEW introuvable. Rien n'a été changé."
+  if ! APPSPORT_VERSION="$NEW" compose pull app; then
+    checkout_back "$prev"
+    log_deploy "$prev" "$NEW" pull-failed
+    die "Échec du téléchargement de l'image $NEW (jeton GHCR expiré ? voir P5). Rien n'a été changé."
+  fi
+  if ! app_cli snapshot --tag "pre-$NEW" || ! restic_backup_all pre-deploy; then
+    checkout_back "$prev"
+    log_deploy "$prev" "$NEW" backup-failed
+    die "Échec de l'instantané ou de la sauvegarde pre-deploy. Le service n'a pas été modifié."
+  fi
+  write_deploy_env "$NEW" || die "deploy.env non écrit. Le service n'a pas été modifié."
+  if compose up -d && wait_health "$NEW"; then
+    log_deploy "$prev" "$NEW" ok
+    status_merge deploy "$(deploy_json "$NEW" "$prev" true)" ||
+      log "Avertissement : status.json non mis à jour."
+    log "Déploiement de $NEW réussi."
+    return 0
+  fi
+  log "Échec du démarrage de $NEW : retour arrière automatique."
+  rollback "$prev" "$NEW" auto
+  return 1
+}
+
+# Résultat du retour arrière dans deploy.log et dans la section deploy de status.json.
+#   auto   : ligne « <précédente> <demandée> <résultat> », deploy {version: demandée, ok: false} ;
+#   manual : ligne « <en place> <cible> <résultat> », deploy {version: cible, ok: résultat ≠ rollback-failed}.
+finish() {
+  local result=$1 ok=true
+  if [ "$RB_KIND" = auto ]; then
+    log_deploy "$RB_TARGET" "$RB_FROM" "$result" || log "Avertissement : deploy.log non écrit."
+    status_merge deploy "$(deploy_json "$RB_FROM" "$RB_TARGET" false)" ||
+      log "Avertissement : status.json non mis à jour."
+  else
+    if [ "$result" = rollback-failed ]; then ok=false; fi
+    log_deploy "$RB_FROM" "$RB_TARGET" "$result" || log "Avertissement : deploy.log non écrit."
+    status_merge deploy "$(deploy_json "$RB_TARGET" "$RB_FROM" "$ok")" ||
+      log "Avertissement : status.json non mis à jour."
+  fi
+}
+
+# rollback <cible> <abandonnée> <auto|manual> (R-DEP-4).
+rollback() {
+  local snap mtime since list
+  RB_TARGET=$1 RB_FROM=$2 RB_KIND=$3
+  ko() {
+    finish rollback-failed
+    die "$1 : suivez P4."
+  }
+  write_deploy_env "$1" || ko "deploy.env non écrit"
+  "$GIT" -C "$APPSPORT_REPO" checkout --quiet "$1" || ko "Tag $1 introuvable"
+  # Image seule : ni restauration ni nouvelle époque (R-VER-7 accepte un schéma plus récent non cassant).
+  if compose up -d && wait_health "$1"; then
+    finish rolled-back-image
+    log "Retour à $1 (image seule, sans restauration)."
+    return 0
+  fi
+  log "L'image $1 ne démarre pas sur ce schéma : restauration de l'instantané pre-$2."
+  snap="$APPSPORT_ROOT/data/snapshots/pre-$2.db"
+  [ -f "$snap" ] || ko "Instantané pre-$2 introuvable"
+  mtime=$(stat -c %Y "$snap") || ko "Date de l'instantané pre-$2 illisible"
+  since=$(date -u -d "@$((mtime - 300))" +%Y-%m-%dT%H:%M:%SZ) || ko "Date de l'instantané pre-$2 illisible"
+  list="ops/privacy-$2-$(date -u +%Y%m%dT%H%M%SZ).json"
+  ensure_ops_dir || ko "data/ops inaccessible"
+  # T24 : lecture seule de la base courante, sans migration ni --source.
+  app_cli_run privacy:collect --since "$since" --out "/data/$list" || ko "privacy:collect impossible"
+  compose stop app || ko "Arrêt de app impossible"
+  { app_cli_run restore "/data/snapshots/pre-$2.db" && app_cli_run privacy:reapply "/data/$list"; } ||
+    ko "Restauration ou réapplication impossible"
+  # Liste purgée après réapplication (03 §7).
+  rm -f "$APPSPORT_ROOT/data/$list"
+  { compose up -d && wait_health "$1"; } || ko "L'image $1 ne répond pas après restauration"
+  finish rolled-back-restore
+  log "Base restaurée : les téléphones renverront leurs 60 derniers jours."
+}
+
+main "$@"; exit $?

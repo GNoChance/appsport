@@ -17,6 +17,7 @@ import { NodeSqliteDialect } from './db/sqlite-dialect';
 import { type AppDeps, createAppDeps, cryptoIds, systemClock } from './deps';
 import { HttpError } from './http/errors';
 import { createLogger } from './logger';
+import { listActiveWorkoutSessions } from './ops/active-sessions';
 import { restoreSnapshot } from './ops/restore';
 import { assertSnapshotTag, pruneSnapshots, takeSnapshot } from './ops/snapshot';
 import {
@@ -278,6 +279,31 @@ async function runRestore(args: string[], ctx: CliContext): Promise<number> {
   return 0;
 }
 
+/**
+ * Lecture seule, sans garde ni migration (le service tourne) : une ligne `<pseudo>\t<startedAt>` par séance
+ * en cours, lue par appsport-update avant de demander confirmation (R-DEP-3).
+ */
+async function runSessionsActive(args: string[], ctx: CliContext): Promise<number> {
+  const hours = z.coerce
+    .number()
+    .int()
+    .positive()
+    .safeParse(parseFlags(args).flags.hours ?? '3');
+  if (!hours.success) {
+    ctx.err("Option --hours invalide : nombre entier d'heures attendu.");
+    return 1;
+  }
+  const sqlite = new DatabaseSync(loadConfig(ctx.env).dbPath, { readOnly: true });
+  try {
+    for (const s of listActiveWorkoutSessions(sqlite, systemClock.now(), hours.data)) {
+      ctx.out(`${s.username}\t${s.startedAt}`);
+    }
+  } finally {
+    sqlite.close();
+  }
+  return 0;
+}
+
 export const COMMANDS: Record<string, CliCommand> = {
   'admin:bootstrap': {
     usage:
@@ -307,6 +333,10 @@ export const COMMANDS: Record<string, CliCommand> = {
     usage:
       'restore <fichier.db> : service arrêté, remplace la base (gardée 30 jours) et ouvre une nouvelle époque ; puis privacy:reapply',
     run: runRestore,
+  },
+  'sessions:active': {
+    usage: 'sessions:active [--hours N] : séances en cours démarrées depuis moins de N heures (3 par défaut)',
+    run: runSessionsActive,
   },
   init: {
     usage: "init : crée la base d'un volume neuf (sentinelle requise) et fixe l'époque du serveur",

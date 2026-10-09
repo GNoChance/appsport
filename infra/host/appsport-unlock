@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# appsport-unlock (R-OPS-6, R-DEP-6) : après un redémarrage, via Tailscale SSH : sudo appsport-unlock.
+# Idempotent : ouvre le volume LUKS si besoin, le monte, démarre Docker et appsport, attend /api/health
+# (2 min au plus), affiche OK ou KO, pingue alive et relance la sauvegarde de la nuit si elle a été manquée.
+# Codes : 0 OK, 1 KO.
+set -euo pipefail
+# shellcheck source-path=SCRIPTDIR source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+
+luks_open() { "$CRYPTSETUP" status "$LUKS_NAME" >/dev/null 2>&1; }
+
+# KO signalé à Healthchecks (alive/fail, motif joint), puis code 1.
+ko() {
+  hc_ping alive fail "$2" || true
+  die "KO : $1"
+}
+
+# Sauvegarde absente de status.json ou de plus de 24 h (machine éteinte ou verrouillée à 03:30).
+backup_missed() {
+  local at at_s
+  at=$(jq -r '.backup.at // ""' "$APPSPORT_ROOT/data/ops/status.json" 2>/dev/null) || return 0
+  [ -n "$at" ] || return 0
+  at_s=$(date -u -d "$at" +%s 2>/dev/null) || return 0
+  [ $(($(date -u +%s) - at_s)) -gt 86400 ]
+}
+
+main() {
+  if ! luks_open; then
+    "$CRYPTSETUP" open "$LUKS_DEVICE" "$LUKS_NAME" || die "Phrase refusée."
+  fi
+  if ! volume_mounted; then
+    "$MOUNT" "$APPSPORT_ROOT" || ko "montage de $APPSPORT_ROOT impossible." "montage impossible"
+  fi
+  sentinel_present || ko "sentinelle absente, ce n'est pas le volume appsport." "sentinelle absente"
+  "$SYSTEMCTL" start docker || ko "Docker ne démarre pas (voir P8)." "docker ne demarre pas"
+  compose up -d || ko "docker compose up -d a échoué (voir P8)." "compose up en echec"
+  # shellcheck disable=SC2119 # sans version : toute version saine convient
+  wait_health || ko "/api/health ne répond pas 200 après 2 min (voir P8)." "api/health ne repond pas 200"
+  log "OK : appsport répond (version $HEALTH_VERSION)."
+  hc_ping alive || log "Avertissement : ping alive non reçu par Healthchecks."
+  if backup_missed; then
+    log "Sauvegarde de la nuit manquée : relance de appsport-backup."
+    "$SYSTEMCTL" start --no-block appsport-backup.service || log "Avertissement : relance de appsport-backup impossible."
+  fi
+  return 0
+}
+
+main "$@"; exit $?

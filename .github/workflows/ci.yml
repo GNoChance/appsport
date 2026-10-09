@@ -78,6 +78,24 @@ jobs:
             apps/web/test-results
           retention-days: 7
 
+  # Scripts hôte (R-TST-1, bloquant) : shellcheck puis bats, toutes les commandes de l'hôte en stubs.
+  infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: shellcheck -x infra/host/appsport-* infra/host/lib/common.sh infra/host/test/stub.sh infra/test/image-contract.sh
+      # Noms de tests en français : bats exige une locale UTF-8.
+      - run: pnpm test:infra
+        env:
+          LC_ALL: C.UTF-8
+
   # Image de production (R-TST-1, bloquant) : construite depuis la racine, puis son contrat (08 §4) vérifié.
   image:
     runs-on: ubuntu-latest
