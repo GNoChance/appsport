@@ -99,6 +99,28 @@ function expectInOrder(text: string, needles: readonly string[]): void {
   });
 }
 
+/** Lignes des blocs de code seulement. */
+const codeOf = (text: string): string =>
+  proseLines(text)
+    .filter((l) => l.code)
+    .map((l) => l.line)
+    .join('\n');
+
+/** Motifs Healthchecks d'un script hôte : `ko "<message>" "<motif>"`, `ko|fail "<motif>"`, `problems+=("<motif>")`. */
+function scriptMotifs(script: string): string[] {
+  const out: string[] = [];
+  for (const m of script.matchAll(/\b(?:ko|fail) "([^"]*)"(?: "([^"]*)")?/g))
+    out.push((m[2] ?? m[1]) as string);
+  for (const m of script.matchAll(/problems\+=\("([^"]*)"\)/g)) out.push(m[1] as string);
+  return out.filter((motif) => !motif.startsWith('$'));
+}
+
+/** Motif → expression : une variable du shell (`$x`, `${x}`, `$((…))`) vaut un mot de la page (`N`, `<disque>`, `local`). */
+function motifPattern(motif: string): RegExp {
+  const parts = motif.split(/\$\(\([^)]*\)\)|\$\{[^}]*\}|\$\w+/);
+  return new RegExp(parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\S+'));
+}
+
 function expectSteps(name: string, text: string): void {
   const all = steps(text);
   expect(all.length, `${name} : aucune étape numérotée`).toBeGreaterThan(0);
@@ -479,11 +501,13 @@ describe('P2 à P9', () => {
 
   it('P4 « Nouvelle machine » : identité Tailscale restaurée avant de démarrer tailscaled', () => {
     const body = section(p[4] as string, 'Nouvelle machine');
-    const restore = body.split(/\r?\n/).find((line) => line.includes('--include /var/lib/tailscale'));
+    // Les commandes seules : le préambule « Après un vol » cite l'option dans sa prose.
+    const code = codeOf(body);
+    const restore = code.split(/\r?\n/).find((line) => line.includes('--include /var/lib/tailscale'));
     expect(restore, 'restauration B2 de /var/lib/tailscale').toMatch(
       /restic -r "\$RESTIC_OFFSITE_REPOSITORY" [^\n]*restore latest/,
     );
-    expectInOrder(body, ['--include /var/lib/tailscale', 'systemctl start tailscaled']);
+    expectInOrder(code, ['--include /var/lib/tailscale', 'systemctl start tailscaled']);
     expect(body).toContain('même version');
   });
 
@@ -555,6 +579,160 @@ describe('P2 à P9', () => {
     ]) {
       expect(p[9]).toContain(needle);
     }
+  });
+});
+
+describe('P4 et P8 : restauration sans retour de données, alertes et incidents', () => {
+  const p4 = p[4] as string;
+  const p8 = p[8] as string;
+  const surPlace = section(p4, 'Sur place');
+  const nouvelle = section(p4, 'Nouvelle machine');
+  const aliveFail = section(p8, 'Alerte `alive` : /fail');
+  const theft = section(p8, 'Vol, cambriolage ou fuite');
+
+  it("instantané recopié avec sa date (-p) : l'instant de collecte n'est jamais l'heure actuelle (03 §8)", () => {
+    for (const [name, text] of [
+      ['P4', p4],
+      [RUNBOOK, runbook],
+    ] as const) {
+      const copies = proseLines(text).filter(
+        (l) => l.code && /^\s*(sudo )?(install|cp) /.test(l.line) && l.line.includes('.db'),
+      );
+      expect(copies.length, name).toBeGreaterThan(0);
+      for (const { line } of copies) expect(line, name).toMatch(/ -p /);
+      expect(text, name).toContain("jamais l'heure actuelle");
+    }
+  });
+
+  it("« Sur place », étape 1 : un marqueur ne prouve pas la restauration, l'état se vérifie d'abord", () => {
+    const first = steps(surPlace)[0]?.body ?? '';
+    expect(first).toContain("-name 'replaced-*' -newer /srv/appsport/reapply-pending");
+    expect(first).toContain('Marqueur');
+    expect(first).not.toContain('la base est déjà restaurée');
+  });
+
+  it("« Sur place » : un instantané pre-vX.Y.Z se restaure avec la version d'avant (08 §8, R-DEP-4)", () => {
+    expectInOrder(surPlace, [
+      'APPSPORT_VERSION=v<précédente>',
+      'git -C /opt/appsport checkout v<précédente>',
+      'stop app',
+      'server.mjs restore',
+      'server.mjs privacy:reapply',
+    ]);
+    expect(surPlace).toContain('appsport-update --rollback');
+  });
+
+  it("« Sur place », réapplication : admin désactivé, l'amorçage refusé a sa conduite (R-ROLE-5)", () => {
+    const reapply = steps(surPlace).find((s) => s.body.includes('server.mjs privacy:reapply'))?.body ?? '';
+    expect(reapply).toContain('Aucun administrateur actif');
+    expect(reapply).toContain('Un administrateur existe déjà');
+  });
+
+  it("« Sur place » : l'arrêt d'app est vérifié par ps, et « Nouvelle machine » ne le saute jamais", () => {
+    const stop = steps(surPlace).find((s) => codeOf(s.body).includes(`${COMPOSE} stop app`));
+    expect(codeOf(stop?.body ?? '')).toContain(`${COMPOSE} ps`);
+    expect(nouvelle).not.toMatch(/sans objet/);
+    expect(nouvelle).toContain('Étapes 5 à 10 de « Sur place »');
+  });
+
+  it('« Nouvelle machine » : dépôt à la version restaurée dès le clone, instant de collecte calculé', () => {
+    expectInOrder(nouvelle, [
+      'cat /srv/appsport/deploy.env',
+      'git -C /opt/appsport checkout vX.Y.Z',
+      'Timers systemd',
+      'pull app',
+      'stat -c %Y',
+      'server.mjs privacy:collect',
+    ]);
+  });
+
+  it("« Nouvelle machine » après un vol : P8 étape 1 d'abord, sans l'identité Tailscale volée", () => {
+    const intro = nouvelle.slice(0, nouvelle.search(/^1\. \*\*/m));
+    for (const needle of ['Après un vol', 'P8', 'étape 1', 'sans `--include /var/lib/tailscale`']) {
+      expect(intro).toContain(needle);
+    }
+    expect(theft).toContain("sans l'ancienne identité Tailscale");
+  });
+
+  it("alerte alive /fail et déverrouillage : jamais de up -d tant qu'une réapplication attend (03 §8)", () => {
+    expect(codeOf(steps(aliveFail)[1]?.body ?? '')).toContain('sudo cat /srv/appsport/reapply-pending');
+    for (const title of ['Alerte `alive` : /fail', 'Déverrouillage en échec']) {
+      const ups = codeOf(section(p8, title))
+        .split('\n')
+        .filter((line) => line.includes(`${COMPOSE} up -d`));
+      expect(ups.length, title).toBeGreaterThan(0);
+      for (const line of ups) {
+        expect(line.trim(), title).toMatch(
+          /^sudo test ! -e \/srv\/appsport\/reapply-pending && sudo docker compose /,
+        );
+      }
+    }
+  });
+
+  it('chaque motif envoyé à Healthchecks par les scripts a sa conduite dans la section de son alerte (08 §9)', () => {
+    const where: Record<string, string> = {
+      'appsport-alive': 'Alerte `alive` : /fail',
+      'appsport-unlock': 'Alerte `alive` : /fail',
+      'appsport-backup': 'Alerte `backup`',
+      'appsport-restore-test': 'Alerte `restore-test`',
+      'appsport-check': 'Alerte `host`',
+    };
+    for (const [script, title] of Object.entries(where)) {
+      const motifs = scriptMotifs(read(`infra/host/${script}`));
+      expect(motifs.length, script).toBeGreaterThan(2);
+      const body = section(p8, title);
+      for (const motif of motifs) expect(body, `${script} : ${motif}`).toMatch(motifPattern(motif));
+    }
+  });
+
+  it('déverrouillage en échec : Docker arrêté avant de fermer le volume (R-OPS-2)', () => {
+    expectInOrder(section(p8, 'Déverrouillage en échec'), [
+      'systemctl stop docker.service docker.socket',
+      'umount /srv/appsport',
+      'cryptsetup close appsport',
+      'cryptsetup status appsport',
+    ]);
+  });
+
+  it('restore-test : vérification du dépôt hors site et dépôt local abîmé mis de côté avant init (R-OPS-11)', () => {
+    const body = section(p8, 'Alerte `restore-test`');
+    expect(body).toContain(
+      'restic -r "$RESTIC_OFFSITE_REPOSITORY" --password-file /srv/appsport/secrets/restic.pass check',
+    );
+    expectInOrder(body, [
+      'sudo mv /srv/backup/restic /srv/backup/restic.abime-',
+      '/srv/appsport/secrets/restic.pass init',
+    ]);
+  });
+
+  it("alive silence : timer et HC_ALIVE_URL à l'étape 3 ; PR de l'incident sur le PC", () => {
+    const silence = steps(section(p8, 'Alerte `alive` : silence'));
+    expect(silence[0]?.body).not.toContain('/fail');
+    expect(silence[0]?.body).toContain('étape 3');
+    expect(silence[2]?.body).toContain('HC_ALIVE_URL');
+    expect(steps(theft).find((s) => s.body.includes('git switch'))?.body).toMatch(/sur le PC/i);
+  });
+
+  it("vol ou fuite : prévenir sous 72 h juste après l'évaluation, sans attendre secrets ni reconstruction (03 §14)", () => {
+    const all = steps(theft);
+    const notice = all.findIndex((s) => s.head.includes('72 h'));
+    expect(notice).toBe(2);
+    expect(all[notice]?.body).toContain('découverte');
+    expect(notice).toBeLessThan(all.findIndex((s) => s.head.includes('secrets')));
+    expect(notice).toBeLessThan(all.findIndex((s) => s.body.includes('server.mjs admin:reset')));
+  });
+
+  it('vol ou fuite : les sessions se ferment vraiment, un lien seul ne ferme rien (P-AUT-8)', () => {
+    const close = steps(theft).find((s) => s.body.includes('server.mjs admin:reset'))?.body ?? '';
+    for (const needle of [
+      '« Fermer les sessions »',
+      '« Déconnecter tous mes appareils »',
+      "n'a aucune session ouverte",
+    ]) {
+      expect(close).toContain(needle);
+    }
+    expect(close).not.toContain('Générer un lien de réinitialisation');
+    expect(close).not.toContain("toutes les sessions de l'admin sont fermées");
   });
 });
 

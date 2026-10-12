@@ -93,11 +93,11 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 
    Sinon : `unauthorized` : jeton expiré (P5) ; `manifest unknown` : vérifier la version de `deploy.env`.
 
-8. **Préparer le volume de l'exercice.** Comme `/srv/appsport/data` : instantanés, sentinelle, propriétaire 1000.
+8. **Préparer le volume de l'exercice.** Comme `/srv/appsport/data` : instantanés avec leur date (`cp -p` : l'instant de collecte se lit dessus), sentinelle, propriétaire 1000.
 
    ```
    mkdir -p data/snapshots data/ops
-   cp restaure/srv/appsport/data/snapshots/*.db data/snapshots/
+   cp -p restaure/srv/appsport/data/snapshots/*.db data/snapshots/
    touch data/.appsport-volume
    sudo chown -R 1000:1000 data
    ```
@@ -116,9 +116,9 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
    $RUN node /app/server.mjs privacy:reapply /data/ops/privacy-exercice.json
    ```
 
-   Résultat attendu : l'instant `<date ISO>` à reporter dans `--since`, puis « 0 événement(s) écrit(s) dans /data/ops/privacy-exercice.json », « Restauration terminée. Nouvelle époque : … », puis « Réapplication terminée : 0 compte(s) supprimé(s), 0 accord(s) santé retiré(s). ».
+   Résultat attendu : l'instant `<date ISO>`, 5 minutes avant l'heure de cet instantané dans `restic snapshots` (étape 5, colonne Time, heure locale), jamais l'heure actuelle, à reporter dans `--since` ; puis « 0 événement(s) écrit(s) dans /data/ops/privacy-exercice.json » (la source est l'instantané lui-même), « Restauration terminée. Nouvelle époque : … », puis « Réapplication terminée : 0 compte(s) supprimé(s), 0 accord(s) santé retiré(s). ».
 
-   Sinon : « Instantané corrompu (PRAGMA integrity_check) : base actuelle laissée intacte. » : prendre l'instantané précédent et noter l'écart.
+   Sinon : instant à l'heure actuelle : copie sans `-p` à l'étape 8, la refaire et noter l'écart (en P4, un tel instant ferait revenir des suppressions) ; « Instantané corrompu (PRAGMA integrity_check) : base actuelle laissée intacte. » : prendre l'instantané précédent et noter l'écart.
 
 10. **Démarrer l'appli et la vérifier.** Sans réseau : la santé se lit depuis le conteneur. L'appli met quelques secondes à répondre (migrations au démarrage) : la boucle réessaie pendant 2 minutes au plus, comme les scripts hôte.
 
