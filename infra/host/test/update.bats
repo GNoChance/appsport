@@ -322,28 +322,35 @@ assert_backup_failed() {
   [ ! -e "$APPSPORT_ROOT/reapply-pending" ]
 }
 
+# Retour arrière automatique en échec après l'étape image seule : P4, rollback-failed, .deploy {v1.3.0, ok false}.
+assert_auto_rollback_failed() {
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$1 : suivez P4."* ]]
+  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rollback-failed$ ]]
+  jq -e '.deploy | .version == "v1.3.0" and .previousVersion == "v1.2.0" and .ok == false' "$STATUS_FILE"
+}
+
 @test "restauration impossible : P4, liste privacy et marqueur de réapplication gardés, rollback-failed" {
   set_healthy_versions "v1.2.0@restored"
   on docker '* restore *' 1
   run "$UPDATE" v1.3.0 --yes
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"Restauration ou réapplication impossible : suivez P4."* ]]
+  assert_auto_rollback_failed "Restauration ou réapplication impossible"
   refute_call "* privacy:reapply *"
   compgen -G "$APPSPORT_ROOT/data/ops/privacy-v1.3.0-*.json"
   # Écrit avant restore : une restauration partielle ne laisse pas repartir app sans P4.
   [ -f "$APPSPORT_ROOT/reapply-pending" ]
-  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rollback-failed$ ]]
-  jq -e '.deploy.ok == false' "$STATUS_FILE"
+  # Le service reste arrêté : aucun troisième up -d sur une base restaurée sans réapplication (03 §7).
+  [ "$(count_calls 'docker compose * up -d')" -eq 2 ]
 }
 
 @test "restauration faite, réapplication en échec : marqueur, puis unlock, --rollback et update refusent tout up -d" {
   set_healthy_versions "v1.2.0@restored"
   on docker '* privacy:reapply *' 1
   run "$UPDATE" v1.3.0 --yes
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"Restauration ou réapplication impossible : suivez P4."* ]]
+  assert_auto_rollback_failed "Restauration ou réapplication impossible"
   assert_calls_in_order "* restore /data/snapshots/pre-v1.3.0.db" "* privacy:reapply /data/ops/privacy-v1.3.0-*.json"
-  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rollback-failed$ ]]
+  # Le service reste arrêté après l'échec : aucun troisième up -d.
+  [ "$(count_calls 'docker compose * up -d')" -eq 2 ]
   # Marqueur root hors de data/ : il nomme la liste à réappliquer en P4, gardée elle aussi.
   [[ "$(cat "$APPSPORT_ROOT/reapply-pending")" == /data/ops/privacy-v1.3.0-*.json ]]
   compgen -G "$APPSPORT_ROOT/data/ops/privacy-v1.3.0-*.json"
@@ -371,13 +378,64 @@ assert_backup_failed() {
   assert_nothing_changed
 }
 
-@test "retour arrière dont le checkout du tag précédent échoue : P4, rollback-failed" {
+@test "collecte, arrêt de app impossibles ou v1.2.0 KO après restauration : P4, rollback-failed" {
+  # privacy:collect en échec : ni arrêt, ni marqueur, ni restauration ; app reste sur l'image v1.2.0.
+  set_healthy_versions "v1.2.0@restored"
+  on docker '* privacy:collect *' 1
+  run "$UPDATE" v1.3.0 --yes
+  assert_auto_rollback_failed "privacy:collect impossible"
+  refute_call "docker compose * stop app"
+  refute_call "* restore *"
+  [ ! -e "$APPSPORT_ROOT/reapply-pending" ]
+  [ "$(count_calls 'docker compose * up -d')" -eq 2 ]
+
+  # Arrêt de app en échec : ni marqueur ni restauration sous un service en marche.
+  reset_host
+  set_healthy_versions "v1.2.0@restored"
+  on docker '* stop app' 1
+  run "$UPDATE" v1.3.0 --yes
+  assert_auto_rollback_failed "Arrêt de app impossible"
+  refute_call "* restore *"
+  refute_call "* privacy:reapply *"
+  [ ! -e "$APPSPORT_ROOT/reapply-pending" ]
+
+  # v1.2.0 toujours KO après restauration et réapplication : rollback-failed, jamais rolled-back-restore.
+  # (saine au départ, plus aucune version saine une fois la restauration faite)
+  reset_host
+  set_healthy_versions "v1.2.0@restored"
+  # shellcheck disable=SC2016 # extrait évalué par le stub
+  on docker '* restore /data/snapshots/pre-v1.3.0.db' 0 'echo none >"$STATE/healthy"'
+  run "$UPDATE" v1.3.0 --yes
+  assert_auto_rollback_failed "L'image v1.2.0 ne répond pas après restauration"
+  assert_calls_in_order \
+    "* restore /data/snapshots/pre-v1.3.0.db" \
+    "* privacy:reapply /data/ops/privacy-v1.3.0-*.json" \
+    "docker compose * up -d" \
+    "curl *$HEALTH"
+  [ "$(count_calls 'docker compose * up -d')" -eq 3 ]
+  [[ "$output" != *"Base restaurée"* ]]
+}
+
+@test "retour arrière (auto et --rollback) dont le checkout du tag précédent échoue : P4, rollback-failed" {
   on git '* checkout --quiet v1.2.0' 1
   run "$UPDATE" v1.3.0 --yes
   [ "$status" -eq 1 ]
   [[ "$output" == *"Tag v1.2.0 introuvable : suivez P4."* ]]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rollback-failed$ ]]
   jq -e '.deploy | .version == "v1.3.0" and .ok == false' "$STATUS_FILE"
+
+  # --rollback manuel : ligne « <en place> <cible> rollback-failed », .deploy {cible, en place, ok false}.
+  reset_host
+  write_deploy_env_for_test v1.3.0
+  echo "2026-10-08T20:00:00Z v1.2.0 v1.3.0 ok" >>"$APPSPORT_ROOT/deploy.log"
+  echo v1.3.0 >"$STATE/image"
+  set_healthy_versions v1.2.0 v1.3.0
+  on git '* checkout --quiet v1.2.0' 1
+  run "$UPDATE" --rollback --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Tag v1.2.0 introuvable : suivez P4."* ]]
+  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.3\.0\ v1\.2\.0\ rollback-failed$ ]]
+  jq -e '.deploy | .version == "v1.2.0" and .previousVersion == "v1.3.0" and .ok == false' "$STATUS_FILE"
 }
 
 @test "interrompu (Ctrl-C, TERM) pendant le démarrage de v1.3.0 : consigné rollback-failed, P4" {
