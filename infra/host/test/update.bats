@@ -118,14 +118,18 @@ remember_files() {
   [ "$output" = "120 2 sleep" ]
 }
 
-@test "confirmation « n » : abandon, code 1, aucun git" {
-  remember_files
-  run "$UPDATE" v1.3.0 <<<"n"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"Aucune séance en cours depuis moins de 3 h."* ]]
-  [[ "$output" == *"Déployer v1.3.0 (version actuelle v1.2.0) ? [o/N]"* ]]
-  [[ "$output" == *"Abandon : rien n'a été changé."* ]]
-  assert_nothing_changed
+@test "confirmation « n », Entrée (Non par défaut) ou « y » : abandon, code 1, aucun git" {
+  local answer
+  for answer in n "" y; do
+    reset_host
+    remember_files
+    run "$UPDATE" v1.3.0 <<<"$answer"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Aucune séance en cours depuis moins de 3 h."* ]]
+    [[ "$output" == *"Déployer v1.3.0 (version actuelle v1.2.0) ? [o/N]"* ]]
+    [[ "$output" == *"Abandon : rien n'a été changé."* ]]
+    assert_nothing_changed
+  done
 }
 
 @test "confirmation « o » : déploiement, code 0" {
