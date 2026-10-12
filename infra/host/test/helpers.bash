@@ -109,6 +109,35 @@ refute_call() {
   done <"$CALLS"
 }
 
+# refute_call_between <début> <fin> <motif> : aucun appel <motif> entre le premier <début> et le <fin> qui le suit ;
+# échoue aussi si <début> ou <fin> manque.
+refute_call_between() {
+  local line inside=0
+  if [ -f "$CALLS" ]; then
+    while IFS= read -r line; do
+      # shellcheck disable=SC2053 # motifs glob voulus
+      if [ "$inside" = 0 ]; then
+        if [[ "$line" == $1 ]]; then inside=1; fi
+      elif [[ "$line" == $2 ]]; then
+        return 0
+      elif [[ "$line" == $3 ]]; then
+        echo "appel inattendu entre « $1 » et « $2 » : $line" >&2
+        return 1
+      fi
+    done <"$CALLS"
+  fi
+  echo "« $1 » puis « $2 » attendus dans les appels" >&2
+  return 1
+}
+
+# data/ops en 0750 et status.json en 0640 (03 §7, Interfaces §8). chmod est sans effet sous Windows (MSYS) :
+# vérifié par le job infra sous Linux.
+assert_ops_modes() {
+  if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]; then return 0; fi
+  [ "$(stat -c %a "$APPSPORT_ROOT/data/ops")" = 750 ] || { echo "data/ops n'est pas en 0750" >&2; return 1; }
+  [ "$(stat -c %a "$APPSPORT_ROOT/data/ops/status.json")" = 640 ] || { echo "status.json n'est pas en 0640" >&2; return 1; }
+}
+
 count_calls() {
   local line n=0
   if [ -f "$CALLS" ]; then

@@ -67,6 +67,7 @@ remember_files() {
   run "$UPDATE" v1.3.0 --yes
   [ "$status" -eq 0 ]
   [ -f "$STATE/lock-held" ]
+  assert_ops_modes
   [[ "$output" == *"- alice (début 2026-10-09T18:00:00.000Z)"* ]]
   [[ "$output" == *"Déploiement de v1.3.0 réussi."* ]]
   assert_calls_in_order \
@@ -300,6 +301,13 @@ assert_backup_failed() {
   # Lecture seule de la base courante (T24) : jamais --source ; depuis l'instantané moins 5 min.
   refute_call "* privacy:collect *--source*"
   assert_calls_in_order "* privacy:collect --since $ISO_GLOB --out *"
+  # 03 §8.3 : réapplication avant toute requête ; entre stop app et privacy:reapply, app ne redémarre pas.
+  local starts
+  for starts in "docker compose * up *" "docker compose * start *" "docker compose * restart *"; do
+    refute_call_between "docker compose * stop app" "* privacy:reapply *" "$starts"
+  done
+  [ "$(count_calls 'docker compose * up -d')" -eq 3 ]
+  assert_ops_modes
   assert_up_env_unset
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ rolled-back-restore$ ]]
