@@ -132,3 +132,29 @@ default_restic() {
   # restic -r <dépôt> … : B2 seulement lit b2.env (sous-shell de restic_on).
   printf '%s %s\n' "${2:-}" "${AWS_ACCESS_KEY_ID:-none}" >>"$STATE/restic-env"
 }
+
+# fd_open_on <fd> <fichier> : descripteur hérité ouvert en écriture, et sur <fichier> (même périphérique et inode)
+# là où /proc le montre (Linux, MSYS ; sous MSYS, /tmp et son chemin Windows désignent le même fichier).
+fd_open_on() {
+  { : >&"$1"; } 2>/dev/null || return 1
+  if [ -d "/proc/$$/fd" ]; then
+    [ "/proc/$$/fd/$1" -ef "$2" ] || return 1
+  fi
+}
+
+# Comme le vrai flock, échoue si le descripteur n'est pas ouvert : flock -n 9 sur $LOCK_FILE (take_lock),
+# flock -w 30 8 sur le verrou de status.json (status_merge).
+default_flock() {
+  local fd=${*: -1} want
+  case $fd in
+    9) want=$LOCK_FILE ;;
+    8) want=$APPSPORT_ROOT/.ops-tmp/status.lock ;;
+    *)
+      echo "flock: $fd: descripteur inattendu" >&2
+      return 1
+      ;;
+  esac
+  fd_open_on "$fd" "$want" && return 0
+  echo "flock: $fd: Bad file descriptor" >&2
+  return 1
+}

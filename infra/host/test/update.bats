@@ -60,8 +60,13 @@ remember_files() {
 @test "nominal --yes : séances affichées, étapes dans l'ordre, deploy.env, deploy.log et .deploy" {
   set_healthy_versions v1.2.0 v1.3.0
   printf 'alice\t2026-10-09T18:00:00.000Z\n' >"$STATE/sessions"
+  # Verrou encore tenu à la dernière écriture de status.json : descripteur 9 toujours ouvert sur $LOCK_FILE.
+  # shellcheck disable=SC2016 # extrait évalué par le stub
+  on chown "1000:1000 $APPSPORT_ROOT/.ops-tmp/status.*" 0 \
+    '. "$STUB_DEFAULTS"; if fd_open_on 9 "$LOCK_FILE"; then touch "$STATE/lock-held"; fi'
   run "$UPDATE" v1.3.0 --yes
   [ "$status" -eq 0 ]
+  [ -f "$STATE/lock-held" ]
   [[ "$output" == *"- alice (début 2026-10-09T18:00:00.000Z)"* ]]
   [[ "$output" == *"Déploiement de v1.3.0 réussi."* ]]
   assert_calls_in_order \
