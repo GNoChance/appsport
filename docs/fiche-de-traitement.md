@@ -23,17 +23,19 @@ De 2 à 5 personnes : le porteur et 1 à 4 proches, invités par lui. L'âge min
 
 | Cat. | Nom | Contenu | Accès dans l'appli |
 |---|---|---|---|
-| C0 | Interne | référentiels (fiches, illustrations, matériel), salles partagées et leur historique, pseudos rendus visibles ; pour l'admin : métadonnées de compte (pseudo, rôle, statut, date de naissance, mineur ou non, création, dernière connexion, état des accords, sessions actives), invitations, liens de réinitialisation, journal de sécurité | le cercle ou l'admin, selon la ligne |
-| C1 | Personnel | profil d'entraînement, lieux de type maison, mode prudent, programmes, séances, séries, réglages, rejets de synchro, sessions, historique des accords | le propriétaire seul |
-| C2 | Santé | indicateur de prudence, limitations et zones sensibles, douleur, motif d'une modification de programme, taille, pesées, sexe utilisé par les formules, nutrition | le propriétaire seul, avec l'accord santé |
+| C0 | Interne | pour tout le cercle : référentiels (fiches d'exercices publiées, illustrations, matériel, modèles de programmes), salles partagées et leur historique, pseudos rendus visibles ; pour l'admin seulement : métadonnées de compte (pseudo, rôle, statut, date de naissance, mineur ou non, création, dernière connexion, état des accords, nombre de sessions actives, coût IA du mois à partir de la brique 4), invitations, liens de réinitialisation, journal de sécurité (date, type, acteur, sujet, IP du tailnet, résultat ; aucune donnée C1 à C3) | le cercle ou l'admin, selon la ligne |
+| C1 | Personnel | profil d'entraînement, lieux de type maison, visibilité par lieu, mode prudent manuel, programmes et modifications de programme, séances, séries, records, réglages, rejets de synchro, détail des sessions, historique des accords | le propriétaire seul |
+| C2 | Santé | indicateur de prudence issu du questionnaire, limitations et zones sensibles, douleur, motif d'une modification de programme, taille, pesées, sexe utilisé par les formules, profil, cibles et bilans nutritionnels | le propriétaire seul, avec l'accord santé |
 | C3 | Sensible | fils et messages du coach, signalements | le propriétaire seul, avec l'accord coach ; un échange signalé devient lisible par l'admin |
 
-Aucun e-mail n'est collecté : l'identifiant est un pseudo. Les empreintes de mots de passe et de codes ne sont jamais exportées, synchronisées ni journalisées. Le porteur voit l'adresse du compte Tailscale de chaque proche, une information gérée par Tailscale. L'admin a la main sur le serveur et peut techniquement lire la base : il s'engage à ne faire aucune requête manuelle sur les données d'une personne sans son accord (P-ADM-3).
+C0 ne veut pas dire « non personnel » : C0 regroupe ce que le cercle ou l'admin voit par conception. Exception : les sessions sont C1 mais ne sont pas exportées (R-EXP-2) ; à la suppression du compte, elles sont anonymisées, puis purgées à leur expiration absolue (P-DRT-3).
+
+Aucun e-mail n'est collecté : l'identifiant est un pseudo. Les empreintes de mot de passe et de jetons sont hors catégorie : elles ne sont jamais exportées, synchronisées, journalisées ni renvoyées par l'API. Le porteur voit l'adresse du compte Tailscale de chaque proche, une information gérée par Tailscale. L'admin a la main sur le serveur et peut techniquement lire la base : il s'engage à ne faire aucune requête manuelle sur les données d'une personne sans son accord (P-ADM-3).
 
 ## Destinataires
 
-- Dans le cercle : les données C0 seulement (salles partagées, pseudos rendus visibles) ; l'admin voit les métadonnées de compte, jamais les données C1 à C3 d'un autre dans l'appli.
-- Anthropic (coach, brique 4) : avec l'accord coach, les messages et le dossier du coach ; C2 seulement si les accords santé et coach sont actifs. Jamais : pseudo, date de naissance, identifiant interne, nom de salle, autres membres, adresse IP.
+- Dans le cercle : les données C0 seulement (salles partagées, pseudos rendus visibles) ; l'admin voit les métadonnées de compte, jamais les données C1 à C3 d'un autre dans l'appli, sauf un échange signalé (`coach_report`, P-ADM-1).
+- Anthropic (coach, brique 4) : avec l'accord coach, les messages et le dossier du coach : tranche d'âge (`age_band`, jamais l'âge exact), niveau, objectif, contexte, matériel, programme, historique récent ; C2 seulement si les accords santé et coach sont actifs (P-COA-1). Jamais : pseudo, date de naissance, identifiant interne, nom ou enseigne de la salle, autres membres, adresse IP.
 - Backblaze (B2) : sauvegardes chiffrées côté client avant de quitter le serveur ; Backblaze ne voit que des données chiffrées.
 - Tailscale (réseau) : comptes Tailscale des proches et métadonnées de leurs appareils ; le trafic de l'appli reste chiffré de bout en bout.
 
@@ -56,20 +58,26 @@ Aucun autre sous-traitant : ni statistiques, ni traceur, ni service tiers dans l
 | Journal d'usage du coach (sans contenu) | 12 mois |
 | Côté Anthropic | 30 jours au plus ; 2 ans au plus si l'échange est signalé |
 | Sessions | 90 jours sans usage, 365 jours au maximum ; lignes fermées purgées 30 jours après |
+| Sessions `account_deleted` | jusqu'à leur expiration absolue |
 | Invitations, liens de réinitialisation | 7 jours ou 24 h, usage unique ; purgés 30 jours après |
 | Journal de sécurité | 12 mois |
 | Journaux techniques | 90 jours au plus |
-| Marques de suppression de la synchro | 90 jours |
+| Marques de suppression de la synchro | 90 jours ; les salles et lieux supprimés restent, pour l'historique |
+| Journal d'idempotence de la synchro (`applied_op` : identifiants d'opération, sans contenu) | 12 mois (R-SYN-23) ; supprimé avec le compte |
 | Sauvegardes et instantanés | 30 jours au plus |
 | Données locales du téléphone | jusqu'à la déconnexion (file d'envoi vide), au retrait d'un accord pour la catégorie, ou au `410 account_deleted` |
 
 ## Mesures de sécurité
 
-- Aucune exposition sur Internet : ni redirection de port ni Funnel ; seule entrée, `tailscale serve` (HTTPS) ; pare-feu en refus par défaut, en IPv4 comme en IPv6.
+- Aucune exposition sur Internet : ni redirection de port ni Funnel ; seule entrée de l'appli : `tailscale serve` (HTTPS) ; administration par Tailscale SSH et, en secours, SSH depuis le réseau local ; pare-feu en refus par défaut, en IPv4 comme en IPv6.
+- L'appli n'écoute que sur `127.0.0.1` ; la base n'est jamais joignable par le réseau.
 - Partage de la seule machine `appsport` avec le compte Tailscale de chaque proche, limité au port 443 ; l'admin, seul membre du tailnet, a une double authentification.
+- Noms publics : le nom de machine `appsport` et le nom du tailnet, aléatoire et sans nom de personne, figurent dans les journaux publics de certificats ; rien de personnel.
 - Données chiffrées au repos (volume LUKS déverrouillé à la main) ; sauvegardes chiffrées par restic, une copie hors du domicile, test de restauration chaque mois.
-- Authentification obligatoire dans l'appli : mots de passe Argon2id, limitation des échecs, cookie `__Host-session`, contrôle de l'origine des requêtes.
-- Séparation des données : l'admin n'a aucune route vers les données C1 à C3 d'un autre (réponse `404`).
+- Authentification obligatoire dans l'appli : mots de passe Argon2id, limitation des échecs, cookie `__Host-session`, contrôle de l'origine des requêtes ; en-têtes HSTS, CSP `default-src 'self'` sans script en ligne et `frame-ancestors 'none'` (P-AUT-9).
+- Séparation des données : l'admin n'a aucune route vers les données C1 à C3 d'un autre (réponse `404`), sauf un échange signalé (`coach_report`, P-ADM-1).
+- Clé API Anthropic sur le serveur seulement, jamais dans le client ni dans le dépôt ; limite de dépense fixée dans la console.
+- Flux sortants du serveur : API Claude, mises à jour, sauvegardes, sonde de supervision ; aucun autre.
 - Journaux sans corps de requête, cookie, jeton, code ni valeur C1 à C3.
 - Export et suppression du compte en libre-service ; retrait d'un accord avec effacement immédiat ; suppressions réappliquées après toute restauration (03 §8).
 - Secrets sur le volume chiffré, rotation selon P5 ; enveloppe de secours scellée chez une personne de confiance.

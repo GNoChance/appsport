@@ -6,7 +6,7 @@ Durée : objectif moins de 2 h, chronométré du début à la fin.
 
 Exercice de reconstruction sur une **autre machine** que le serveur : une machine Linux avec Docker (PC de l'admin sous Linux, machine virtuelle, ou WSL2 avec Docker), dont le disque est chiffré. Avec quoi : uniquement le gestionnaire de mots de passe, GitHub et B2 ; ni le serveur, ni l'enveloppe de secours. Le serveur réel continue de tourner pendant l'exercice.
 
-La copie restaurée contient des données personnelles en clair : elle reste dans un dossier privé et elle est détruite à la fin (étape 13). Gabarits : `vX.Y.Z` (version lue dans la sauvegarde), `AAAAMMJJ` (date de l'instantané), `<date ISO>` (instant de l'instantané, UTC).
+La copie restaurée contient des données personnelles en clair : elle reste dans un dossier privé et elle est détruite à la fin (étape 14). Les clés B2 ne sont lues que dans un sous-shell `( … )`, jamais exportées dans le terminal, et restic travaille sans cache (`--no-cache`) : rien ne reste dans `~/.cache`. Gabarits : `vX.Y.Z` (version lue dans la sauvegarde), `AAAAMMJJ` (date de l'instantané), `<date ISO>` (instant de l'instantané, UTC).
 
 1. **Démarrer le chronomètre.**
 
@@ -61,8 +61,7 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 5. **Lister les sauvegardes hors site.**
 
    ```
-   set -a; . ./b2.env; set +a
-   restic -r "$RESTIC_OFFSITE_REPOSITORY" --password-file restic.pass snapshots
+   ( set -a; . ./b2.env; set +a; restic -r "$RESTIC_OFFSITE_REPOSITORY" --password-file restic.pass --no-cache snapshots )
    ```
 
    Résultat attendu : des instantanés `daily` (et `pre-deploy`), le dernier de moins de 24 h.
@@ -72,12 +71,13 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 6. **Restaurer la dernière sauvegarde.**
 
    ```
-   restic -r "$RESTIC_OFFSITE_REPOSITORY" --password-file restic.pass restore latest --target restaure
+   ( set -a; . ./b2.env; set +a; restic -r "$RESTIC_OFFSITE_REPOSITORY" --password-file restic.pass --no-cache restore latest --target restaure )
    ls restaure/srv/appsport/data/snapshots restaure/var/lib/tailscale
+   ls restaure/srv/appsport/secrets
    cat restaure/srv/appsport/deploy.env
    ```
 
-   Résultat attendu : des `daily-AAAAMMJJ.db`, le fichier `tailscaled.state`, et `APPSPORT_VERSION=vX.Y.Z`.
+   Résultat attendu : des `daily-AAAAMMJJ.db`, le fichier `tailscaled.state`, les secrets `app.env`, `b2.env`, `deploy_key`, `deploy_key.pub`, `docker` et `restic.pass`, et `APPSPORT_VERSION=vX.Y.Z`.
 
    Sinon : un élément manque dans la sauvegarde : écart grave, à corriger dans `appsport-backup` avant toute invitation.
 
@@ -120,17 +120,17 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 
    Sinon : « Instantané corrompu (PRAGMA integrity_check) : base actuelle laissée intacte. » : prendre l'instantané précédent et noter l'écart.
 
-10. **Démarrer l'appli et la vérifier.** Sans réseau : la santé se lit depuis le conteneur.
+10. **Démarrer l'appli et la vérifier.** Sans réseau : la santé se lit depuis le conteneur. L'appli met quelques secondes à répondre (migrations au démarrage) : la boucle réessaie pendant 2 minutes au plus, comme les scripts hôte.
 
     ```
     docker run -d --name appsport-exercice --network none --read-only --tmpfs /tmp --user 1000 -v "$PWD/data:/data" -e APP_ORIGIN=https://appsport.<tailnet>.ts.net "$IMAGE"
-    docker exec appsport-exercice node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>r.text()).then(console.log)"
+    for i in $(seq 60); do docker exec appsport-exercice node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>r.ok?r.text():Promise.reject(r.status)).then(console.log)" 2>/dev/null && break; sleep 2; done
     docker exec appsport-exercice node /app/server.mjs db:stats
     ```
 
-    Résultat attendu : `"status":"ok"` et `"version":"vX.Y.Z"` ; `db:stats` donne `"integrity":"ok"`, au moins 1 utilisateur, et une dernière écriture de moins de 24 h avant la sauvegarde.
+    Résultat attendu : en 2 minutes au plus, une ligne avec `"status":"ok"` et `"version":"vX.Y.Z"` ; `db:stats` donne `"integrity":"ok"`, au moins 1 utilisateur, et une dernière écriture de moins de 24 h avant la sauvegarde.
 
-    Sinon : `docker logs appsport-exercice` ; noter l'erreur comme écart.
+    Sinon : aucune ligne de santé au bout de 2 minutes : `docker logs appsport-exercice` ; noter l'erreur comme écart.
 
 11. **Vérifier l'identité Tailscale (premier exercice seulement).** La restauration de l'identité est déduite, pas vérifiée (08, Risques). Avant la première invitation, sur une machine Linux de test où Tailscale est installé mais jamais connecté : arrêter d'abord tailscaled sur le serveur (par SSH du réseau local : Tailscale SSH va couper), puis :
 
@@ -142,11 +142,25 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
     tailscale status
     ```
 
-    Résultat attendu : la machine de test apparaît comme `appsport`, avec l'adresse `100.x.y.z` du serveur, sans nouvelle connexion. Ensuite, remettre l'état d'origine (`sudo systemctl stop tailscaled`, `sudo rm -rf /var/lib/tailscale`, `sudo mv /var/lib/tailscale.avant-exercice /var/lib/tailscale`, `sudo systemctl start tailscaled`), puis redémarrer tailscaled sur le serveur.
+    Résultat attendu : la machine de test apparaît comme `appsport`, avec l'adresse `100.x.y.z` du serveur, sans nouvelle connexion. Passer aussitôt à l'étape 12 : deux machines ne gardent jamais la même identité.
 
-    Sinon : noter l'écart ; P4 « Nouvelle machine » prévoit alors une nouvelle machine `appsport` et un nouveau lien de partage pour chaque proche.
+    Sinon : noter l'écart (P4 « Nouvelle machine » prévoit alors une nouvelle machine `appsport` et un nouveau lien de partage pour chaque proche), puis l'étape 12 quand même.
 
-12. **Arrêter le chronomètre.**
+12. **Remettre l'identité Tailscale d'origine (premier exercice seulement).** Sur la machine de test ; sans objet si l'étape 11 n'a pas été faite. Puis, sur le serveur, par SSH du réseau local : `sudo systemctl start tailscaled`.
+
+    ```
+    sudo systemctl stop tailscaled
+    sudo rm -rf /var/lib/tailscale
+    sudo mv /var/lib/tailscale.avant-exercice /var/lib/tailscale
+    sudo systemctl start tailscaled
+    tailscale status
+    ```
+
+    Résultat attendu : sur la machine de test, `tailscale status` ne montre plus `appsport` comme machine locale : elle a retrouvé son propre état (son propre nom, ou « Logged out. » si elle n'avait jamais été connectée) ; dans la console Tailscale, `appsport` est de nouveau en ligne, avec son adresse habituelle.
+
+    Sinon : `/var/lib/tailscale.avant-exercice` introuvable : sur la machine de test, `sudo systemctl stop tailscaled && sudo rm -rf /var/lib/tailscale` (elle repartira comme une machine neuve) ; ne jamais laisser l'identité du serveur sur une autre machine.
+
+13. **Arrêter le chronomètre.**
 
     ```
     date
@@ -156,20 +170,21 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 
     Sinon : noter les étapes lentes dans les écarts, et simplifier P4 ou ce runbook en conséquence.
 
-13. **Détruire la copie.** Base en clair, secrets et identité Tailscale ne restent pas sur cette machine.
+14. **Détruire la copie.** Base en clair, secrets et identité Tailscale ne restent pas sur cette machine.
 
     ```
     docker rm -f appsport-exercice
     docker image rm "$IMAGE"
     docker logout ghcr.io
     cd ~ && sudo rm -rf ~/appsport-exercice
+    sudo test -e /var/lib/tailscale.avant-exercice && echo "Identité du serveur encore en place : étape 12."
     ```
 
-    Résultat attendu : `ls ~/appsport-exercice` répond `No such file or directory`.
+    Résultat attendu : `ls ~/appsport-exercice` répond `No such file or directory`, et la dernière commande n'affiche rien.
 
-    Sinon : supprimer à la main ce qui reste ; ne jamais garder la copie « pour plus tard ».
+    Sinon : « Identité du serveur encore en place » : faire l'étape 12 ; pour le reste, supprimer à la main ce qui reste ; ne jamais garder la copie « pour plus tard ».
 
-14. **Noter l'exercice.** Ajouter une ligne au journal ci-dessous, par une PR : date, durée, écarts constatés (rien de personnel, aucun secret).
+15. **Noter l'exercice.** Ajouter une ligne au journal ci-dessous, par une PR : date, durée, écarts constatés (rien de personnel, aucun secret).
 
     ```
     git switch -c exercice/AAAAMMJJ

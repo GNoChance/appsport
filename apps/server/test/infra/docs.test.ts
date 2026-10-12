@@ -427,12 +427,18 @@ describe('fiches pour les proches et recette', () => {
     ]) {
       expect(installer).toContain(needle);
     }
+    // Une capture par étape : la ligne d'attente, remplacée par l'image une fois la capture faite
+    // (P1, « Recette ») ; le test des liens relatifs vérifie alors que l'image existe.
     const all = steps(installer);
     for (const s of all) {
       const nn = String(s.n).padStart(2, '0');
-      expect(s.body).toContain(`Capture : à ajouter pendant P1 (captures/installer-${nn}.png).`);
+      const pending = s.body.includes(`Capture : à ajouter pendant P1 (captures/installer-${nn}.png).`);
+      const image = s.body.includes(`](captures/installer-${nn}.png)`);
+      expect(pending !== image, `étape ${s.n} : une capture ou sa ligne d'attente`).toBe(true);
     }
-    expect(installer.match(/Capture : à ajouter pendant P1/g)).toHaveLength(all.length);
+    expect(
+      installer.match(/Capture : à ajouter pendant P1|\]\(captures\/installer-\d\d\.png\)/g),
+    ).toHaveLength(all.length);
   });
 
   it('recette-telephones : les 7 contrôles R-TST-4 mot pour mot, tirés de 01 §9.3', () => {
@@ -564,5 +570,252 @@ describe('page Aide (07, 03 §13.7)', () => {
       return !bytes.includes(0) && OLD_TCA.test(bytes.toString('utf8'));
     });
     expect(hits).toEqual([]);
+  });
+});
+
+/** Blocs de code délimités par ```, chacun en lignes (blocs indentés dans une étape compris). */
+function codeBlocks(text: string): string[][] {
+  const out: string[][] = [];
+  let current: string[] | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trimStart().startsWith('```')) current?.push(line);
+    else if (current) {
+      out.push(current);
+      current = null;
+    } else current = [];
+  }
+  return out;
+}
+
+describe('commandes sûres à recopier', () => {
+  it('après up -d ou docker run -d, /api/health est attendu 2 min au plus (R-OPS-6), jamais sondé une seule fois', () => {
+    const pages = {
+      ...Object.fromEntries(PROCEDURES.map((name, i) => [name, p[i + 1] as string])),
+      'installer-appsport': installer,
+      'recette-telephones': recette,
+      [RUNBOOK]: runbook,
+    };
+    let probes = 0;
+    for (const [name, text] of Object.entries(pages)) {
+      for (const block of codeBlocks(text)) {
+        const start = block.findIndex((l) => / up -d|docker run -d/.test(l));
+        if (start < 0) continue;
+        for (const line of block.slice(start + 1).filter((l) => l.includes('/api/health'))) {
+          probes++;
+          expect(line, name).toMatch(
+            /--retry 60 --retry-delay 2 --retry-all-errors|^\s*for i in \$\(seq 60\)/,
+          );
+        }
+      }
+    }
+    expect(probes).toBeGreaterThanOrEqual(7);
+  });
+
+  it('P5 : restic garde son cache sur le volume chiffré, comme les scripts hôte', () => {
+    expect(read('infra/host/lib/common.sh')).toContain('RESTIC_CACHE_DIR="$APPSPORT_ROOT/cache/restic"');
+    const lines = proseLines(p[5] as string).filter((l) => l.code && /\brestic -r\b/.test(l.line));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const { line } of lines) expect(line).toContain('--cache-dir /srv/appsport/cache/restic');
+  });
+
+  it('P5 : clé de développement vérifiée sur le PC ; enveloppe refaite après le mot de passe Unix', () => {
+    const dev = section(p[5] as string, 'Clé API Anthropic de développement');
+    expect(dev).toContain('sur le PC');
+    expect(dev).toContain('https://api.anthropic.com/v1/models');
+    expect(p[5]).toMatch(/Toutes les commandes se lancent sur le serveur[^\n]*sauf/);
+    const unix = steps(section(p[5] as string, 'Mot de passe du compte Unix'));
+    expect(unix.some((s) => s.head.includes("refaire l'enveloppe"))).toBe(true);
+  });
+
+  it("P5 : la nouvelle clé de déploiement est essayée avant de remplacer ou de supprimer l'ancienne", () => {
+    expectInOrder(section(p[5] as string, 'Clé de déploiement git'), [
+      'ssh-keygen',
+      'Add deploy key',
+      '-i /srv/appsport/secrets/deploy_key.new ',
+      'mv /srv/appsport/secrets/deploy_key.new ',
+      "Supprimer l'ancienne clé sur GitHub",
+    ]);
+  });
+
+  it('P5 : URL Healthchecks : les 4 contrôles neufs au vert avant de supprimer les anciens (08 §9)', () => {
+    const body = section(p[5] as string, 'URL de ping Healthchecks');
+    expectInOrder(body, [
+      'sudoedit /etc/appsport/healthchecks.env',
+      'sudo appsport-check',
+      'sudo systemctl start appsport-backup.service',
+      'HC_RESTORE_TEST_URL',
+      'Supprimer les anciens contrôles',
+    ]);
+    expect(body).toMatch(/4 contrôles neufs[^\n]*au vert/);
+  });
+
+  it('P2 : tout message autre que OK mène à P8 ; les rattrapages se lisent sur leurs services', () => {
+    const all = steps(p[2] as string);
+    const unlock = all.find((s) => s.n === 2)?.body ?? '';
+    expect(unlock).toContain('tout autre message');
+    expect(unlock).toContain('disque');
+    const catchUp = all.find((s) => s.n === 3)?.body ?? '';
+    expect(catchUp).toContain('systemctl status appsport-backup.service appsport-restore-test.service');
+    expect(catchUp).toContain('Sauvegarde terminée : local+offsite.');
+    expect(catchUp).not.toContain('list-units');
+  });
+
+  it('runbook : clés B2 dans un sous-shell, sans cache restic, secrets vérifiés, identité Tailscale remise', () => {
+    const code = proseLines(runbook)
+      .filter((l) => l.code)
+      .map((l) => l.line);
+    const sourced = code.filter((l) => l.includes('b2.env') && l.includes('set -a'));
+    expect(sourced.length).toBeGreaterThan(0);
+    for (const line of sourced) expect(line).toMatch(/\(\s*set -a;/);
+    for (const line of code.filter((l) => /\brestic -r\b/.test(l))) expect(line).toContain('--no-cache');
+    expect(runbook).toContain('ls restaure/srv/appsport/secrets');
+    const all = steps(runbook);
+    const putBack = all.find((s) => s.head.startsWith("Remettre l'identité Tailscale"));
+    expect(putBack?.body).toContain('sudo mv /var/lib/tailscale.avant-exercice /var/lib/tailscale');
+    const destroy = all.find((s) => s.head.startsWith('Détruire la copie'));
+    expect(destroy?.body).toContain('/var/lib/tailscale.avant-exercice');
+  });
+});
+
+describe('fiches des proches et recette : revue de la tâche 45', () => {
+  it("installer-appsport : absence de l'admin selon 08 §11, MagicDNS des deux côtés, invitation depuis la connexion", () => {
+    expect(installer).not.toContain('tout consulter');
+    expect(installer).toContain('la synchronisation et le coach');
+    const help = section(installer, 'Dépannage');
+    expect(help).toContain('Use Tailscale DNS');
+    expect(help).toMatch(/console Tailscale[^\n]*DNS[^\n]*MagicDNS/);
+    expect(read('apps/web/src/features/auth/LoginPage.tsx')).toContain("J'ai un code d'invitation");
+    expect(installer).toMatch(/^5\. \*\*[^\n]*J'ai un code d'invitation/m);
+    expect(section(p[1] as string, 'Premier déploiement')).toContain("J'ai un code d'invitation");
+  });
+
+  it('captures de la fiche faites en P1 avec une identité de test et masquées ; fiche envoyée en PDF (P6)', () => {
+    const body = section(p[1] as string, 'Recette');
+    expect(body).toContain('docs/exploitation/captures/installer-01.png');
+    expect(body).toMatch(/[Mm]asquer/);
+    expect(body).toContain('compte Tailscale de test');
+    expect(p[6]).toContain('PDF');
+  });
+
+  it("P6 : libellés de l'écran Membres et règle du dernier administrateur actif (R-ROLE-2)", () => {
+    const members = read('apps/web/src/features/admin/MembersPage.tsx');
+    expect(members).toContain("act('delete', 'Supprimer', true)");
+    expect(members).toContain('confirmLabel="Supprimer définitivement"');
+    const lastAdmin = 'Il doit rester au moins un administrateur actif.';
+    expect(read('apps/web/src/ui/errors.ts')).toContain(lastAdmin);
+    const leave = section(p[6] as string, 'Retirer un proche');
+    for (const needle of [
+      '« Supprimer »',
+      '« Supprimer définitivement »',
+      lastAdmin,
+      'dernier administrateur actif',
+    ]) {
+      expect(leave).toContain(needle);
+    }
+    expect(leave).not.toContain('« Supprimer le compte »');
+  });
+
+  it("recette-telephones : téléphones des proches, données fictives, chaque build avec son contenu, base vidée d'abord", () => {
+    expect(recette).not.toContain("(ou de l'admin)");
+    expect(recette).not.toContain('$PWD/data');
+    expect(recette).toMatch(/fictiv/);
+    const prep = section(recette, 'Préparation');
+    expectInOrder(prep, ['rm -rf ~/appsport-recette', 'cp -r']);
+    expect(prep).toContain('APPSPORT_CONTENT_DIR=~/appsport-recette/a/content');
+    expect(recette).toContain('APPSPORT_CONTENT_DIR=~/appsport-recette/b/content');
+    expect(prep).toContain('La base existe déjà');
+    expect(prep).toContain('Un administrateur existe déjà');
+  });
+
+  it('recette-telephones : nom de machine neutre dans les journaux de certificats (03 §10.5)', () => {
+    expect(recette).not.toContain('<poste>');
+    expectInOrder(section(recette, 'Préparation'), [
+      'Edit machine name',
+      'APP_ORIGIN=https://recette.<tailnet>.ts.net',
+      'tailscale serve --bg',
+    ]);
+  });
+
+  it('recette-telephones : cas P1 sur le serveur réel, compte de test supprimé ensuite', () => {
+    const prep = steps(section(recette, 'Préparation'));
+    for (const n of [1, 2])
+      expect(prep.find((s) => s.n === n)?.body, `Préparation ${n}`).toContain('En P1 :');
+    expect(recette).toContain('Administration → Invitations');
+    const banner = steps(section(recette, 'Contrôles sur iPhone')).find(
+      (s) => s.head === 'Bandeau de mise à jour',
+    );
+    expect(banner?.body).toContain('En P1 :');
+    expect(banner?.body).toContain('tableau des résultats');
+  });
+
+  it('recette-telephones : fin de recette : serve retiré, partages révoqués, données de test effacées', () => {
+    const end = section(recette, 'Fin de la recette');
+    for (const needle of [
+      'tailscale serve reset',
+      'tailscale serve status',
+      'rm -rf ~/appsport-recette',
+      'Administration → Membres',
+      'partage',
+      'données du site',
+    ]) {
+      expect(end).toContain(needle);
+    }
+    expectSteps('Fin de la recette', end);
+  });
+});
+
+describe('registres de vie privée : revue de la tâche 45', () => {
+  it('fiche : catégories de 03 §2, exception des sessions, secrets hors catégorie, journal de sécurité (P-LOG-1)', () => {
+    const body = section(fiche, 'Catégories de données');
+    for (const needle of [
+      'modèles de programmes',
+      'nombre de sessions actives',
+      'coût IA du mois',
+      'visibilité par lieu',
+      'records',
+      'détail des sessions',
+      'ne sont pas exportées',
+      "ni renvoyées par l'API",
+      'IP du tailnet',
+    ]) {
+      expect(body, needle).toContain(needle);
+    }
+  });
+
+  it("fiche : durées de 03 §7 que la purge applique, journal d'idempotence de la synchro (R-SYN-23)", () => {
+    const body = section(fiche, 'Durées de conservation');
+    expect(body).toContain("| Sessions `account_deleted` | jusqu'à leur expiration absolue |");
+    expect(body).toContain("les salles et lieux supprimés restent, pour l'historique");
+    expect(body).toMatch(/`applied_op`[^\n]*\| 12 mois/);
+  });
+
+  it('fiche : envois au coach (P-COA-1), exception de P-ADM-1 et mesures de 03 §10 et P-AUT-9', () => {
+    const to = section(fiche, 'Destinataires');
+    expect(to).toContain("jamais l'âge exact");
+    expect(to).toContain('sauf un échange signalé');
+    const measures = section(fiche, 'Mesures de sécurité');
+    for (const needle of [
+      'Tailscale SSH',
+      'réseau local',
+      '127.0.0.1',
+      'journaux publics de certificats',
+      'limite de dépense',
+      'Flux sortants',
+      'HSTS',
+      'sauf un échange signalé',
+    ]) {
+      expect(measures, needle).toContain(needle);
+    }
+  });
+
+  it('registre des incidents : 72 h après la découverte, secrets tournés, catégories exposées, jamais de pseudo', () => {
+    expect(incidents).toContain('72 h après la découverte');
+    expect(incidents).toMatch(/faire tourner[^\n]*P5/);
+    expect(incidents).toContain('jamais leur contenu');
+    expect(incidents).not.toContain('par pseudo');
+    expect(incidents).toContain('jamais de pseudo');
+    expect(section(p[8] as string, 'Vol, cambriolage ou fuite')).toMatch(
+      /^\d+\. \*\*Consigner l'incident\.\*\*[^\n]*jamais de pseudo/m,
+    );
   });
 });
