@@ -4,9 +4,10 @@ Registre des incidents de sécurité d'appsport (03 §14). Conduite à tenir, d�
 
 1. couper l'accès : révoquer les partages Tailscale ou arrêter le service ;
 2. évaluer ce qui a été exposé ;
-3. faire tourner tous les secrets (P5), puis refaire l'enveloppe de secours (08 §12, P8) ;
-4. prévenir les proches concernés sous 72 h après la découverte : ce qui s'est passé, ce qu'ils doivent faire ;
-5. consigner l'incident ici, par une PR : une ligne par incident.
+3. prévenir les proches concernés sous 72 h après la découverte : ce qui s'est passé, ce qu'ils doivent faire ; le message n'attend ni la rotation des secrets ni la reconstruction ;
+4. faire tourner tous les secrets (P5), puis refaire l'enveloppe de secours (08 §12, P8) ;
+5. fermer les sessions : celles des proches concernés et celles de l'admin ;
+6. consigner l'incident ici, par une PR : une ligne par incident.
 
 Chaque ligne donne :
 - la date ;

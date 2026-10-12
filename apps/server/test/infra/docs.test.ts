@@ -1469,4 +1469,18 @@ describe('registres de vie privée : revue de la tâche 45', () => {
       /^\d+\. \*\*Consigner l'incident\.\*\*[^\n]*jamais de pseudo/m,
     );
   });
+
+  it('registre des incidents : la conduite reprend les étapes de P8 « Vol, cambriolage ou fuite », dans le même ordre', () => {
+    const heads = steps(section(p[8] as string, 'Vol, cambriolage ou fuite')).map((s) =>
+      s.head.replace(/\.$/, '').toLowerCase(),
+    );
+    const conduct = incidents
+      .split(/\r?\n/)
+      .filter((line) => /^\d+\. /.test(line))
+      .map((line) => line.replace(/^\d+\. /, '').toLowerCase());
+    expect(conduct).toHaveLength(heads.length);
+    heads.forEach((head, i) => {
+      expect(conduct[i]?.startsWith(head), `étape ${i + 1} de P8 : « ${head} »`).toBe(true);
+    });
+  });
 });
