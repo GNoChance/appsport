@@ -41,8 +41,20 @@ const timers = {
   'appsport-restore-test': 'Sun *-*-01..07 05:00:00',
 };
 
+/**
+ * Durée maximale de chaque service : Type=oneshot n'en a pas par défaut, et un restic bloqué sur une connexion B2
+ * morte garderait le verrou exclusif (/run/appsport.lock) jusqu'à une intervention manuelle.
+ */
+const startTimeouts: Record<keyof typeof timers, string> = {
+  'appsport-alive': '2min',
+  'appsport-backup': '4h',
+  'appsport-check': '10min',
+  'appsport-restore-test': '6h',
+};
+
 describe('infra/systemd : timers et services (08 §9, §15)', () => {
   for (const [name, calendar] of Object.entries(timers)) {
+    const timeout = startTimeouts[name as keyof typeof timers];
     it(`${name}.timer : ${calendar}, timers.target${name === 'appsport-alive' ? '' : ', Persistent=true'}`, () => {
       const text = read(`infra/systemd/${name}.timer`);
       const timer = unitSection(text, 'Timer');
@@ -52,12 +64,19 @@ describe('infra/systemd : timers et services (08 §9, §15)', () => {
       expect(unitSection(text, 'Install').WantedBy).toEqual(['timers.target']);
     });
 
-    it(`${name}.service : oneshot, /usr/local/sbin/${name}`, () => {
+    it(`${name}.service : oneshot, /usr/local/sbin/${name}, borné à ${timeout}`, () => {
       const service = unitSection(read(`infra/systemd/${name}.service`), 'Service');
       expect(service.Type).toEqual(['oneshot']);
       expect(service.ExecStart).toEqual([`/usr/local/sbin/${name}`]);
+      expect(service.TimeoutStartSec).toEqual([timeout]);
     });
   }
+
+  it('appsport-restore-test.service attend la fin de appsport-backup (rattrapage par appsport-unlock)', () => {
+    // Les deux, relancés ensemble après un déverrouillage, se disputeraient sinon le verrou exclusif.
+    const unit = unitSection(read('infra/systemd/appsport-restore-test.service'), 'Unit');
+    expect(unit.After?.join(' ').split(/\s+/)).toContain('appsport-backup.service');
+  });
 
   it('docker.service.d/appsport.conf : Docker exige le volume monté (R-OPS-2, R-DEP-5)', () => {
     const unit = unitSection(read('infra/systemd/docker.service.d/appsport.conf'), 'Unit');

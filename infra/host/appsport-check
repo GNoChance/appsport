@@ -16,19 +16,28 @@ used_pct() {
   if [ -n "$pct" ]; then printf '%s\n' "$((10#$pct))"; fi
 }
 
-# smart_ok <périphérique> : seule la sortie compte (smartctl rend un masque de bits non nul même sain).
+# smart_ok <périphérique> [type] : seule la sortie compte (smartctl rend un masque de bits non nul même sain).
 smart_ok() {
   local out
-  out=$("$SMARTCTL" -H "$1" 2>&1) || true
+  local -a opts=(-H)
+  if [ -n "${2:-}" ]; then opts+=(-d "$2"); fi
+  out=$("$SMARTCTL" "${opts[@]}" "$1" 2>&1) || true
   grep -qE 'PASSED|SMART Health Status: OK' <<<"$out"
 }
 
+has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
 # shellcheck disable=SC2016 # variables des filtres jq, pas du shell
 main() {
-  local mount pct dev json detail="" disks='[]' smart=true restart=false ok=true
-  local -a problems=() devices=()
+  local mount pct dev type json detail="" disks='[]' smart=true restart=false ok=true
+  local -a problems=() devices=() mounts=(/ "$APPSPORT_ROOT" "$BACKUP_ROOT")
   require_cmds "$JQ" "$CURL"
-  for mount in / "$APPSPORT_ROOT" "$BACKUP_ROOT"; do
+  # df ou smartctl absent : un seul problème qui le nomme, pas une fausse alarme par disque.
+  if ! has_cmd "$DF"; then
+    problems+=("df absent de l'hôte")
+    mounts=()
+  fi
+  for mount in "${mounts[@]}"; do
     pct=$(used_pct "$mount")
     if [ -z "$pct" ]; then
       problems+=("disque $mount illisible")
@@ -38,12 +47,22 @@ main() {
     if [ "$pct" -gt "$MAX_USED_PCT" ]; then problems+=("disque $mount à $pct %"); fi
   done
   read -ra devices <<<"$SMART_DEVICES"
-  if [ "${#devices[@]}" -eq 0 ]; then
+  if ! has_cmd "$SMARTCTL"; then
+    smart=false
+    problems+=("smartctl absent de l'hôte")
+    devices=()
+  elif [ "${#devices[@]}" -eq 0 ]; then
     smart=false
     problems+=("SMART : aucun disque détecté")
   fi
   for dev in "${devices[@]}"; do
-    if ! smart_ok "$dev"; then
+    # <type>:<chemin> ; un chemin commence par /, et ceux de /dev/disk/by-id contiennent souvent « : ».
+    type=""
+    if [[ "$dev" != /* && "$dev" == *:* ]]; then
+      type=${dev%%:*}
+      dev=${dev#*:}
+    fi
+    if ! smart_ok "$dev" "$type"; then
       smart=false
       problems+=("SMART KO sur $dev")
     fi

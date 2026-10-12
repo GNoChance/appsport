@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # appsport-unlock (R-OPS-6, R-DEP-6) : après un redémarrage, via Tailscale SSH : sudo appsport-unlock.
 # Idempotent : ouvre le volume LUKS si besoin, le monte, démarre Docker et appsport, attend /api/health
-# (2 min au plus), affiche OK ou KO, pingue alive et relance la sauvegarde de la nuit si elle a été manquée.
+# (2 min au plus), affiche OK ou KO, pingue alive et relance la sauvegarde de la nuit, puis le test de restauration
+# du mois, s'ils ont été manqués.
 # Codes : 0 OK, 1 KO.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib/common.sh
@@ -28,6 +29,33 @@ backup_missed() {
   [ $(($(date -u +%s) - at_s)) -gt 86400 ]
 }
 
+# Dernier créneau passé du timer appsport-restore-test (Sun *-*-01..07 05:00:00, heure locale), en secondes.
+last_restore_test_slot() {
+  local now i month dow slot
+  now=$(date +%s)
+  for i in 0 1; do
+    month=$(date -d "$(date +%Y-%m-15) -$i month" +%Y-%m) || return 1
+    dow=$(date -d "$month-01" +%u) || return 1
+    slot=$(date -d "$month-0$((1 + (7 - dow) % 7)) 05:00:00" +%s) || return 1
+    if [ "$slot" -le "$now" ]; then
+      printf '%s\n' "$slot"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Test de restauration absent de status.json ou antérieur au dernier créneau : le timer a tourné volume verrouillé
+# (Persistent=true au démarrage après une coupure), sans rien écrire, et ne repasserait que le mois suivant.
+restore_test_missed() {
+  local slot at at_s
+  slot=$(last_restore_test_slot) || return 1
+  at=$("$JQ" -r '.restoreTest.at // ""' "$APPSPORT_ROOT/data/ops/status.json" 2>/dev/null) || return 0
+  [ -n "$at" ] || return 0
+  at_s=$(date -u -d "$at" +%s 2>/dev/null) || return 0
+  [ "$at_s" -lt "$slot" ]
+}
+
 main() {
   require_cmds "$JQ" "$CURL" "$CRYPTSETUP"
   if ! luks_open; then
@@ -50,6 +78,12 @@ main() {
   if backup_missed; then
     log "Sauvegarde de la nuit manquée : relance de appsport-backup."
     "$SYSTEMCTL" start --no-block appsport-backup.service || log "Avertissement : relance de appsport-backup impossible."
+  fi
+  # Après la sauvegarde éventuelle : After=appsport-backup.service attend sa fin (verrou exclusif).
+  if restore_test_missed; then
+    log "Test de restauration du mois manqué : relance de appsport-restore-test."
+    "$SYSTEMCTL" start --no-block appsport-restore-test.service ||
+      log "Avertissement : relance de appsport-restore-test impossible."
   fi
   return 0
 }

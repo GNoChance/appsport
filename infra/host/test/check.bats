@@ -75,3 +75,43 @@ disk_at() { on df "--output=pcent $1" 0 "printf 'Use%%\n %s%%\n' $2"; }
   [ "$(cat "$STATUS_FILE")" = "$before" ]
   refute_call "chown *"
 }
+
+@test "smartctl absent de l'hôte : un seul problème « smartctl absent », pas de « SMART KO » par disque" {
+  SMARTCTL="$T/absent/smartctl" run "$CHECK"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order "curl *--data-raw smartctl absent de l'hôte https://hc.test/host/fail"
+  refute_call "curl *SMART KO*"
+  jq -e '.host | .ok == false and .smartOk == false and .detail == "smartctl absent de l'"'"'hôte"
+    and (.disks | length) == 3' "$STATUS_FILE"
+}
+
+@test "df absent de l'hôte : un seul problème « df absent », pas de « disque illisible »" {
+  DF="$T/absent/df" run "$CHECK"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order "curl *--data-raw df absent de l'hôte https://hc.test/host/fail"
+  refute_call "curl *illisible*"
+  jq -e '.host | .ok == false and .smartOk == true and .disks == [] and .detail == "df absent de l'"'"'hôte"' \
+    "$STATUS_FILE"
+}
+
+@test "SMART_DEVICES par défaut : disques de lsblk sans zram ni mmcblk (non évaluables par smartctl)" {
+  cat >"$T/bin/lsblk" <<'LSBLK'
+#!/usr/bin/env bash
+printf '%s\n' '/dev/sda disk' '/dev/zram0 disk' '/dev/mmcblk0 disk' '/dev/nvme0n1 disk' '/dev/sda1 part' '/dev/sr0 rom'
+LSBLK
+  chmod +x "$T/bin/lsblk"
+  unset SMART_DEVICES
+  run "$CHECK"
+  [ "$status" -eq 0 ]
+  assert_calls_in_order "smartctl -H /dev/sda" "smartctl -H /dev/nvme0n1" "curl * https://hc.test/host"
+  [ "$(count_calls "smartctl *")" -eq 2 ]
+}
+
+@test "SMART_DEVICES <type>:<périphérique> : smartctl -d <type>, motif sans le type" {
+  export SMART_DEVICES="/dev/sda sat:/dev/disk/by-id/usb-WD_Passport-0:0"
+  on smartctl '-H -d sat /dev/disk/by-id/usb-WD_Passport-0:0' 0 "echo 'SMART overall-health self-assessment test result: FAILED!'"
+  run "$CHECK"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order "smartctl -H /dev/sda" "smartctl -H -d sat /dev/disk/by-id/usb-WD_Passport-0:0"
+  assert_calls_in_order "curl *--data-raw SMART KO sur /dev/disk/by-id/usb-WD_Passport-0:0 https://hc.test/host/fail"
+}

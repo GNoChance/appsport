@@ -157,3 +157,32 @@ assert_tmp_empty() {
   assert_tmp_empty
   jq -e '.restoreTest | .ok == false and .detail == "test de restauration interrompu"' "$STATUS_FILE"
 }
+
+@test "base réelle en intégrité KO : motif « intégrité KO sur la base réelle », pas de conteneur" {
+  echo '{"integrity":"*** in database main ***\nPage 7 is never used","users":0,"syncCounter":0,"lastWriteAt":null}' \
+    >"$STATE/db-stats-live"
+  run "$RESTORE_TEST"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order "curl *--data-raw intégrité KO sur la base réelle https://hc.test/restore-test/fail"
+  refute_call "docker run -d *"
+  assert_tmp_empty
+  jq -e '.restoreTest | .ok == false and .detail == "intégrité KO sur la base réelle"' "$STATUS_FILE"
+}
+
+@test "base réelle plus ancienne que la sauvegarde : échec au-delà de 5 min, écart 0 h en deçà" {
+  # 5 min de tolérance (horloge recalée) : la base réelle ne recule pas sans restauration.
+  echo '{"integrity":"ok","users":2,"syncCounter":40,"lastWriteAt":"2026-10-05T01:25:00.000Z"}' >"$STATE/db-stats-live"
+  run "$RESTORE_TEST"
+  [ "$status" -eq 0 ]
+  jq -e '.restoreTest | .ok == true and .detail == "daily-20261005.db ; écart 0 h"' "$STATUS_FILE"
+
+  reset_calls
+  echo '{"integrity":"ok","users":2,"syncCounter":40,"lastWriteAt":"2026-10-05T01:24:59.000Z"}' >"$STATE/db-stats-live"
+  run "$RESTORE_TEST"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order \
+    "curl *--data-raw base réelle plus ancienne que la sauvegarde https://hc.test/restore-test/fail"
+  refute_call "docker run -d *"
+  assert_tmp_empty
+  jq -e '.restoreTest | .ok == false and .detail == "base réelle plus ancienne que la sauvegarde"' "$STATUS_FILE"
+}

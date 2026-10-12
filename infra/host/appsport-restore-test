@@ -2,7 +2,7 @@
 # appsport-restore-test (R-OPS-11, R-DEP-7, 08 §7) : timer du 1er dimanche du mois à 05:00.
 # 1. restaure le dernier daily hors site dans $APPSPORT_ROOT/tmp/restore-test-<AAAAMMJJTHHMMSSZ>/ (volume chiffré,
 #    jamais le disque en clair) ; 2. db:stats sur une copie du plus récent (intégrité, au moins un utilisateur) dans
-#    un conteneur sans réseau ; 3. retard de sa dernière écriture sur la base réelle de 48 h au plus ; 4. conteneur
+#    un conteneur sans réseau ; 3. base réelle intègre, retard de la copie sur elle de 48 h au plus ; 4. conteneur
 #    jetable de la même image, sans réseau ni secret, qui doit répondre 200 sur /api/health ; 5. restic check
 #    --read-data-subset=5% local puis offsite ; 6. détruit tout, écrit restoreTest dans status.json, pingue.
 # Codes : 0 succès, 1 échec (signalé par /fail, motif sans donnée personnelle).
@@ -12,6 +12,9 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 CONTAINER=appsport-restore-test
 MAX_LAG_S=172800
+# Base réelle en deçà de la copie : impossible sans restauration (horodatages de l'horloge du serveur), sauf horloge
+# recalée de quelques minutes.
+MAX_AHEAD_S=300
 # Même sonde que l'image (node:24-slim n'a pas curl), bornée à 5 s par essai.
 HEALTH_PROBE="fetch('http://127.0.0.1:3000/api/health',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
 RT_DIR=""
@@ -60,12 +63,12 @@ latest_daily() {
 # shellcheck disable=SC2016 # variables du filtre jq, pas du shell
 json_field() { "$JQ" -r --arg k "$2" '.[$k] // empty' <<<"$1" 2>/dev/null || true; }
 
-# lag_seconds <db:stats copie> <db:stats réelle> : avance de la base réelle en secondes (0 au moins).
+# lag_seconds <db:stats copie> <db:stats réelle> : avance de la base réelle en secondes (négative si elle recule).
 # shellcheck disable=SC2016 # variables du filtre jq, pas du shell
 lag_seconds() {
   "$JQ" -nr --argjson c "$1" --argjson l "$2" \
     'def t: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
-     ($l.lastWriteAt | t) - ($c.lastWriteAt | t) | if . < 0 then 0 else floor end' 2>/dev/null
+     ($l.lastWriteAt | t) - ($c.lastWriteAt | t) | floor' 2>/dev/null
 }
 
 # Test du daily restauré : intégrité, utilisateurs, retard ; détail « <fichier> ; écart <h> h » dans DETAIL.
@@ -77,8 +80,11 @@ check_copy() {
   users=$(json_field "$copy" users)
   if ! [[ "$users" =~ ^[0-9]+$ ]] || [ "$users" -lt 1 ]; then fail "aucun utilisateur dans la copie restaurée"; fi
   live=$(app_cli db:stats) || fail "db:stats impossible sur la base réelle"
+  [ "$(json_field "$live" integrity)" = ok ] || fail "intégrité KO sur la base réelle"
   lag=$(lag_seconds "$copy" "$live") || lag=""
-  [[ "$lag" =~ ^[0-9]+$ ]] || fail "date de dernière écriture illisible"
+  [[ "$lag" =~ ^-?[0-9]+$ ]] || fail "date de dernière écriture illisible"
+  [ "$lag" -ge "-$MAX_AHEAD_S" ] || fail "base réelle plus ancienne que la sauvegarde"
+  if [ "$lag" -lt 0 ]; then lag=0; fi
   [ "$lag" -le "$MAX_LAG_S" ] || fail "retard de $((lag / 3600)) h sur la base réelle"
   DETAIL="${daily##*/} ; écart $((lag / 3600)) h"
 }

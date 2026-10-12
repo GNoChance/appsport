@@ -29,7 +29,10 @@
 : "${TAILSCALE_STATE:=/var/lib/tailscale}"
 : "${REBOOT_REQUIRED_FILE:=/var/run/reboot-required}"
 : "${LOCK_FILE:=/run/appsport.lock}"
-: "${SMART_DEVICES:=$(lsblk -dno PATH,TYPE 2>/dev/null | awk '$2 == "disk" { print $1 }' | tr '\n' ' ')}"
+# Disques évalués par smartctl (appsport-check), séparés par des espaces ; <type>:<chemin> ajoute -d <type> (pont
+# USB : sat:/dev/disk/by-id/usb-…). Par défaut, les disques de lsblk sauf zram et mmcblk, que smartctl n'évalue pas.
+: "${SMART_DEVICES:=$(lsblk -dno PATH,TYPE 2>/dev/null |
+  awk '$2 == "disk" && $1 !~ /^\/dev\/(zram|mmcblk)/ { print $1 }' | tr '\n' ' ')}"
 
 # Secrets sur le volume chiffré (R-OPS-4) ; seules les URL Healthchecks sont hors du volume.
 export DOCKER_CONFIG="$APPSPORT_ROOT/secrets/docker"

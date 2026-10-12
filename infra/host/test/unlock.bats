@@ -95,7 +95,7 @@ setup() {
   assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-backup.service"
 
   reset_calls
-  write_backup_at "$(date -u -d '-23 hours' +%Y-%m-%dT%H:%M:%SZ)"
+  write_status_at "$(date -u -d '-23 hours' +%Y-%m-%dT%H:%M:%SZ)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   run "$UNLOCK"
   [ "$status" -eq 0 ]
   refute_call "systemctl start --no-block *"
@@ -107,6 +107,67 @@ setup() {
   run "$UNLOCK"
   [ "$status" -eq 0 ]
   assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-backup.service"
+}
+
+# write_status_at <backup.at> <restoreTest.at|""> : status.json, sans section restoreTest si la date est vide.
+write_status_at() {
+  jq -cn --arg b "$1" --arg r "$2" \
+    '{backup: {at: $b, ok: true}} + (if $r == "" then {} else {restoreTest: {at: $r, ok: true}} end)' \
+    >"$APPSPORT_ROOT/data/ops/status.json"
+}
+
+# fake_now <date GNU> : date sans -d répond à cette heure (UTC) ; date -d reste la vraie commande.
+fake_now() {
+  local real s
+  rm -f "$T/bin/date"
+  hash -r
+  real=$(command -v date)
+  s=$("$real" -u -d "$1" +%s)
+  cat >"$T/bin/date" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+  case \$a in -d | -d* | --date | --date=*) exec "$real" "\$@" ;; esac
+done
+exec "$real" -d "@$s" "\$@"
+EOF
+  chmod +x "$T/bin/date"
+}
+
+@test "test de restauration manqué (absent ou antérieur au dernier 1er dimanche 05:00) : relancé, jamais sinon" {
+  # Timer Sun *-*-01..07 05:00:00 : le 4 octobre 2026 est le 1er dimanche, le 6 septembre le précédent (28 jours).
+  export TZ=UTC
+  fake_now '2026-10-04 06:00:00'
+
+  # Coupure le 1er dimanche : le timer a tourné volume verrouillé, restoreTest date du mois d'avant (28 j).
+  write_status_at 2026-10-04T05:00:00Z 2026-09-06T05:40:00Z
+  run "$UNLOCK"
+  [ "$status" -eq 0 ]
+  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-restore-test.service"
+  refute_call "systemctl start --no-block appsport-backup.service"
+
+  # Test du mois fait après le créneau : rien à relancer.
+  reset_calls
+  write_status_at 2026-10-04T05:00:00Z 2026-10-04T05:40:00Z
+  run "$UNLOCK"
+  [ "$status" -eq 0 ]
+  refute_call "systemctl start --no-block *"
+
+  # Avant le créneau du jour, le test de septembre suffit.
+  reset_calls
+  fake_now '2026-10-04 04:00:00'
+  write_status_at 2026-10-04T03:40:00Z 2026-09-06T05:40:00Z
+  run "$UNLOCK"
+  [ "$status" -eq 0 ]
+  refute_call "systemctl start --no-block *"
+
+  # Jamais fait (première installation) avec la sauvegarde manquée : sauvegarde d'abord, test ensuite
+  # (After=appsport-backup.service les ordonne, le verrou exclusif ne les met pas en conflit).
+  reset_calls
+  echo '{}' >"$APPSPORT_ROOT/data/ops/status.json"
+  run "$UNLOCK"
+  [ "$status" -eq 0 ]
+  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-backup.service" \
+    "systemctl start --no-block appsport-restore-test.service"
 }
 
 @test "lancé par un lien symbolique (/usr/local/sbin) : common.sh trouvé, OK" {

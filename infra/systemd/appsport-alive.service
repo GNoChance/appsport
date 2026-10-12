@@ -7,3 +7,5 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/appsport-alive
+# Oneshot : aucun délai par défaut ; au-delà, SIGTERM. Un lancement bloqué (restic sur B2) empêcherait les suivants.
+TimeoutStartSec=2min
