@@ -1,0 +1,9 @@
+# appsport : instantané daily et sauvegardes restic local et offsite (08 §9, §15) ; /usr/local/sbin/appsport-backup est un lien vers infra/host/.
+[Unit]
+Description=appsport : instantané daily et sauvegardes restic local et offsite
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/appsport-backup

@@ -1,0 +1,9 @@
+# appsport : santé par l'URL *.ts.net, ping Healthchecks alive (08 §9, §15) ; /usr/local/sbin/appsport-alive est un lien vers infra/host/.
+[Unit]
+Description=appsport : santé par l'URL *.ts.net, ping Healthchecks alive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/appsport-alive

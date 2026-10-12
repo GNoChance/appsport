@@ -1,0 +1,9 @@
+# appsport : test de restauration mensuel depuis la sauvegarde hors site (08 §9, §15) ; /usr/local/sbin/appsport-restore-test est un lien vers infra/host/.
+[Unit]
+Description=appsport : test de restauration mensuel depuis la sauvegarde hors site
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/appsport-restore-test

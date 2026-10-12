@@ -102,6 +102,9 @@ volume_mounted() { "$MOUNTPOINT" -q "$APPSPORT_ROOT"; }
 
 sentinel_present() { [ -f "$APPSPORT_ROOT/data/.appsport-volume" ]; }
 
+# Volume chiffré monté et sentinelle présente : status.json peut s'écrire sans toucher le disque en clair.
+volume_ready() { volume_mounted && sentinel_present; }
+
 # Garde de tout compose up -d (appsport-unlock, appsport-update) : vraie si une réapplication est en attente.
 reapply_pending() { [ -e "$REAPPLY_MARKER" ]; }
 
@@ -212,6 +215,23 @@ status_merge_locked() {
   return 1
 }
 
+# ops_check_json <true|false> <détail> : section {at, ok, detail} de status.json (backup, restoreTest).
+# shellcheck disable=SC2016 # variables du filtre jq, pas du shell
+ops_check_json() {
+  "$JQ" -cn --arg at "$(now_iso)" --argjson ok "$1" --arg d "$2" '{at: $at, ok: $ok, detail: $d}'
+}
+
+# join_problems <motif…> : motifs joints par « ; » (détail de status.json et motif Healthchecks).
+join_problems() {
+  local out=$1
+  shift
+  while [ $# -gt 0 ]; do
+    out+=" ; $1"
+    shift
+  done
+  printf '%s\n' "$out"
+}
+
 # restic_on <local|offsite> <args…> : B2 lu dans un sous-shell, ses clés ne fuient pas dans le script.
 restic_on() {
   local where=$1
@@ -231,13 +251,18 @@ restic_on() {
   esac
 }
 
+# restic_backup_on <local|offsite> <tag> : instantanés, secrets, deploy.* et identité Tailscale ; base vive exclue.
+restic_backup_on() {
+  restic_on "$1" backup --tag "$2" --exclude "$APPSPORT_ROOT/data/appsport.db*" \
+    "$APPSPORT_ROOT/data/snapshots" "$APPSPORT_ROOT/secrets" "$APPSPORT_ROOT/deploy.env" \
+    "$APPSPORT_ROOT/deploy.log" "$TAILSCALE_STATE" >&2
+}
+
 # restic_backup_all <tag> : local puis offsite ; dépôts en échec sur stdout, 1 si au moins un échec.
 restic_backup_all() {
   local tag=$1 where failed=0
   for where in local offsite; do
-    if ! restic_on "$where" backup --tag "$tag" --exclude "$APPSPORT_ROOT/data/appsport.db*" \
-      "$APPSPORT_ROOT/data/snapshots" "$APPSPORT_ROOT/secrets" "$APPSPORT_ROOT/deploy.env" \
-      "$APPSPORT_ROOT/deploy.log" "$TAILSCALE_STATE" >&2; then
+    if ! restic_backup_on "$where" "$tag"; then
       echo "$where"
       failed=1
     fi

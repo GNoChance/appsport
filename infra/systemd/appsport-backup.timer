@@ -1,0 +1,10 @@
+# Tous les jours à 03:30 (08 §7) ; rattrapé au démarrage s'il a été manqué (volume verrouillé : /fail).
+[Unit]
+Description=Timer de appsport-backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

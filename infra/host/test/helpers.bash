@@ -53,11 +53,21 @@ EOF
 }
 
 # jq.exe de Windows écrit des CRLF : -b (sans effet ailleurs) ; sous Linux, le vrai jq est utilisé tel quel.
+# MSYS réécrirait aussi en chemin Windows toute valeur qui ressemble à un chemin (--arg m / devient
+# C:/Program Files/Git/) : conversion coupée, seuls les fichiers existants passés en argument sont convertis.
 wrap_windows_jq() {
   [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]] || return 0
   local real
   real=$(command -v jq)
-  printf '#!/usr/bin/env bash\nexec "%s" -b "$@"\n' "$real" >"$T/bin/jq"
+  cat >"$T/bin/jq" <<EOF
+#!/usr/bin/env bash
+args=()
+for a in "\$@"; do
+  if [[ "\$a" == /* ]] && [ -f "\$a" ]; then a=\$(cygpath -w "\$a"); fi
+  args+=("\$a")
+done
+MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' exec "$real" -b "\${args[@]}"
+EOF
   chmod +x "$T/bin/jq"
 }
 

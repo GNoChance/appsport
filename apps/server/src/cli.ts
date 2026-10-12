@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { CivilDate } from '@appsport/contracts';
 import { usernameKey } from '@appsport/domain';
@@ -7,7 +7,7 @@ import { CamelCasePlugin, Kysely } from 'kysely';
 import { z } from 'zod';
 import { bootstrapAdminInvitation } from './auth/bootstrap';
 import { createPasswordReset } from './auth/password-reset';
-import { type AppConfig, loadConfig } from './config';
+import { type AppConfig, dataDirFrom, loadConfig } from './config';
 import { migrate } from './db/migrate';
 import { MIGRATIONS, type Migration } from './db/migrations/index';
 import { openDatabase } from './db/open';
@@ -18,6 +18,7 @@ import { type AppDeps, createAppDeps, cryptoIds, systemClock } from './deps';
 import { HttpError } from './http/errors';
 import { createLogger } from './logger';
 import { listActiveWorkoutSessions } from './ops/active-sessions';
+import { dbStats } from './ops/db-stats';
 import { restoreSnapshot } from './ops/restore';
 import { assertSnapshotTag, pruneSnapshots, takeSnapshot } from './ops/snapshot';
 import {
@@ -304,6 +305,26 @@ async function runSessionsActive(args: string[], ctx: CliContext): Promise<numbe
   return 0;
 }
 
+/**
+ * Une ligne JSON (DbStats), code 0 même si l'intégrité est KO. Lu par appsport-restore-test sur la copie
+ * restaurée (docker run sans env_file : ni APP_ORIGIN ni loadConfig) et sur la base réelle (service en marche) :
+ * lecture seule, sans garde, withAppDeps ni migration ; une migration cassante inconnue ne gêne pas.
+ */
+async function runDbStats(_args: string[], ctx: CliContext): Promise<number> {
+  const dbPath = join(dataDirFrom(ctx.env), 'appsport.db');
+  if (!existsSync(dbPath)) {
+    ctx.err(`Base introuvable : ${dbPath}.`);
+    return 1;
+  }
+  const sqlite = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    ctx.out(JSON.stringify(dbStats(sqlite)));
+  } finally {
+    sqlite.close();
+  }
+  return 0;
+}
+
 export const COMMANDS: Record<string, CliCommand> = {
   'admin:bootstrap': {
     usage:
@@ -341,6 +362,11 @@ export const COMMANDS: Record<string, CliCommand> = {
   init: {
     usage: "init : crée la base d'un volume neuf (sentinelle requise) et fixe l'époque du serveur",
     run: (_args, ctx) => runInit(loadConfig(ctx.env), ctx),
+  },
+  'db:stats': {
+    usage:
+      'db:stats : intégrité, comptes, compteur de synchro et dernière écriture de la base, en une ligne JSON (lecture seule)',
+    run: runDbStats,
   },
   'db:check': {
     usage: "db:check : vérifie l'intégrité de la base (integrity_check et foreign_key_check)",

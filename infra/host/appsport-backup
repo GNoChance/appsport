@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# appsport-backup (R-OPS-9, R-OPS-10, R-DEP-7, 08 §7, §9) : timer de 03:30, ou relancé par appsport-unlock.
+# Instantané daily (élagage de snapshots/ inclus), puis restic local et offsite ; chaque dépôt n'est purgé
+# (forget --keep-daily 30 --prune) qu'après sa propre sauvegarde réussie. Healthchecks backup : début, succès ou
+# /fail avec un motif sans donnée personnelle ; section backup de status.json.
+# Codes : 0 succès, 1 échec.
+set -euo pipefail
+# shellcheck source-path=SCRIPTDIR source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+
+# fail <motif> : section backup de status.json (sautée si le volume n'est pas monté : rien ne s'écrit sur le
+# disque en clair), puis /fail avec le motif, code 1.
+fail() {
+  log "Échec de la sauvegarde : $1"
+  if volume_ready; then
+    status_merge backup "$(ops_check_json false "$1")" || log "Avertissement : status.json non mis à jour."
+  fi
+  hc_ping backup fail "$1" || log "Avertissement : échec non signalé à Healthchecks."
+  exit 1
+}
+
+main() {
+  local where
+  local -a problems=()
+  require_cmds "$JQ" "$FLOCK" "$RESTIC" "$CURL"
+  hc_ping backup start || log "Avertissement : début non signalé à Healthchecks."
+  volume_ready || fail "volume verrouillé : lancer appsport-unlock"
+  take_lock || fail "verrou occupé"
+  app_cli snapshot --tag daily || fail "instantané daily en échec"
+  for where in local offsite; do
+    if ! restic_backup_on "$where" daily; then
+      problems+=("sauvegarde $where en échec")
+    elif ! restic_on "$where" forget --keep-daily 30 --prune >&2; then
+      problems+=("purge $where en échec")
+    fi
+  done
+  if [ "${#problems[@]}" -gt 0 ]; then fail "$(join_problems "${problems[@]}")"; fi
+  status_merge backup "$(ops_check_json true local+offsite)" || log "Avertissement : status.json non mis à jour."
+  hc_ping backup || log "Avertissement : succès non signalé à Healthchecks."
+  log "Sauvegarde terminée : local+offsite."
+}
+
+main "$@"; exit $?

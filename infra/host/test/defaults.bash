@@ -5,8 +5,14 @@
 #   healthy : versions saines (« v » ; « v@restored » : saine tant qu'aucune autre version n'a démarré, schéma
 #   non migré, puis seulement après `restore`) ; started : versions démarrées par `compose up` ;
 #   health-code : code de sortie imposé au curl de santé (set_health) ;
-#   sessions : sortie de sessions:active ; pulled, up-env (une ligne par up), restic-env : environnement vu
-#   par pull, up, restic.
+#   sessions : sortie de sessions:active ; pulled, up-env (une ligne par up), restic-env, restic-pass :
+#   environnement vu par pull, up, restic ;
+#   db-stats-live, db-stats-copy : sortie de db:stats sur la base réelle (compose exec ou run) et sur la copie du
+#   test de restauration (docker run --rm) ; db-stats-source : contenu de la copie lue (nom de l'instantané).
+
+# db:stats par défaut : bases saines ; la base réelle a 18 h 30 d'avance sur le daily restauré.
+DB_STATS_LIVE='{"integrity":"ok","users":2,"syncCounter":52,"lastWriteAt":"2026-10-05T20:00:00.000Z"}'
+DB_STATS_COPY='{"integrity":"ok","users":2,"syncCounter":40,"lastWriteAt":"2026-10-05T01:30:00.000Z"}'
 
 # Chemin sur l'hôte d'un chemin /data/… du conteneur.
 host_data_path() { printf '%s\n' "$APPSPORT_ROOT/data${1#/data}"; }
@@ -41,12 +47,40 @@ default_server_cli() {
     privacy:reapply)
       [ -f "$(host_data_path "$1")" ] || return 1
       ;;
+    db:stats)
+      if [ -f "$STATE/db-stats-live" ]; then cat "$STATE/db-stats-live"; else echo "$DB_STATS_LIVE"; fi
+      ;;
   esac
 }
 
+# docker run hors compose (appsport-restore-test) : -d → conteneur jetable démarré (identifiant affiché) ;
+# sinon db:stats sur le dossier monté en /data, qui doit contenir la copie et la sentinelle.
+default_docker_run() {
+  local arg prev="" src=""
+  for arg in "$@"; do
+    if [ "$arg" = -d ]; then
+      echo 0123456789cd
+      return 0
+    fi
+    if [ "$prev" = -v ] && [[ "$arg" == *:/data ]]; then src=${arg%:/data}; fi
+    prev=$arg
+  done
+  [ "${*: -1}" = db:stats ] || return 0
+  [ -n "$src" ] && [ -f "$src/appsport.db" ] && [ -f "$src/.appsport-volume" ] || return 1
+  cat "$src/appsport.db" >"$STATE/db-stats-source"
+  if [ -f "$STATE/db-stats-copy" ]; then cat "$STATE/db-stats-copy"; else echo "$DB_STATS_COPY"; fi
+}
+
 default_docker() {
-  [ "${1:-}" = compose ] || return 0
-  shift
+  case ${1:-} in
+    compose) shift ;;
+    run)
+      shift
+      default_docker_run "$@"
+      return
+      ;;
+    *) return 0 ;;
+  esac
   while [ $# -gt 0 ]; do
     case $1 in
       --project-name | -f | --env-file) shift 2 ;;
@@ -100,9 +134,10 @@ health_ok() {
   return 1
 }
 
+# Santé locale (HEALTH_URL) ou par l'URL *.ts.net (appsport-alive) : même simulation.
 default_curl() {
   local last=${*: -1}
-  [ "$last" = "$HEALTH_URL" ] || return 0
+  [ "$last" = "$HEALTH_URL" ] || [[ "$last" == https://*/api/health ]] || return 0
   if [ -f "$STATE/health-code" ]; then
     local code
     code=$(cat "$STATE/health-code")
@@ -131,7 +166,32 @@ default_mount() {
 default_restic() {
   # restic -r <dépôt> … : B2 seulement lit b2.env (sous-shell de restic_on).
   printf '%s %s\n' "${2:-}" "${AWS_ACCESS_KEY_ID:-none}" >>"$STATE/restic-env"
+  printf '%s\n' "${RESTIC_PASSWORD_FILE:-none}" >>"$STATE/restic-pass"
+  [ "${3:-}" = restore ] || return 0
+  # restore latest --tag daily --target <dossier> --include <chemin> : comme restic, le chemin absolu sauvegardé
+  # est recréé sous <dossier> ; trois daily (dans le désordre) et un pre-v, chacun contenant son nom.
+  local target="" include="" name
+  shift 3
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --target | --include)
+        if [ "$1" = --target ]; then target=${2:-}; else include=${2:-}; fi
+        shift 2 || return 1
+        ;;
+      *) shift ;;
+    esac
+  done
+  [ -n "$target" ] && [ -n "$include" ] || return 1
+  mkdir -p "$target$include"
+  for name in daily-20261003 daily-20261005 daily-20261004 pre-v1.2.0; do
+    echo "$name" >"$target$include/$name.db"
+  done
 }
+
+# df --output=pcent <montage> : 42 % partout.
+default_df() { printf 'Use%%\n 42%%\n'; }
+
+default_smartctl() { echo "SMART overall-health self-assessment test result: PASSED"; }
 
 # fd_open_on <fd> <fichier> : descripteur hérité ouvert en écriture, et sur <fichier> (même périphérique et inode)
 # là où /proc le montre (Linux, MSYS ; sous MSYS, /tmp et son chemin Windows désignent le même fichier).
