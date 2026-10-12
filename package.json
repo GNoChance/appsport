@@ -11,11 +11,14 @@
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
     "test": "vitest run",
     "test:e2e": "pnpm --filter @appsport/web test:e2e",
-    "build": "pnpm --filter @appsport/web build"
+    "test:infra": "env LC_ALL=C.UTF-8 bats infra/host/test",
+    "build": "pnpm --filter @appsport/web build && pnpm build:server",
+    "build:server": "pnpm --filter @appsport/server build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",
     "@types/node": "^24.7",
+    "bats": "^1.13.0",
     "typescript": "^7",
     "vitest": "^5"
   }

@@ -1,0 +1,5 @@
+// /etc/apt/apt.conf.d/52appsport-unattended (08 §2, §13.11) : mises à jour de sécurité chaque jour,
+// sans jamais redémarrer la machine ; le redémarrage se fait en maintenance mensuelle (P7) ou sur alerte host.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+Unattended-Upgrade::Automatic-Reboot "false";

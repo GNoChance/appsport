@@ -7,8 +7,9 @@ import { runCli } from '../src/cli';
 import { loadConfig } from '../src/config';
 import { MigrationError } from '../src/db/migrate';
 import { openDatabase } from '../src/db/open';
+import type { AppDeps } from '../src/deps';
 import { createLogger } from '../src/logger';
-import { main, startServer } from '../src/main';
+import { main, type RunningServer, startServer } from '../src/main';
 import { assertStartupPreconditions, StartupError } from '../src/startup-guard';
 
 let dir: string;
@@ -152,4 +153,78 @@ describe('startServer', () => {
 
 it("main(['nope']) → 1", async () => {
   expect(await main(['nope'])).toBe(1);
+});
+
+describe('main : signaux pendant le démarrage (PID 1 du conteneur)', () => {
+  const SIGNALS = ['SIGTERM', 'SIGINT'] as const;
+  let saved: Map<string, NodeJS.SignalsListener[]>;
+
+  beforeEach(() => {
+    saved = new Map(SIGNALS.map((s) => [s, process.listeners(s)]));
+    for (const s of SIGNALS) process.removeAllListeners(s);
+  });
+
+  afterEach(() => {
+    for (const s of SIGNALS) {
+      process.removeAllListeners(s);
+      for (const l of saved.get(s) ?? []) process.on(s, l);
+    }
+  });
+
+  const deferredStart = () => {
+    const close = vi.fn(async () => {});
+    let release: (() => void) | undefined;
+    let fail: ((error: Error) => void) | undefined;
+    const start = (): Promise<RunningServer> =>
+      new Promise<RunningServer>((resolve, reject) => {
+        release = () => resolve({ port: 0, deps: {} as AppDeps, close });
+        fail = reject;
+      });
+    return {
+      close,
+      start,
+      release: () => release?.(),
+      fail: (error: Error) => fail?.(error),
+    };
+  };
+
+  const settled = (p: Promise<number>): Promise<number | 'en attente'> =>
+    Promise.race([p, new Promise<'en attente'>((r) => setTimeout(() => r('en attente'), 1000))]);
+
+  it.each(SIGNALS)(
+    '%s reçu avant la fin de startServer → close() une fois démarré, main résout 0',
+    async (signal) => {
+      const d = deferredStart();
+      const exited = main([], d.start);
+      await vi.waitFor(() => expect(process.listenerCount(signal)).toBe(1));
+      process.emit(signal, signal);
+      expect(d.close).not.toHaveBeenCalled();
+      d.release();
+      expect(await settled(exited)).toBe(0);
+      expect(d.close).toHaveBeenCalledOnce();
+      for (const s of SIGNALS) expect(process.listenerCount(s)).toBe(0);
+    },
+  );
+
+  it('signal reçu après le démarrage → close() puis main résout 0', async () => {
+    const d = deferredStart();
+    const exited = main([], d.start);
+    d.release();
+    await vi.waitFor(() => expect(process.listenerCount('SIGTERM')).toBe(1));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(d.close).not.toHaveBeenCalled();
+    process.emit('SIGTERM', 'SIGTERM');
+    expect(await settled(exited)).toBe(0);
+    expect(d.close).toHaveBeenCalledOnce();
+    for (const s of SIGNALS) expect(process.listenerCount(s)).toBe(0);
+  });
+
+  it('échec du démarrage → erreur relancée et écouteurs retirés', async () => {
+    const d = deferredStart();
+    const exited = main([], d.start);
+    await vi.waitFor(() => expect(process.listenerCount('SIGTERM')).toBe(1));
+    d.fail(new Error('démarrage impossible'));
+    await expect(exited).rejects.toThrow('démarrage impossible');
+    for (const s of SIGNALS) expect(process.listenerCount(s)).toBe(0);
+  });
 });

@@ -1,0 +1,11 @@
+# appsport : disques, SMART et redémarrage requis, ping Healthchecks host (08 §9, §15) ; /usr/local/sbin/appsport-check est un lien vers infra/host/.
+[Unit]
+Description=appsport : disques, SMART et redémarrage requis, ping Healthchecks host
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/appsport-check
+# Oneshot : aucun délai par défaut ; au-delà, SIGTERM. Un lancement bloqué (restic sur B2) empêcherait les suivants.
+TimeoutStartSec=10min

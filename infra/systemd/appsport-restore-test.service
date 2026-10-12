@@ -1,0 +1,11 @@
+# appsport : test de restauration mensuel depuis la sauvegarde hors site (08 §9, §15) ; /usr/local/sbin/appsport-restore-test est un lien vers infra/host/.
+[Unit]
+Description=appsport : test de restauration mensuel depuis la sauvegarde hors site
+After=network-online.target appsport-backup.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/appsport-restore-test
+# Oneshot : aucun délai par défaut ; au-delà, SIGTERM. Un lancement bloqué (restic sur B2) empêcherait les suivants.
+TimeoutStartSec=6h

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# appsport-alive (08 §9, §13.3) : timer de 5 min. /api/health par l'URL https://appsport.<tailnet>.ts.net
+# (certificat, tailscale serve, appli et base) ; Healthchecks alive : ping, ou /fail avec le motif (volume
+# verrouillé, appli KO). Le silence signale le serveur, la box ou le courant coupés.
+# Codes : 0 OK, 1 KO.
+set -euo pipefail
+# shellcheck source-path=SCRIPTDIR source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+
+ko() {
+  log "KO : $1"
+  hc_ping alive fail "$1" || log "Avertissement : KO non signalé à Healthchecks."
+  exit 1
+}
+
+# health_field <corps> <champ> : valeur courte du corps de /api/health (lettres minuscules et _), vide sinon ;
+# le motif envoyé à Healthchecks ne reprend jamais autre chose.
+# shellcheck disable=SC2016 # variables du filtre jq, pas du shell
+health_field() {
+  local v
+  v=$("$JQ" -r --arg k "$2" '.[$k] // empty | tostring' <<<"$1" 2>/dev/null) || v=""
+  if [[ "$v" =~ ^[a-z_]{1,20}$ ]]; then printf '%s\n' "$v"; fi
+}
+
+main() {
+  local body rc=0 status db
+  require_cmds "$JQ" "$CURL"
+  volume_mounted || ko "volume verrouillé : lancer appsport-unlock"
+  [ -n "${APPSPORT_URL:-}" ] || ko "APPSPORT_URL absente de healthchecks.env"
+  # --fail-with-body : un 503 garde son corps, lu par jq quel que soit le statut.
+  body=$("$CURL" -sS --fail-with-body --max-time 10 "$APPSPORT_URL/api/health") || rc=$?
+  status=$(health_field "$body" status)
+  db=$(health_field "$body" db)
+  if [ "$rc" -eq 0 ] && [ "$status" = ok ]; then
+    hc_ping alive || log "Avertissement : ping alive non reçu par Healthchecks."
+    return 0
+  fi
+  [ -n "$status" ] || ko "appli KO : api/health injoignable"
+  ko "appli KO : status=$status db=${db:-?}"
+}
+
+main "$@"; exit $?

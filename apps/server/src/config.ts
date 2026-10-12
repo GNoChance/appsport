@@ -55,10 +55,14 @@ function parsePort(raw: string | undefined): number {
 const orDefault = (value: string | undefined, fallback: string): string =>
   value === undefined || value === '' ? fallback : value;
 
+/** Dossier des données (`APPSPORT_DATA_DIR`, `/data` par défaut), lisible sans le reste de la configuration. */
+export const dataDirFrom = (env: Record<string, string | undefined>): string =>
+  orDefault(env.APPSPORT_DATA_DIR, '/data');
+
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const origin = parseOrigin(env.APP_ORIGIN);
   const secure = origin.protocol === 'https:';
-  const dataDir = orDefault(env.APPSPORT_DATA_DIR, '/data');
+  const dataDir = dataDirFrom(env);
   return {
     appOrigin: origin.origin,
     version: orDefault(env.APP_VERSION, 'dev'),

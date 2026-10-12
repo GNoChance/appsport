@@ -1,0 +1,10 @@
+# Tous les jours à 04:00 (08 §9) ; rattrapé au démarrage s'il a été manqué.
+[Unit]
+Description=Timer de appsport-check
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
