@@ -431,6 +431,90 @@ describe('P1 Installation initiale', () => {
       expect(body).toContain(word);
     }
   });
+
+  /** En-tête de P1 : tout ce qui précède la première section. */
+  const header = p1.slice(0, p1.indexOf('\n## '));
+
+  /** Étape de la section dont le corps contient la chaîne donnée. */
+  function stepWith(title: string, needle: string): { n: number; head: string; body: string } {
+    const found = steps(section(p1, title)).find((s) => s.body.includes(needle));
+    if (!found) throw new Error(`« ${title} » : aucune étape avec ${needle}`);
+    return found;
+  }
+
+  it("gabarits de disque déclarés dans l'en-tête", () => {
+    const used = new Set(p1.match(/<disque[^>]*>/g));
+    expect(used.size).toBeGreaterThan(0);
+    for (const placeholder of used) expect(header, placeholder).toContain(`\`${placeholder}\``);
+  });
+
+  it("en-tête : aucun secret par message ; seule l'invitation d'un proche part par messagerie (P6)", () => {
+    expect(header).toMatch(/invitation d'un proche[^\n]*messagerie[^\n]*P6/);
+  });
+
+  it("Volume chiffré : table relue par partx (util-linux), jamais partprobe (parted n'est pas installé)", () => {
+    const body = stepWith('Volume chiffré', 'sgdisk --new').body;
+    expect(body).toContain('sudo partx -u /dev/<disque système>');
+    expect(body).toContain('sudo reboot');
+    expect(p1).not.toContain('partprobe');
+  });
+
+  it('Volume chiffré : message réel de cryptsetup pour une phrase refusée', () => {
+    const body = stepWith('Volume chiffré', 'cryptsetup open').body;
+    expect(body).toContain('No key available with this passphrase.');
+    expect(body).not.toContain('Phrase refusée');
+  });
+
+  it('Docker activé au démarrage : son drop-in tirerait le volume et demanderait la phrase LUKS', () => {
+    expect(stepWith('Docker', 'systemctl disable docker.service').body).toContain('phrase LUKS');
+  });
+
+  it('Tailscale SSH : ssh appsport ouvre le compte <compte>, quel que soit le nom de session du PC', () => {
+    expect(stepWith('Tailscale', 'ssh appsport').body).toContain('User <compte>');
+  });
+
+  it('Healthchecks : SMART_DEVICES entre guillemets (fichier lu par bash), ligne mal formée reconnue', () => {
+    const values = [...opsText().matchAll(/SMART_DEVICES=(\S)/g)].map((m) => m[1]);
+    expect(values.length).toBeGreaterThan(0);
+    for (const first of values) expect(first).toBe('"');
+    expect(stepWith('Healthchecks', 'sudo appsport-check').body).toMatch(
+      /healthchecks\.env: line N: [^\n]*No such file or directory/,
+    );
+  });
+
+  it("Healthchecks : alertes attendues jusqu'au premier déploiement, annoncées (08 §9)", () => {
+    const body = section(p1, 'Healthchecks');
+    expect(body).toContain('volume verrouillé : lancer appsport-unlock');
+    expect(body).toContain('« Premier déploiement », étape 4');
+  });
+
+  it("Premier déploiement : l'appli tourne, une nouvelle invitation admin passe par exec -T", () => {
+    expect(section(p1, 'Premier déploiement')).toContain(
+      `${COMPOSE} exec -T app node /app/server.mjs admin:bootstrap --birth-date AAAA-MM-JJ`,
+    );
+  });
+
+  it('Recette 4 : Docker refusé sans volume, phrase LUKS jamais saisie, rien de monté, puis /api/health', () => {
+    const body = (steps(section(p1, 'Recette')).find((s) => s.n === 4) as { body: string }).body;
+    expect(body).toContain('Ctrl+C');
+    expectInOrder(body, [
+      'systemctl start --no-ask-password docker',
+      'systemctl stop docker.socket systemd-cryptsetup@appsport.service',
+      'findmnt /srv/appsport',
+      'ls -A /srv/appsport',
+      'touch /srv/appsport/essai',
+      '.appsport-volume.essai /srv/appsport/data/.appsport-volume',
+      'http://127.0.0.1:3000/api/health',
+    ]);
+  });
+
+  it('Recette 8 : version suivante nommée, remise en service après le retour arrière', () => {
+    const body = (steps(section(p1, 'Recette')).find((s) => s.n === 8) as { body: string }).body;
+    expect(body).not.toMatch(/appsport-update vX\.Y\.Z(?!\+1)/);
+    expect(body.lastIndexOf('sudo appsport-update vX.Y.Z+1')).toBeGreaterThan(
+      body.indexOf('sudo appsport-update --rollback'),
+    );
+  });
 });
 
 describe('P2 à P9', () => {
@@ -475,6 +559,109 @@ describe('P2 à P9', () => {
     const paths = (diff?.line.split(' -- ')[1] ?? '').trim().split(/\s+/).filter(Boolean);
     expect(paths.length, 'git diff sans chemins').toBeGreaterThan(0);
     for (const path of paths) expect(existsSync(join(ROOT, path)), `chemin du git diff : ${path}`).toBe(true);
+  });
+
+  /** Étape de P3 dont le corps contient la chaîne donnée. */
+  function p3Step(needle: string): { n: number; head: string; body: string } {
+    const found = steps(p[3] as string).find((s) => s.body.includes(needle));
+    if (!found) throw new Error(`P3 : aucune étape avec ${needle}`);
+    return found;
+  }
+
+  it('P3 : PR verifiedOn, puis CI verte, recette et tag sur le même commit candidat', () => {
+    const p3 = p[3] as string;
+    expectInOrder(p3, [
+      'numéros de la page Aide',
+      'workflow `ci`',
+      '<commit candidat>',
+      'recette-telephones.md',
+      'git tag vX.Y.Z <commit candidat>',
+    ]);
+    expect(p3Step('git tag vX.Y.Z').body).toContain('<tag erroné>');
+  });
+
+  it('P3 : recette décidée sur tout ce qui construit, sert ou démarre le SW (R-TST-4)', () => {
+    const body = p3Step('git diff --stat <version en place>').body;
+    for (const path of [
+      'apps/web/src/sw',
+      'apps/web/src/sync',
+      'apps/web/src/local-db',
+      'apps/web/src/main.tsx',
+      'apps/web/index.html',
+      'apps/web/public',
+      'apps/web/vite-plugin-precache.ts',
+      'apps/server/src/static.ts',
+      'apps/server/src/sync',
+      'apps/server/src/health',
+      'packages/contracts/src/sync.ts',
+    ]) {
+      expect(body, path).toContain(` ${path}`);
+      expect(existsSync(join(ROOT, path)), path).toBe(true);
+    }
+    expect(body).toContain('dans le doute, la recette est faite');
+  });
+
+  it('P3 : variable VITE_OWNER_FIRST_NAME du workflow release vérifiée', () => {
+    expect(read('.github/workflows/release.yml')).toContain('vars.VITE_OWNER_FIRST_NAME');
+    expect(p3Step('job `publish`').body).toContain('VITE_OWNER_FIRST_NAME');
+  });
+
+  it('P3 : séances listées → N ; attente de 2 min par étape, jamais interrompue ; reprise par tmux', () => {
+    expect(read('infra/host/appsport-update')).toContain('Séances en cours depuis moins de 3 h :');
+    const body = p3Step('sudo appsport-update vX.Y.Z').body;
+    expect(body).toMatch(/Séances en cours depuis moins de 3 h :[^\n]*répondre `N`/);
+    expect(body).toContain('tmux attach -t deploiement');
+    expect(body).toContain('2 min');
+    expect(body).toContain('Ctrl+C');
+  });
+
+  it("P3 : chaque refus d'appsport-update a sa conduite (08 §12)", () => {
+    const p3 = p[3] as string;
+    const script = read('infra/host/appsport-update') + read('infra/host/lib/common.sh');
+    for (const message of [
+      'Usage : appsport-update vX.Y.Z [--yes]',
+      ' : lancez avec sudo.',
+      " absente de l'hôte. Rien n'a été changé.",
+      " absente. Rien n'a été changé.",
+      'Version en place illisible dans ',
+      ' est déjà déployée.',
+      "Impossible de lister les séances en cours. Rien n'a été changé.",
+      "Interrompu : le service n'a pas été modifié.",
+      "git fetch impossible. Rien n'a été changé.",
+      " introuvable. Rien n'a été changé.",
+      'Dernier déploiement réussi illisible dans ',
+    ]) {
+      expect(script, message).toContain(message);
+      expect(p3, message).toContain(message);
+    }
+    expect(p3).toMatch(/git fetch impossible[^\n]*Permission denied \(publickey\)[^\n]*P5/);
+  });
+
+  it('P3 : version KO, ses journaux partis avec son conteneur ; reproduction en CI ou par le runbook', () => {
+    expect(p[3]).toMatch(/\| `rolled-back-image` \|[^\n]*CI[^\n]*RUNBOOK-reconstruction/);
+  });
+
+  it('P3 : après « suivez P4. », la version à garder est remise en place avant toute restauration', () => {
+    const p3 = p[3] as string;
+    const recover = steps(p3).find((s) => s.head.includes('suivez P4')) as { n: number; body: string };
+    expect(recover.n).toBe(11);
+    expect(recover.body).toContain('ne répond pas après restauration');
+    expectInOrder(recover.body, [
+      'reapply-pending',
+      'APPSPORT_VERSION=<version à garder>',
+      'checkout <version à garder>',
+      ' up -d',
+      'pre-<version abandonnée>.db',
+    ]);
+    expect(p3).toMatch(/\| `rollback-failed` \|[^\n]*étape 11/);
+    expect(p[4]).toMatch(/Quand :[^\n]*P3, étape 11/);
+  });
+
+  it("P3 : fichiers de l'hôte réinstallés, Docker relancé pour daemon.json, nouveaux scripts liés", () => {
+    const body = p3Step('<version précédente> vX.Y.Z -- infra/').body;
+    expect(body).toMatch(/git -C \/opt\/appsport diff [^\n]* infra\/host /);
+    expect(body).toContain('sudo systemctl restart docker');
+    expect(body).toContain('sudo ln -s /opt/appsport/infra/host/appsport-');
   });
 
   it('P4 « Sur place » : collecte, marqueur, arrêt, restauration, réapplication, liste retirée, puis seulement redémarrage', () => {
@@ -971,6 +1158,22 @@ describe('hygiène des documents', () => {
     }
     // Chaque secret est bien écrit quelque part (P1, runbook) : le contrôle ne passe pas à vide.
     for (const count of seen) expect(count).toBeGreaterThan(0);
+  });
+
+  it('secrets écrits en place sur le volume chiffré : jamais sudoedit, qui en copie un dans /var/tmp en clair', () => {
+    expect(opsText()).not.toMatch(/sudoedit \/srv\/appsport\/secrets/);
+    expect(opsText()).toContain('sudo nano /srv/appsport/secrets/restic.pass');
+  });
+
+  it('propriétaire 1000 lu en numérique (ls -n), pas sous le nom du premier compte Debian', () => {
+    const owned = steps(opsText()).filter((s) => s.body.includes('`1000 1000`'));
+    expect(owned.length).toBeGreaterThan(0);
+    for (const s of owned) expect(s.body, s.head).toContain('ls -lan');
+  });
+
+  it('commande compose citée dans le texte : préfixe complet, jamais un « logs » nu', () => {
+    for (const [, span] of opsText().matchAll(/`([^`\n]*logs --tail[^`\n]*)`/g))
+      expect(span).toContain(COMPOSE);
   });
 
   it('les liens relatifs entre documents mènent à des fichiers du dépôt', () => {
