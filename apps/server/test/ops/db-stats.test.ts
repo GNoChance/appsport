@@ -59,6 +59,33 @@ describe('dbStats (R-OPS-11, Interfaces §8)', () => {
       expect(dbStats(ctx.deps.sqlite).lastWriteAt).toBe('2026-10-08T09:00:00.000Z');
     });
   });
+
+  /** Base factice : seul `PRAGMA integrity_check` répond (lignes ou exception) ; chaque prepare est noté. */
+  function integrityStub(integrity: Record<string, unknown>[] | Error): {
+    sqlite: DatabaseSync;
+    prepared: string[];
+  } {
+    const prepared: string[] = [];
+    const prepare = (sql: string) => {
+      prepared.push(sql);
+      if (integrity instanceof Error) throw integrity;
+      if (sql !== 'PRAGMA integrity_check') throw new Error(`lecture inattendue : ${sql}`);
+      return { all: () => integrity, get: () => integrity[0] };
+    };
+    return { sqlite: { prepare } as unknown as DatabaseSync, prepared };
+  }
+
+  it('intégrité KO sur plusieurs lignes : lignes jointes par \\n, rien d’autre lu', () => {
+    const { sqlite, prepared } = integrityStub([{ integrity_check: 'a' }, { integrity_check: 'b' }]);
+    expect(dbStats(sqlite)).toEqual({ integrity: 'a\nb', users: 0, syncCounter: 0, lastWriteAt: null });
+    expect(prepared).toEqual(['PRAGMA integrity_check']);
+  });
+
+  it('integrity_check qui lève : son message, compteurs à 0, rien d’autre lu', () => {
+    const { sqlite, prepared } = integrityStub(new Error('boom'));
+    expect(dbStats(sqlite)).toEqual({ integrity: 'boom', users: 0, syncCounter: 0, lastWriteAt: null });
+    expect(prepared).toEqual(['PRAGMA integrity_check']);
+  });
 });
 
 describe('CLI db:stats (sans APP_ORIGIN : lancé par appsport-restore-test sans env_file)', () => {
