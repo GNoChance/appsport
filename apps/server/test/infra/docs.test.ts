@@ -555,9 +555,18 @@ describe('P2 à P9', () => {
     const p3 = p[3] as string;
     const recetteStep = steps(p3).find((s) => s.body.includes('recette-telephones.md'));
     expect(recetteStep?.body).toMatch(/Sinon :[^\n]*pas de tag/);
-    const diff = proseLines(p3).find(({ line, code }) => code && /^\s*git diff .* -- /.test(line));
-    const paths = (diff?.line.split(' -- ')[1] ?? '').trim().split(/\s+/).filter(Boolean);
-    expect(paths.length, 'git diff sans chemins').toBeGreaterThan(0);
+    // La commande tient sur plusieurs lignes : joindre les continuations « \ » avant de lire les chemins.
+    const block = codeBlocks(recetteStep?.body ?? '').find((b) =>
+      b.some((l) => l.includes('git diff --stat')),
+    );
+    const command = (block ?? []).join('\n').replace(/\\\r?\n\s*/g, ' ');
+    const diff = command.split('\n').find((line) => /^\s*git diff .* -- /.test(line));
+    const paths = (diff?.split(' -- ')[1] ?? '').trim().split(/\s+/).filter(Boolean);
+    expect(
+      paths.filter((path) => path.includes('\\')),
+      'chemin avec « \\ » : ligne de continuation lue comme chemin',
+    ).toEqual([]);
+    expect(paths, "les 16 chemins de l'étape 3").toHaveLength(16);
     for (const path of paths) expect(existsSync(join(ROOT, path)), `chemin du git diff : ${path}`).toBe(true);
   });
 
