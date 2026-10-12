@@ -59,6 +59,23 @@ assert_tmp_empty() {
   assert_ops_modes
 }
 
+@test "restes d'un test interrompu (coupure) : conteneur puis copie supprimés avant la restauration" {
+  local left="$APPSPORT_ROOT/tmp/restore-test-20260101T050000Z"
+  mkdir -p "$left/data"
+  echo daily-20251231 >"$left/data/appsport.db"
+  on docker 'rm -f appsport-restore-test' 0 'if [ -d "$APPSPORT_ROOT/tmp/restore-test-20260101T050000Z" ]; then echo present; else echo absent; fi >>"$STATE/copy-at-rm"'
+  run "$RESTORE_TEST"
+  [ "$status" -eq 0 ]
+  [ ! -e "$left" ]
+  # Premier rm -f (purge) : la copie était encore là, le conteneur part d'abord.
+  [ "$(head -n1 "$STATE/copy-at-rm")" = present ]
+  assert_calls_in_order \
+    "flock -n 9" \
+    "docker rm -f appsport-restore-test" \
+    "restic -r $OFFSITE restore latest *"
+  assert_tmp_empty
+}
+
 @test "intégrité KO : motif « intégrité », pas de conteneur, copie nettoyée" {
   echo '{"integrity":"*** in database main ***\nPage 3 is never used","users":0,"syncCounter":0,"lastWriteAt":null}' \
     >"$STATE/db-stats-copy"

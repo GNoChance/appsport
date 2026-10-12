@@ -2,7 +2,8 @@
 # appsport-backup (R-OPS-9, R-OPS-10, R-DEP-7, 08 §7, §9) : timer de 03:30, ou relancé par appsport-unlock.
 # Instantané daily (élagage de snapshots/ inclus), puis restic local et offsite ; chaque dépôt n'est purgé
 # (forget --keep-daily 30 --prune) qu'après sa propre sauvegarde réussie. Healthchecks backup : début, succès ou
-# /fail avec un motif sans donnée personnelle ; section backup de status.json.
+# /fail avec un motif sans donnée personnelle ; section backup de status.json. Sous le verrou, supprime aussi les
+# restes d'un test de restauration interrompu (purge_restore_test_leftovers : 30 jours au plus, R-OPS-10).
 # Codes : 0 succès, 1 échec.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib/common.sh
@@ -26,6 +27,7 @@ main() {
   hc_ping backup start || log "Avertissement : début non signalé à Healthchecks."
   volume_ready || fail "volume verrouillé : lancer appsport-unlock"
   take_lock || fail "verrou occupé"
+  purge_restore_test_leftovers || problems+=("purge du test de restauration en échec")
   app_cli snapshot --tag daily || fail "instantané daily en échec"
   for where in local offsite; do
     if ! restic_backup_on "$where" daily; then

@@ -85,7 +85,6 @@ check_copy() {
 # /api/health dans le délai de santé (HEALTH_TIMEOUT_S), puis supprimé.
 check_container() {
   local image=$1 tries i
-  "$DOCKER" rm -f "$CONTAINER" >/dev/null 2>&1 || true
   CONTAINER_STARTED=1
   "$DOCKER" run -d --name "$CONTAINER" --network none --read-only --tmpfs /tmp --user 1000 --pull never \
     -v "$RT_DIR/data:/data" -e APP_ORIGIN=https://restore-test.invalid "$image" >/dev/null ||
@@ -116,11 +115,11 @@ main() {
   fi
   image="ghcr.io/gnochance/appsport:$version"
 
-  # Copies d'un test interrompu (coupure) : données personnelles à ne pas laisser au-delà de 30 jours.
-  if ! (umask 077 && mkdir -p "$APPSPORT_ROOT/tmp") || [ -L "$APPSPORT_ROOT/tmp" ]; then
+  # Conteneur et copies d'un test interrompu (coupure) : supprimés avant tout (appsport-backup le fait aussi
+  # chaque nuit).
+  if ! (umask 077 && mkdir -p "$APPSPORT_ROOT/tmp") || ! purge_restore_test_leftovers; then
     fail "dossier tmp du volume inutilisable"
   fi
-  rm -rf -- "$APPSPORT_ROOT/tmp"/restore-test-*
   RT_DIR="$APPSPORT_ROOT/tmp/restore-test-$(date -u +%Y%m%dT%H%M%SZ)"
   (umask 077 && mkdir "$RT_DIR") || fail "copie de test impossible à créer"
 

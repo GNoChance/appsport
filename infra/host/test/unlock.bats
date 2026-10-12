@@ -101,6 +101,14 @@ setup() {
   refute_call "systemctl start --no-block *"
 }
 
+@test "sauvegarde de la nuit en échec (ok false, at récent) : relancée après OK" {
+  printf '{"backup":{"at":"%s","ok":false,"detail":"sauvegarde offsite en échec"}}\n' \
+    "$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%SZ)" >"$APPSPORT_ROOT/data/ops/status.json"
+  run "$UNLOCK"
+  [ "$status" -eq 0 ]
+  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-backup.service"
+}
+
 @test "lancé par un lien symbolique (/usr/local/sbin) : common.sh trouvé, OK" {
   if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]; then
     skip "liens symboliques non fiables sous Windows : vérifié par le job infra"

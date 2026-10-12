@@ -232,6 +232,18 @@ join_problems() {
   printf '%s\n' "$out"
 }
 
+# Restes d'un appsport-restore-test tué hors de son trap EXIT (coupure, SIGKILL, OOM) : conteneur jetable d'abord
+# (il tient la copie ouverte), puis copies en clair de tmp/ (données personnelles, 30 jours au plus : R-OPS-10).
+# Appelée sous LOCK_FILE seulement (appsport-backup chaque nuit, appsport-restore-test) : aucun test en cours.
+purge_restore_test_leftovers() {
+  "$DOCKER" rm -f appsport-restore-test >/dev/null 2>&1 || true
+  if [ -L "$APPSPORT_ROOT/tmp" ]; then
+    log "$APPSPORT_ROOT/tmp est un lien symbolique : refusé."
+    return 1
+  fi
+  rm -rf -- "$APPSPORT_ROOT/tmp"/restore-test-*
+}
+
 # restic_on <local|offsite> <args…> : B2 lu dans un sous-shell, ses clés ne fuient pas dans le script.
 restic_on() {
   local where=$1

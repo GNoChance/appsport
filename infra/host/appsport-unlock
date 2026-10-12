@@ -17,10 +17,12 @@ ko() {
   exit 1
 }
 
-# Sauvegarde absente de status.json ou de plus de 24 h (machine éteinte ou verrouillée à 03:30).
+# Dernière sauvegarde réussie absente de status.json ou de plus de 24 h (machine éteinte ou verrouillée à 03:30,
+# ou sauvegarde en échec : son at récent ne compte pas).
 backup_missed() {
   local at at_s
-  at=$("$JQ" -r '.backup.at // ""' "$APPSPORT_ROOT/data/ops/status.json" 2>/dev/null) || return 0
+  at=$("$JQ" -r '(.backup | select(.ok == true) | .at) // ""' "$APPSPORT_ROOT/data/ops/status.json" 2>/dev/null) ||
+    return 0
   [ -n "$at" ] || return 0
   at_s=$(date -u -d "$at" +%s 2>/dev/null) || return 0
   [ $(($(date -u +%s) - at_s)) -gt 86400 ]
