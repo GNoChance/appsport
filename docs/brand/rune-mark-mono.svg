@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<path d="M296.9 465.4L256 488L68 384L68 128L256 24L444 128L444 384L369.7 425.1" fill="none" stroke="currentColor" stroke-width="24" stroke-linejoin="miter" stroke-miterlimit="4"/>
+<path d="M24 247H50V265H24ZM462 247H488V265H462Z" fill="currentColor"/>
+<path d="M185.6 102L342.4 215.9L255.5 279.1L341.6 406.8L341.6 481.2L227.2 311.6L227.2 414L185.6 383.8ZM271.6 215.9L227.2 248.2L227.2 183.6Z" fill="currentColor" fill-rule="evenodd"/>
+</svg>

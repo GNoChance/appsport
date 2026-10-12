@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<defs>
+<radialGradient id="sys-icon-bg" cx="256" cy="230" r="330" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#111D36"/><stop offset="0.55" stop-color="#090E1B"/><stop offset="1" stop-color="#04060B"/></radialGradient>
+<linearGradient id="sys-icon-rune" x1="0" y1="80" x2="0" y2="490" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F2FDFF"/><stop offset="0.5" stop-color="#5ED8FF"/><stop offset="1" stop-color="#8C6BFF"/></linearGradient>
+<linearGradient id="sys-icon-frame" x1="68" y1="24" x2="444" y2="488" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5ED8FF"/><stop offset="1" stop-color="#7A5CFF"/></linearGradient>
+<filter id="sys-icon-glow" x="-15%" y="-15%" width="130%" height="130%"><feGaussianBlur stdDeviation="9"/></filter>
+</defs>
+<rect width="512" height="512" rx="112" ry="112" fill="url(#sys-icon-bg)"/>
+<rect x="3" y="3" width="506" height="506" rx="109" ry="109" fill="none" stroke="#5ED8FF" stroke-opacity="0.14" stroke-width="2"/>
+<g transform="translate(256 256) scale(0.78) translate(-256 -256)">
+<g filter="url(#sys-icon-glow)" opacity="0.8"><path d="M296.9 465.4L256 488L68 384L68 128L256 24L444 128L444 384L369.7 425.1" fill="none" stroke="#3FB8FF" stroke-width="24" stroke-linejoin="miter" stroke-miterlimit="4"/><path d="M24 247H50V265H24ZM462 247H488V265H462Z" fill="#3FB8FF"/><path d="M185.6 102L342.4 215.9L255.5 279.1L341.6 406.8L341.6 481.2L227.2 311.6L227.2 414L185.6 383.8ZM271.6 215.9L227.2 248.2L227.2 183.6Z" fill="#4FD8FF" fill-rule="evenodd"/></g>
+<path d="M296.9 465.4L256 488L68 384L68 128L256 24L444 128L444 384L369.7 425.1" fill="none" stroke="url(#sys-icon-frame)" stroke-width="24" stroke-linejoin="miter" stroke-miterlimit="4"/><path d="M24 247H50V265H24ZM462 247H488V265H462Z" fill="url(#sys-icon-frame)"/><path d="M185.6 102L342.4 215.9L255.5 279.1L341.6 406.8L341.6 481.2L227.2 311.6L227.2 414L185.6 383.8ZM271.6 215.9L227.2 248.2L227.2 183.6Z" fill="url(#sys-icon-rune)" fill-rule="evenodd"/>
+</g>
+</svg>
