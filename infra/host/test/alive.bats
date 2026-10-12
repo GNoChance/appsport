@@ -43,3 +43,27 @@ setup() {
   assert_calls_in_order "curl *--data-raw appli KO : status=error db=error https://hc.test/alive/fail"
   refute_call "curl * https://hc.test/alive"
 }
+
+# Ligne /fail exacte envoyée à Healthchecks (une seule).
+fail_ping() {
+  [ "$(count_calls "curl * https://hc.test/alive/fail")" -eq 1 ]
+  grep -F ' https://hc.test/alive/fail' "$CALLS"
+}
+
+@test "corps hors format (texte libre, donnée personnelle) : jamais repris, « appli KO : api/health injoignable »" {
+  on curl "* $PUBLIC_HEALTH" 22 "echo '{\"status\":\"Erreur pour alice@x\",\"db\":\"user alice locked\"}'"
+  run "$ALIVE"
+  [ "$status" -eq 1 ]
+  [ "$(fail_ping)" = "curl -fsS -m 10 --retry 3 -o /dev/null --data-raw appli KO : api/health injoignable https://hc.test/alive/fail" ]
+  refute_call "*alice*"
+  refute_call "*@*"
+  refute_call "curl * https://hc.test/alive"
+}
+
+@test "valeur de base trop longue (plus de 20 caractères) : « db=? »" {
+  on curl "* $PUBLIC_HEALTH" 22 "echo '{\"status\":\"error\",\"db\":\"error_aaaaaaaaaaaaaaaa\"}'"
+  run "$ALIVE"
+  [ "$status" -eq 1 ]
+  [ "$(fail_ping)" = "curl -fsS -m 10 --retry 3 -o /dev/null --data-raw appli KO : status=error db=? https://hc.test/alive/fail" ]
+  refute_call "*error_a*"
+}
