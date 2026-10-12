@@ -17,6 +17,8 @@ Chaque ligne donne :
 
 Elle ne contient jamais de pseudo, de donnée de santé, de mot de passe, de code, de jeton ni d'autre secret : le dépôt est hébergé chez GitHub et son historique garde tout.
 
+Gabarit d'une ligne, à ajouter sous l'en-tête du tableau : `| AAAA-MM-JJ | … | … | … | … |`. À la première ligne consignée, retirer la phrase « Aucun incident enregistré. » qui suit le tableau.
+
 | Date | Faits | Données exposées | Mesures | Personnes prévenues |
 |---|---|---|---|---|
 

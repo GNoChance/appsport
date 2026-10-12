@@ -58,14 +58,14 @@ Aucun autre sous-traitant : ni statistiques, ni traceur, ni service tiers dans l
 | Journal d'usage du coach (sans contenu) | 12 mois |
 | Côté Anthropic | 30 jours au plus ; 2 ans au plus si l'échange est signalé |
 | Sessions | 90 jours sans usage, 365 jours au maximum ; lignes fermées purgées 30 jours après |
-| Sessions `account_deleted` | jusqu'à leur expiration absolue |
+| Sessions `account_deleted` | jusqu'à leur expiration absolue ; anonymisées dès la suppression du compte (P-DRT-3) |
 | Invitations, liens de réinitialisation | 7 jours ou 24 h, usage unique ; purgés 30 jours après |
 | Journal de sécurité | 12 mois |
 | Journaux techniques | 90 jours au plus |
-| Marques de suppression de la synchro | 90 jours ; les salles et lieux supprimés restent, pour l'historique |
+| Marques de suppression de la synchro (tombstones) | 90 jours (`TOMBSTONE_TTL`) ; les salles et lieux supprimés restent, pour l'historique (R-SAL-7, R-LIEU-5 du socle) |
 | Journal d'idempotence de la synchro (`applied_op` : identifiants d'opération, sans contenu) | 12 mois (R-SYN-23) ; supprimé avec le compte |
-| Sauvegardes et instantanés | 30 jours au plus |
-| Données locales du téléphone | jusqu'à la déconnexion (file d'envoi vide), au retrait d'un accord pour la catégorie, ou au `410 account_deleted` |
+| Sauvegardes | 30 jours au plus, instantanés locaux compris |
+| Données locales du téléphone | jusqu'à la déconnexion (si la file d'envoi est vide), au retrait d'un accord pour la catégorie concernée, ou jusqu'au `410 account_deleted` |
 
 ## Mesures de sécurité
 

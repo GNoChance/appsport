@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRIVACY_POLICY_VERSION } from '@appsport/contracts';
@@ -31,6 +32,14 @@ const incidents = read('docs/incidents.md');
 
 /** Toutes les pages d'exploitation et le runbook : là où l'admin trouve les commandes. */
 const opsText = (): string => [...Object.values(p), installer, recette, runbook].join('\n');
+
+/** Les mêmes pages, par chemin : les contrôles de format et de commandes se font page par page. */
+const OPS_DOCS: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(PROCEDURES.map((name, i) => [`docs/exploitation/${name}.md`, p[i + 1] as string])),
+  'docs/exploitation/installer-appsport.md': installer,
+  'docs/exploitation/recette-telephones.md': recette,
+  [RUNBOOK]: runbook,
+};
 
 /** Lignes marquées dans un bloc de code ou non (blocs indentés dans une étape compris). */
 function proseLines(text: string): { line: string; code: boolean }[] {
@@ -136,6 +145,68 @@ const SCRIPTS = [
 const COMPOSE =
   'docker compose --project-name appsport -f /opt/appsport/infra/compose.yaml --env-file /srv/appsport/deploy.env';
 
+/** Texte entre la ligne qui commence par `start` et la suivante qui commence par `end`. */
+function between(text: string, start: string, end: string): string {
+  const lines = text.split(/\r?\n/);
+  const from = lines.findIndex((line) => line.startsWith(start));
+  if (from < 0) throw new Error(`« ${start} » absent`);
+  const to = lines.findIndex((line, i) => i > from && line.startsWith(end));
+  return lines.slice(from + 1, to < 0 ? undefined : to).join('\n');
+}
+
+/** Cellules des lignes d'un tableau Markdown, sans la ligne d'en-tête ni le séparateur, gras retiré. */
+function tableRows(text: string): string[][] {
+  const rows = text
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('|') && !/^\|[-| ]+\|$/.test(line))
+    .map((line) =>
+      line
+        .slice(1, -1)
+        .split('|')
+        .map((cell) => cell.trim().replaceAll('**', '')),
+    );
+  return rows.slice(1);
+}
+
+/** Durées citées (« 30 jours », « 24 h », « tant que le compte existe »…), dans l'ordre. */
+function durations(text: string): string[] {
+  return (
+    text.match(
+      /\d+ (?:jours|mois|ans|h)(?![\p{L}\d])|tant que le compte existe|jusqu'à la déconnexion|jusqu'à leur expiration absolue/gu,
+    ) ?? []
+  );
+}
+
+/** Phrases de la section « Durées de conservation » de la page Confidentialité (T28). */
+function pageRetention(): string {
+  const source = read('apps/web/src/features/public/privacy-content.ts');
+  const start = source.indexOf("title: 'Durées de conservation'");
+  expect(start, 'section « Durées de conservation » de privacy-content.ts').toBeGreaterThanOrEqual(0);
+  const end = source.indexOf('title:', start + 1);
+  const block = source.slice(source.indexOf('items:', start), end < 0 ? undefined : end);
+  return [...block.matchAll(/'([^']*)'|"([^"]*)"/g)].map((m) => m[1] ?? m[2]).join('\n');
+}
+
+const INCIDENTS_HEADER = '| Date | Faits | Données exposées | Mesures | Personnes prévenues |';
+
+/** Le registre des incidents : tableau vide avec « Aucun incident enregistré. », ou lignes datées sans elle. */
+function incidentProblems(text: string): string[] {
+  const lines = text.split(/\r?\n/);
+  const header = lines.indexOf(INCIDENTS_HEADER);
+  if (header < 0) return ['en-tête absent'];
+  const problems: string[] = [];
+  if (lines[header + 1] !== '|---|---|---|---|---|') problems.push('séparateur absent');
+  const rows: string[] = [];
+  for (let i = header + 2; lines[i]?.startsWith('|'); i += 1) rows.push(lines[i] as string);
+  for (const row of rows) {
+    if (!/^\| \d{4}-\d{2}-\d{2} \|(?: [^|]+ \|){4}$/.test(row)) problems.push(`ligne mal formée : ${row}`);
+  }
+  const none = /^Aucun incident enregistré\.$/m.test(text);
+  if (rows.length === 0 && !none) problems.push('tableau vide sans « Aucun incident enregistré. »');
+  if (rows.length > 0 && none) problems.push('« Aucun incident enregistré. » au-dessus de lignes');
+  return problems;
+}
+
 describe('docs/exploitation : procédures P1 à P9 (08 §12)', () => {
   PROCEDURES.forEach((name, i) => {
     const n = i + 1;
@@ -155,6 +226,16 @@ describe('docs/exploitation : procédures P1 à P9 (08 §12)', () => {
     expectSteps(RUNBOOK, runbook);
   });
 
+  it('chaque page : blocs de code refermés, et toute ligne numérotée est une étape « N. **action** »', () => {
+    for (const [path, text] of Object.entries(OPS_DOCS)) {
+      const fences = text.split(/\r?\n/).filter((line) => line.trimStart().startsWith('```')).length;
+      expect(fences % 2, `${path} : bloc de code non refermé`).toBe(0);
+      for (const { line, code } of proseLines(text)) {
+        if (!code && /^\s*\d+\. /.test(line)) expect(line, path).toMatch(/^\d+\. \*\*.+?\*\*/);
+      }
+    }
+  });
+
   it('les 6 scripts appsport-* de 08 §15 sont cités', () => {
     for (const script of SCRIPTS) expect(opsText()).toContain(script);
   });
@@ -164,17 +245,36 @@ describe('docs/exploitation : procédures P1 à P9 (08 §12)', () => {
   );
 
   it('chaque commande docker compose des procédures a le préfixe des scripts hôte', () => {
-    const lines = proseLines(opsText())
-      .filter((l) => l.code && l.line.includes('docker compose'))
-      .map((l) => l.line);
-    expect(lines.length).toBeGreaterThan(0);
-    for (const line of lines) expect(line).toContain(COMPOSE);
+    let count = 0;
+    for (const [path, text] of Object.entries(OPS_DOCS)) {
+      for (const { line, code } of proseLines(text)) {
+        if (!code || !line.includes('docker compose')) continue;
+        count += 1;
+        expect(line, path).toContain(COMPOSE);
+      }
+    }
+    expect(count).toBeGreaterThan(0);
   });
 
-  it('commandes de la CLI : exec -T si app tourne, run --rm --no-deps sinon', () => {
-    for (const { line, code } of proseLines(opsText())) {
-      if (!code || !line.includes(COMPOSE) || !line.includes('server.mjs')) continue;
-      expect(line).toMatch(/ (exec -T|run --rm --no-deps) app node \/app\/server\.mjs /);
+  it('commandes de la CLI : préfixe compose, exec -T si app tourne, run --rm --no-deps une fois arrêtée', () => {
+    for (const [path, text] of Object.entries(OPS_DOCS)) {
+      // État de `app` dans la section, d'après ses commandes : inconnu au début de chaque section.
+      let app: 'inconnu' | 'arrêtée' | 'en marche' = 'inconnu';
+      for (const { line, code } of proseLines(text)) {
+        if (!code) {
+          if (/^#{1,6} /.test(line)) app = 'inconnu';
+          continue;
+        }
+        if (line.includes(COMPOSE) && /\s(?:stop|down)(?:\s+app)?\s*$/.test(line)) app = 'arrêtée';
+        if (line.includes(COMPOSE) && /\sup -d\b/.test(line)) app = 'en marche';
+        if (path.startsWith('docs/exploitation/') && line.includes('/app/server.mjs')) {
+          expect(line, `${path} : CLI sans le préfixe compose`).toContain(COMPOSE);
+        }
+        if (!line.includes(COMPOSE) || !line.includes('server.mjs')) continue;
+        expect(line, path).toMatch(/ (exec -T|run --rm --no-deps) app node \/app\/server\.mjs /);
+        if (app === 'arrêtée') expect(line, `${path} : app arrêtée`).toContain(' run --rm --no-deps app ');
+        if (app === 'en marche') expect(line, `${path} : app en marche`).toContain(' exec -T app ');
+      }
     }
   });
 });
@@ -210,7 +310,11 @@ describe('P1 Installation initiale', () => {
         'chattr +i /srv/appsport',
         '6 mots',
       ],
-      Docker: ['systemctl disable docker.service docker.socket', '"data-root": "/srv/appsport/docker"'],
+      Docker: [
+        'systemctl disable docker.service docker.socket',
+        '"data-root": "/srv/appsport/docker"',
+        'RequiresMountsFor=/srv/appsport',
+      ],
       Tailscale: [
         'tailscale up --ssh',
         'tailscale serve --bg --https=443 http://127.0.0.1:3000',
@@ -244,6 +348,10 @@ describe('P1 Installation initiale', () => {
     expect(body.indexOf('chattr +i /srv/appsport')).toBeLessThan(body.indexOf('mount /srv/appsport'));
   });
 
+  it("IPv6 filtré avant l'activation du pare-feu (03 §10)", () => {
+    expectInOrder(section(p1, 'Pare-feu (ufw)'), ['IPV6=yes', 'ufw enable']);
+  });
+
   it("known_hosts de root vérifié contre l'empreinte publiée par GitHub", () => {
     const body = section(p1, 'Dépôt et secrets');
     expect(body).toContain('/root/.ssh/known_hosts');
@@ -271,6 +379,7 @@ describe('P1 Installation initiale', () => {
       'APPSPORT_VERSION=v',
       ' pull',
       '.appsport-volume',
+      'chown -R 1000:1000 /srv/appsport/data',
       'server.mjs init',
       'server.mjs admin:bootstrap',
       ' up -d',
@@ -336,15 +445,31 @@ describe('P2 à P9', () => {
     expect(p3).toMatch(/jeton GHCR expiré[^\n]*P5/);
   });
 
-  it('P4 « Sur place » : collecte, arrêt, restauration, réapplication, puis seulement redémarrage', () => {
+  it('P3 : recette en échec, pas de tag ; les chemins comparés par git diff existent', () => {
+    const p3 = p[3] as string;
+    const recetteStep = steps(p3).find((s) => s.body.includes('recette-telephones.md'));
+    expect(recetteStep?.body).toMatch(/Sinon :[^\n]*pas de tag/);
+    const diff = proseLines(p3).find(({ line, code }) => code && /^\s*git diff .* -- /.test(line));
+    const paths = (diff?.line.split(' -- ')[1] ?? '').trim().split(/\s+/).filter(Boolean);
+    expect(paths.length, 'git diff sans chemins').toBeGreaterThan(0);
+    for (const path of paths) expect(existsSync(join(ROOT, path)), `chemin du git diff : ${path}`).toBe(true);
+  });
+
+  it('P4 « Sur place » : collecte, marqueur, arrêt, restauration, réapplication, liste retirée, puis seulement redémarrage', () => {
     const body = section(p[4] as string, 'Sur place');
     expectInOrder(body, [
       'server.mjs privacy:collect',
+      'tee /srv/appsport/reapply-pending',
       'stop app',
       'server.mjs restore',
       'server.mjs privacy:reapply',
+      'rm /srv/appsport/data/ops/privacy-',
       'up -d',
     ]);
+    expect(body).toContain(`${COMPOSE} run --rm --no-deps app node /app/server.mjs restore`);
+    expect(body).toContain(`${COMPOSE} run --rm --no-deps app node /app/server.mjs privacy:reapply`);
+    const rm = body.split(/\r?\n/).find((line) => line.includes('rm /srv/appsport/data/ops/privacy-'));
+    expect(rm, 'la liste et le marqueur sont retirés ensemble').toContain('/srv/appsport/reapply-pending');
     expect(body).toContain('--source');
     expect(body).toContain('replaced-');
     expect(body).toContain('Aucun administrateur actif');
@@ -354,7 +479,11 @@ describe('P2 à P9', () => {
 
   it('P4 « Nouvelle machine » : identité Tailscale restaurée avant de démarrer tailscaled', () => {
     const body = section(p[4] as string, 'Nouvelle machine');
-    expectInOrder(body, ['/var/lib/tailscale', 'systemctl start tailscaled']);
+    const restore = body.split(/\r?\n/).find((line) => line.includes('--include /var/lib/tailscale'));
+    expect(restore, 'restauration B2 de /var/lib/tailscale').toMatch(
+      /restic -r "\$RESTIC_OFFSITE_REPOSITORY" [^\n]*restore latest/,
+    );
+    expectInOrder(body, ['--include /var/lib/tailscale', 'systemctl start tailscaled']);
     expect(body).toContain('même version');
   });
 
@@ -372,9 +501,17 @@ describe('P2 à P9', () => {
     }
   });
 
-  it('P6 : chaque proche a son propre compte Tailscale (P-MIN-4)', () => {
-    expect(p[6]).toContain('son propre compte Tailscale');
-    expect(p[6]).toContain('installer-appsport.md');
+  it("P6 : 08 §6 côté admin, retrait dans l'ordre, chaque proche a son propre compte Tailscale (P-MIN-4)", () => {
+    const p6 = p[6] as string;
+    expect(p6).toContain('son propre compte Tailscale');
+    expectInOrder(section(p6, 'Ajouter un proche'), [
+      'Invitations',
+      'date de naissance',
+      'MIN_AGE',
+      'Share',
+      'installer-appsport.md',
+    ]);
+    expectInOrder(section(p6, 'Retirer un proche'), ['Share', 'Désactiver']);
   });
 
   it('P7 : conteneur recréé chaque mois (journaux de 90 jours au plus, R-OPS-15)', () => {
@@ -386,7 +523,9 @@ describe('P2 à P9', () => {
   it("P8 : une section par alerte de 08 §9, interrupteur d'urgence, vol ou fuite", () => {
     const p8 = p[8] as string;
     const titles = sections(p8).map((s) => s.title);
-    for (const check of ['alive', 'backup', 'restore-test', 'host']) {
+    expect(titles).toContain('Alerte `alive` : silence');
+    expect(titles).toContain('Alerte `alive` : /fail');
+    for (const check of ['backup', 'restore-test', 'host']) {
       expect(
         titles.some((t) => t.includes(`\`${check}\``)),
         `section de l'alerte ${check}`,
@@ -395,7 +534,11 @@ describe('P2 à P9', () => {
     expectInOrder(section(p8, "Interrupteur d'urgence"), [
       'SW_KILL_SWITCH=1',
       'secrets/app.env',
+      'up -d app',
       '"swKill":true',
+      'Publier le correctif',
+      'P3',
+      "sed -i '/^SW_KILL_SWITCH=/d'",
       '"swKill":false',
     ]);
     const theft = section(p8, 'Vol, cambriolage ou fuite');
@@ -427,6 +570,10 @@ describe('fiches pour les proches et recette', () => {
     ]) {
       expect(installer).toContain(needle);
     }
+    // 08 §6, côté proche, étape 6 : VPN permanent, mais sans couper Internet quand Tailscale est coupé.
+    expect(installer).toMatch(/« VPN permanent »[^\n]*\*\*sans\*\* « Bloquer les connexions sans VPN »/);
+    // 08 §11 : les proches savent dès l'arrivée que la synchro et le coach attendent le retour de l'admin.
+    expect(installer).toMatch(/la synchronisation et le coach[^\n]*restent bloqués jusqu'à son retour/);
     // Une capture par étape : la ligne d'attente, remplacée par l'image une fois la capture faite
     // (P1, « Recette ») ; le test des liens relatifs vérifie alors que l'image existe.
     const all = steps(installer);
@@ -443,30 +590,34 @@ describe('fiches pour les proches et recette', () => {
 
   it('recette-telephones : les 7 contrôles R-TST-4 mot pour mot, tirés de 01 §9.3', () => {
     const spec = read('docs/superpowers/specs/2026-10-06-appsport-design/01-architecture.md');
-    const heads = steps(recette).map((s) => s.head);
+    const controls = steps(section(recette, 'Contrôles R-TST-4'));
+    const heads = controls.map((s) => s.head);
     RTST4.forEach((control, i) => {
       expect(spec).toContain(control);
       expect(heads, control).toContain(control);
-      const body = steps(recette).find((s) => s.head === control)?.body ?? '';
+      const body = controls.find((s) => s.head === control)?.body ?? '';
       if (!RTST4_SANS_OBJET.has(i)) expect(body, control).not.toContain('sans objet au socle');
     });
   });
 
-  it('recette-telephones : iPhone et Android, R-ONB-4 chronométré, interrupteur et bandeau, tableau', () => {
-    for (const needle of [
-      'iPhone',
-      'Android',
-      "Interrupteur d'urgence",
-      'Bandeau de mise à jour',
-      '| Date | Version | Appareil | Résultat |',
-    ]) {
+  it('recette-telephones : iPhone et Android, R-ONB-4 chronométré, interrupteur et bandeau sur iPhone, tableau', () => {
+    for (const needle of ['iPhone', 'Android', '| Date | Version | Appareil | Résultat |']) {
       expect(recette).toContain(needle);
     }
-    expect(recette).toMatch(/chronom/i);
+    const onboarding = steps(section(recette, 'Contrôles R-TST-4')).find((s) => s.head === RTST4[6]);
+    expect(onboarding?.body, 'R-ONB-4 chronométré').toMatch(/chronom/i);
+    const iphone = steps(section(recette, 'Contrôles sur iPhone')).map((s) => s.head);
+    expect(iphone).toContain("Interrupteur d'urgence");
+    expect(iphone).toContain('Bandeau de mise à jour');
+    // Décision du porteur du 2026-10-08 : les contrôles en paysage suivent les 7 contrôles, sans les remplacer.
+    const titles = sections(recette).map((s) => s.title);
+    expect(titles.indexOf('Contrôles R-TST-4')).toBeGreaterThanOrEqual(0);
+    expect(titles.indexOf('Écrans en paysage')).toBeGreaterThan(titles.indexOf('Contrôles R-TST-4'));
   });
 
   it('runbook de reconstruction (R-OPS-12) : chronométré, moins de 2 h, B2, copie détruite, journal', () => {
     expect(runbook).toMatch(/chronom/i);
+    expect(runbook).toMatch(/restic -r "\$RESTIC_OFFSITE_REPOSITORY" [^\n]*restore latest/);
     for (const needle of [
       'moins de 2 h',
       'B2',
@@ -504,10 +655,94 @@ describe('registres de vie privée (03 §1, §14)', () => {
     expect(fiche).toContain('privacy-content.ts');
   });
 
-  it('registre des incidents : consigne de 03 §14 et tableau vide', () => {
+  /** Donnée et durée des lignes du tableau de 03 §7, mot pour mot (gras retiré). */
+  const retention = (): { data: string; duration: string }[] =>
+    tableRows(
+      between(
+        read('docs/superpowers/specs/2026-10-06-appsport-design/03-vie-privee.md'),
+        '### 7. Conservation',
+        '### 8.',
+      ),
+    ).map(([data, duration]) => ({ data: data as string, duration: duration as string }));
+  const ficheRetention = (): string[][] => tableRows(section(fiche, 'Durées de conservation'));
+  /** Lignes de la fiche qui complètent 03 §7 sans le contredire, avec leur source. */
+  const FICHE_ONLY: Readonly<Record<string, string>> = {
+    "Journal d'idempotence de la synchro (`applied_op` : identifiants d'opération, sans contenu)":
+      'R-SYN-23 : 12 mois (APPLIED_OP_TTL_MONTHS), supprimé avec le compte',
+  };
+
+  it('fiche de traitement : chaque ligne de 03 §7, dans le même ordre, avec sa durée', () => {
+    const rows = retention();
+    expect(rows.length).toBeGreaterThanOrEqual(14);
+    const labels = ficheRetention().map(([data]) => data as string);
+    for (const label of Object.keys(FICHE_ONLY)) expect(labels, label).toContain(label);
+    expect(labels.filter((label) => !(label in FICHE_ONLY))).toEqual(rows.map((r) => r.data));
+    for (const { data, duration } of rows) {
+      const row = ficheRetention().find(([label]) => label === data);
+      expect(row?.[1]?.startsWith(duration), `${data} : ${duration}`).toBe(true);
+    }
+  });
+
+  it('fiche de traitement et page Confidentialité (privacy-content.ts) : mêmes durées, dans les deux sens', () => {
+    /** Où chaque ligne de 03 §7 se lit sur la page ; null : absente de la page, avec sa raison. */
+    const ON_PAGE: Readonly<Record<string, RegExp | null>> = {
+      'C0 de compte, C1': /Compte et données personnelles : ([^.]*)/,
+      C2: /Données de santé : ([^.]*)/,
+      'Fils et messages du coach (C3)': /Conversations du coach : ([^;.]*)/,
+      'Signalements (C3)': /signalements : ([^.]*)/,
+      "Journal d'usage du coach (sans contenu)": /Journal d'usage du coach, sans contenu : ([^.]*)/,
+      'Côté Anthropic': /Côté Anthropic : ([^.]*)/,
+      Sessions: /Sessions de connexion : ([^.]*)/,
+      // Sessions anonymisées (user_id NULL, P-DRT-3) : plus rien ne les relie à une personne.
+      'Sessions `account_deleted`': null,
+      'Invitations, liens de réinitialisation': /Invitations et liens de réinitialisation : ([^.]*)/,
+      'Journal de sécurité': /Journal de sécurité : ([^.]*)/,
+      'Journaux techniques': /Journaux techniques : ([^.]*)/,
+      'Marques de suppression de la synchro (tombstones)':
+        /Marques de suppression de la synchronisation : ([^.]*)/,
+      Sauvegardes: /Sauvegardes : ([^.]*)/,
+      'Données locales du téléphone': /Données du téléphone : ([^.]*)/,
+    };
+    const page = pageRetention();
+    expect(Object.keys(ON_PAGE)).toEqual(retention().map((r) => r.data));
+    let matched = 0;
+    for (const [label, duration] of ficheRetention()) {
+      // Ligne propre à la fiche (FICHE_ONLY) : la page la reprendra à la relecture de T28.
+      if ((label as string) in FICHE_ONLY) continue;
+      expect(Object.keys(ON_PAGE), label).toContain(label);
+      const where = ON_PAGE[label as string];
+      if (!where) continue;
+      const fragment = where.exec(page)?.[1];
+      expect(fragment, `page Confidentialité : ${label}`).toBeDefined();
+      expect(durations(fragment ?? ''), `${label} : fiche « ${duration} », page « ${fragment} »`).toEqual(
+        durations(duration as string),
+      );
+      matched += durations(fragment ?? '').length;
+    }
+    // Sens inverse : aucune durée de la page ne manque à la fiche.
+    expect(matched, 'durée de la page absente de la fiche').toBe(durations(page).length);
+  });
+
+  it('registre des incidents : consigne de 03 §14, tableau vide ou lignes datées, jamais les deux', () => {
     expect(incidents).toContain('72 h');
-    expect(incidents).toContain('| Date | Faits | Données exposées | Mesures | Personnes prévenues |');
-    expect(incidents).toContain('Aucun incident enregistré.');
+    expect(incidents).toContain(INCIDENTS_HEADER);
+    expect(incidents).toContain('retirer la phrase « Aucun incident enregistré. »');
+    expect(incidents).toContain('`| AAAA-MM-JJ | … | … | … | … |`');
+    expect(incidentProblems(incidents)).toEqual([]);
+  });
+
+  it('registre des incidents : le premier incident consigné garde le registre valide', () => {
+    const table = `${INCIDENTS_HEADER}\n|---|---|---|---|---|`;
+    const row = '| 2026-11-02 | faits | données | mesures | pseudos |';
+    expect(incidentProblems(`${table}\n\nAucun incident enregistré.\n`)).toEqual([]);
+    expect(incidentProblems(`${table}\n${row}\n`)).toEqual([]);
+    expect(incidentProblems(`${table}\n${row}\n\nAucun incident enregistré.\n`)).toEqual([
+      '« Aucun incident enregistré. » au-dessus de lignes',
+    ]);
+    expect(incidentProblems(`${table}\n`)).toEqual(['tableau vide sans « Aucun incident enregistré. »']);
+    expect(incidentProblems(`${table}\n| AAAA-MM-JJ | … | … | … | … |\n`)).toContain(
+      'ligne mal formée : | AAAA-MM-JJ | … | … | … | … |',
+    );
   });
 });
 
@@ -521,13 +756,43 @@ describe('hygiène des documents', () => {
     'docs/incidents.md': incidents,
   };
 
-  it('aucun nom de tailnet, jeton ni URL de ping réels : des gabarits seulement', () => {
+  /** Jetons GitHub, Tailscale, Anthropic ; URL de ping Healthchecks (UUID ou clé de ping) ; clé B2. */
+  const FORBIDDEN: readonly RegExp[] = [
+    /ghp_/,
+    /github_pat_/,
+    /tskey-/,
+    /sk-ant-/,
+    /hc-ping\.com\/(?!<|…)[A-Za-z0-9_-]{6,}/,
+    /\bK00\d[A-Za-z0-9+/]{27}\b/,
+    /\b00[0-9a-f]{23}\b/,
+  ];
+  /** Valeur attendue de chaque secret écrit dans un bloc de code : un gabarit `<…>`. */
+  const PLACEHOLDERS: readonly [RegExp, RegExp][] = [
+    [/^\s*AWS_ACCESS_KEY_ID=(.*)$/, /^<[^<>]+>$/],
+    [/^\s*AWS_SECRET_ACCESS_KEY=(.*)$/, /^<[^<>]+>$/],
+    [/^\s*HC_[A-Z_]+_URL=(.*)$/, /^https:\/\/hc-ping\.com\/<[^<>]+>$/],
+    [/^\s*RESTIC_OFFSITE_REPOSITORY=(.*)$/, /^s3:https:\/\/<[^<>]+>\/[\w.-]+$/],
+  ];
+
+  it('aucun nom de tailnet, jeton, clé ni URL de ping réels : des gabarits seulement', () => {
+    const seen = PLACEHOLDERS.map(() => 0);
     for (const [path, text] of Object.entries(docs)) {
       for (const host of text.match(/\S*\.ts\.net/g) ?? []) {
         expect(host, path).toMatch(/(<tailnet>|\*)\.ts\.net$/);
       }
-      expect(text, path).not.toMatch(/ghp_|github_pat_|tskey-|sk-ant-|hc-ping\.com\/[0-9a-f]{8}-/);
+      for (const pattern of FORBIDDEN) expect(text, path).not.toMatch(pattern);
+      for (const { line, code } of proseLines(text)) {
+        if (!code) continue;
+        PLACEHOLDERS.forEach(([assignment, placeholder], i) => {
+          const value = assignment.exec(line)?.[1];
+          if (value === undefined) return;
+          seen[i] = (seen[i] as number) + 1;
+          expect(value.trim(), `${path} : ${line.trim()}`).toMatch(placeholder);
+        });
+      }
     }
+    // Chaque secret est bien écrit quelque part (P1, runbook) : le contrôle ne passe pas à vide.
+    for (const count of seen) expect(count).toBeGreaterThan(0);
   });
 
   it('les liens relatifs entre documents mènent à des fichiers du dépôt', () => {
@@ -553,17 +818,22 @@ describe('page Aide (07, 03 §13.7)', () => {
   ]);
   const SKIP_PATHS = new Set(['docs/research', 'docs/superpowers', '.superpowers']);
 
-  function textFiles(dir: string): string[] {
-    return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
-      const rel = dir ? `${dir}/${entry.name}` : entry.name;
-      if (SKIP_NAMES.has(entry.name) || SKIP_PATHS.has(rel)) return [];
-      if (entry.isDirectory()) return textFiles(rel);
-      return entry.isFile() ? [rel] : [];
+  /**
+   * Fichiers suivis par git (ceux que la CI voit), dans leur état de la copie de travail ; ni sortie
+   * ignorée, ni note locale, ni worktree imbriqué.
+   */
+  function textFiles(): string[] {
+    const listed = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' });
+    return listed.split('\0').filter((rel) => {
+      if (!rel) return false;
+      if (rel.split('/').some((part) => SKIP_NAMES.has(part))) return false;
+      if ([...SKIP_PATHS].some((skip) => rel === skip || rel.startsWith(`${skip}/`))) return false;
+      return statSync(join(ROOT, rel), { throwIfNoEntry: false })?.isFile() ?? false;
     });
   }
 
   it("l'ancien numéro de la ligne TCA n'apparaît dans aucun fichier texte du dépôt", () => {
-    const files = textFiles('');
+    const files = textFiles();
     expect(files).toContain('docs/fiche-de-traitement.md');
     const hits = files.filter((rel) => {
       const bytes = readFileSync(join(ROOT, rel));
@@ -784,7 +1054,7 @@ describe('registres de vie privée : revue de la tâche 45', () => {
 
   it("fiche : durées de 03 §7 que la purge applique, journal d'idempotence de la synchro (R-SYN-23)", () => {
     const body = section(fiche, 'Durées de conservation');
-    expect(body).toContain("| Sessions `account_deleted` | jusqu'à leur expiration absolue |");
+    expect(body).toContain("| Sessions `account_deleted` | jusqu'à leur expiration absolue");
     expect(body).toContain("les salles et lieux supprimés restent, pour l'historique");
     expect(body).toMatch(/`applied_op`[^\n]*\| 12 mois/);
   });
