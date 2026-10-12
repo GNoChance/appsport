@@ -44,6 +44,20 @@ assert_tmp_empty() {
   assert_calls_in_order "docker run -d * -e APP_ORIGIN=https://restore-test.invalid *$IMAGE"
   refute_call "docker run *--env-file*"
   refute_call "docker run *app.env*"
+  # Conteneur jetable sur la copie, jamais sur la base réelle : tout -v de docker run vient de la copie horodatée.
+  assert_calls_in_order "docker run -d * -v $APPSPORT_ROOT/tmp/restore-test-*/data:/data *"
+  refute_call "docker run * -v $APPSPORT_ROOT/data:/data *"
+  [ "$(count_calls "docker run *")" -eq 2 ]
+  grep '^docker run ' "$CALLS" >"$T/runs"
+  while read -r line; do
+    [[ "$line" == *" -v "* ]]
+    mount=${line#* -v }
+    mount=${mount%% *}
+    [[ "${mount#"$APPSPORT_ROOT/tmp/"}" =~ ^${STAMP_RE}/data:/data$ ]]
+  done <"$T/runs"
+  # Sonde : 200 exigé sur /api/health du conteneur (port 3000), échec sinon.
+  assert_calls_in_order \
+    "docker exec appsport-restore-test node -e fetch('http://127.0.0.1:3000/api/health',*).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
   # Toute cible de restauration sous tmp/ du volume chiffré, au nom horodaté.
   grep -- '--target' "$CALLS" >"$T/targets"
   [ -s "$T/targets" ]
@@ -74,6 +88,33 @@ assert_tmp_empty() {
     "docker rm -f appsport-restore-test" \
     "restic -r $OFFSITE restore latest *"
   assert_tmp_empty
+}
+
+@test "volume verrouillé : code 1, motif « volume verrouillé », ni verrou ni restic ni docker, rien écrit" {
+  rm -f "$STATE/mounted"
+  before=$(cat "$STATUS_FILE")
+  run "$RESTORE_TEST"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order \
+    "curl * https://hc.test/restore-test/start" \
+    "curl *--data-raw volume verrouillé : lancer appsport-unlock https://hc.test/restore-test/fail"
+  refute_call "flock *"
+  refute_call "restic *"
+  refute_call "docker *"
+  [ "$(cat "$STATUS_FILE")" = "$before" ]
+  # Aucune copie sur le point de montage en clair.
+  [ ! -e "$APPSPORT_ROOT/tmp" ]
+}
+
+@test "verrou occupé : code 1, motif « verrou occupé », ni restic ni docker" {
+  on flock '-n 9' 1
+  run "$RESTORE_TEST"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order "flock -n 9" "curl *--data-raw verrou occupé https://hc.test/restore-test/fail"
+  refute_call "restic *"
+  refute_call "docker *"
+  [ ! -e "$APPSPORT_ROOT/tmp" ]
+  jq -e '.restoreTest | .ok == false and .detail == "verrou occupé"' "$STATUS_FILE"
 }
 
 @test "intégrité KO : motif « intégrité », pas de conteneur, copie nettoyée" {
@@ -112,6 +153,19 @@ assert_tmp_empty() {
   refute_call "docker run -d *"
   assert_tmp_empty
   jq -e '.restoreTest | .ok == false and (.detail | contains("retard"))' "$STATUS_FILE"
+}
+
+@test "date de dernière écriture de la copie nulle : code 1, pas de conteneur, motif sans « retard »" {
+  # Copie vide ou tronquée : aucun écart calculable, jamais compté comme 0 h.
+  echo '{"integrity":"ok","users":2,"syncCounter":40,"lastWriteAt":null}' >"$STATE/db-stats-copy"
+  run "$RESTORE_TEST"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order "curl *--data-raw date de dernière écriture illisible https://hc.test/restore-test/fail"
+  refute_call "curl *--data-raw *retard* https://hc.test/restore-test/fail"
+  refute_call "docker run -d *"
+  refute_call "curl * https://hc.test/restore-test"
+  assert_tmp_empty
+  jq -e '.restoreTest | .ok == false and .detail == "date de dernière écriture illisible"' "$STATUS_FILE"
 }
 
 @test "conteneur jetable sans 200 : rm -f puis /fail, copie nettoyée" {
@@ -156,6 +210,37 @@ assert_tmp_empty() {
   refute_call "restic * check *"
   assert_tmp_empty
   jq -e '.restoreTest | .ok == false and .detail == "test de restauration interrompu"' "$STATUS_FILE"
+}
+
+@test "SIGTERM pendant la sonde : conteneur supprimé et copie effacée par les traps, aucun succès" {
+  # Arrêt du service ou extinction de l'hôte en plein test : le stub envoie TERM au script, qui sort en 1 (pas 143).
+  # shellcheck disable=SC2016 # extrait évalué par le stub
+  on docker 'exec appsport-restore-test *' 0 'kill -TERM $PPID'
+  run "$RESTORE_TEST"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order \
+    "docker run -d --name appsport-restore-test *" \
+    "docker exec appsport-restore-test node -e *" \
+    "docker rm -f appsport-restore-test" \
+    "curl *--data-raw test de restauration interrompu https://hc.test/restore-test/fail"
+  [ "$(count_calls "curl * https://hc.test/restore-test/fail")" -eq 1 ]
+  refute_call "restic * check *"
+  refute_call "curl * https://hc.test/restore-test"
+  assert_tmp_empty
+}
+
+@test "abandon par set -e après le démarrage du conteneur : trap EXIT, conteneur supprimé et copie effacée" {
+  on docker 'exec appsport-restore-test *' 1
+  export SLEEP=false
+  run "$RESTORE_TEST"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order \
+    "docker run -d --name appsport-restore-test *" \
+    "docker exec appsport-restore-test node -e *" \
+    "docker rm -f appsport-restore-test"
+  [ "$(count_calls "docker exec appsport-restore-test *")" -eq 1 ]
+  refute_call "curl * https://hc.test/restore-test"
+  assert_tmp_empty
 }
 
 @test "base réelle en intégrité KO : motif « intégrité KO sur la base réelle », pas de conteneur" {
