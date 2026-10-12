@@ -201,15 +201,38 @@ remember_files() {
   [[ "$output" == *"Échec du téléchargement de l'image v1.3.0 (jeton GHCR expiré ? voir P5). Rien n'a été changé."* ]]
 }
 
-@test "sauvegarde pre-deploy en échec : pas de up, backup-failed, deploy.env inchangé" {
-  on restic "-r $OFFSITE backup *" 1
-  run "$UPDATE" v1.3.0 --yes
+# Instantané, dépôt local ou dépôt offsite en échec : retour au tag en place, ni up ni deploy.env, backup-failed.
+assert_backup_failed() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Échec de l'instantané ou de la sauvegarde pre-deploy. Le service n'a pas été modifié."* ]]
-  assert_calls_in_order "restic -r $OFFSITE backup *" "git -C $APPSPORT_REPO checkout --quiet v1.2.0"
+  assert_calls_in_order "git -C $APPSPORT_REPO checkout --quiet v1.3.0" "git -C $APPSPORT_REPO checkout --quiet v1.2.0"
   refute_call "docker compose * up *"
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ backup-failed$ ]]
+}
+
+@test "sauvegarde pre-deploy en échec (instantané, dépôt local ou offsite) : pas de up, backup-failed, deploy.env inchangé" {
+  on restic "-r $OFFSITE backup *" 1
+  run "$UPDATE" v1.3.0 --yes
+  assert_backup_failed
+  assert_calls_in_order "restic -r $OFFSITE backup *" "git -C $APPSPORT_REPO checkout --quiet v1.2.0"
+
+  # Instantané pre-v1.3.0 en échec : aucune sauvegarde restic sans lui.
+  reset_host
+  on docker '* snapshot --tag pre-v1.3.0' 1
+  run "$UPDATE" v1.3.0 --yes
+  assert_backup_failed
+  refute_call "restic *"
+
+  # Dépôt local seul en échec : l'offsite est quand même tenté, et l'échec du local n'est pas masqué.
+  reset_host
+  on restic "-r $BACKUP_ROOT/restic backup *" 1
+  run "$UPDATE" v1.3.0 --yes
+  assert_backup_failed
+  assert_calls_in_order \
+    "restic -r $BACKUP_ROOT/restic backup *" \
+    "restic -r $OFFSITE backup *" \
+    "git -C $APPSPORT_REPO checkout --quiet v1.2.0"
 
   # deploy.log non inscriptible : avertissement, et le message d'échec s'affiche quand même.
   reset_host
