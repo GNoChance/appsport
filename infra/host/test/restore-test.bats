@@ -140,3 +140,20 @@ assert_tmp_empty() {
   assert_tmp_empty
   jq -e '.restoreTest | .ok == false and .detail == "restic check offsite en échec"' "$STATUS_FILE"
 }
+
+@test "TERM pendant le test : conteneur supprimé, copie nettoyée, /fail « interrompu » et restoreTest KO" {
+  # Le stub est un enfant direct du script : TERM au script, traité au retour de docker run -d.
+  # shellcheck disable=SC2016 # extrait évalué par le stub
+  on docker 'run -d --name appsport-restore-test *' 0 'kill -TERM "$PPID"'
+  run "$RESTORE_TEST"
+  [ "$status" -eq 1 ]
+  assert_calls_in_order \
+    "docker run -d --name appsport-restore-test *" \
+    "docker rm -f appsport-restore-test" \
+    "curl *--data-raw test de restauration interrompu https://hc.test/restore-test/fail"
+  [ "$(count_calls "curl * https://hc.test/restore-test/fail")" -eq 1 ]
+  refute_call "curl * https://hc.test/restore-test"
+  refute_call "restic * check *"
+  assert_tmp_empty
+  jq -e '.restoreTest | .ok == false and .detail == "test de restauration interrompu"' "$STATUS_FILE"
+}

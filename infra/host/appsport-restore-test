@@ -35,7 +35,9 @@ cleanup() {
 }
 
 # fail <motif> : nettoyage, section restoreTest de status.json (volume monté seulement), /fail, code 1.
+# Un second signal pendant fail ne fait que sortir (le trap EXIT nettoie) : le premier motif reste.
 fail() {
+  trap 'exit 1' INT TERM HUP
   cleanup
   log "Échec du test de restauration : $1"
   if volume_ready; then
@@ -109,7 +111,7 @@ main() {
   volume_ready || fail "volume verrouillé : lancer appsport-unlock"
   take_lock || fail "verrou occupé"
   trap cleanup EXIT
-  trap 'exit 1' INT TERM HUP
+  trap 'fail "test de restauration interrompu"' INT TERM HUP
   if ! version=$(current_version) || ! valid_version "$version"; then
     fail "version en place illisible dans deploy.env"
   fi
