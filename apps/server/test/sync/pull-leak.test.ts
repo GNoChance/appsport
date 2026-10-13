@@ -24,7 +24,11 @@ const SECRET_KEYS = Object.values(entityRules).flatMap((r) => r.secretColumns.ma
 const witnessesOf = (tag: string) => ({
   limitation: { note: `TEMOIN-${tag}-note` },
   place: { name: `TEMOIN-${tag}-lieu` },
-  training_profile: { sportCode: 'other', sportOtherLabel: `TEMOIN-${tag}-sport` },
+  training_profile: {
+    sportCode: 'other',
+    sportOtherLabel: `TEMOIN-${tag}-sport`,
+    coach: tag === 'A' ? 'ombre' : 'scribe',
+  },
   sync_rejection: { entity: `TEMOIN-${tag}-rejet` },
 });
 
@@ -87,6 +91,9 @@ describe.each(['member', 'admin'] as const)('pull : test de fuite (session %s)',
     for (const w of own) expect(dump).toContain(w);
     expect(dump).not.toContain(b.id);
     for (const w of others) expect(dump).not.toContain(w);
+    // Coach : valeur d'énumération, témoin par valeur distincte (A « ombre », B « scribe »).
+    expect(dump).toContain('"coach":"ombre"');
+    expect(dump).not.toContain('"coach":"scribe"');
     for (const r of rows) for (const key of SECRET_KEYS) expect(r.row).not.toHaveProperty(key);
     expect(rows.find((r) => r.row.id === gymB.id)?.row).toMatchObject({ createdBy: null, updatedBy: null });
     expect(rows.find((r) => r.entity === 'gym_equipment')?.row).toMatchObject({ addedBy: null });

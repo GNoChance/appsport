@@ -1,4 +1,6 @@
 import {
+  COACH_IDS,
+  type CoachId,
   DAYS_PER_WEEK,
   EXPERIENCES,
   type Experience,
@@ -23,11 +25,15 @@ export interface TrainingProfileView {
   sportCode: SportCode | null;
   sportOtherLabel: string | null;
   cautiousMode: boolean;
+  /** Null tant qu'aucun coach n'est choisi (première étape de l'onboarding). */
+  coach: CoachId | null;
 }
 
 export interface ProfileRepo {
   get(): Promise<TrainingProfileView | null>;
   update(p: TrainingProfilePatch): Promise<MeResponse>;
+  /** Choix ou changement du coach (classe E : hors ligne, « Nécessite le réseau »). */
+  setCoach(coach: CoachId): Promise<void>;
   completeOnboarding(): Promise<MeResponse>;
   onboardingInput(): Promise<Parameters<typeof firstIncompleteStep>[0]>;
 }
@@ -49,15 +55,20 @@ export function createProfileRepo(s: AppServices): ProfileRepo {
       sportCode: oneOf(SPORT_CODES, row.sportCode),
       sportOtherLabel: text(row.sportOtherLabel),
       cautiousMode: row.cautiousMode === true,
+      coach: oneOf(COACH_IDS, row.coach),
     };
   }
 
   const saveMe = (me: MeResponse) => setMeta(db, 'me', me);
+  const update = (p: TrainingProfilePatch) =>
+    sendThenPull(s, 'PATCH', '/api/me/training-profile', { body: p, schema: MeResponse, apply: saveMe });
 
   return {
     get,
-    update: (p) =>
-      sendThenPull(s, 'PATCH', '/api/me/training-profile', { body: p, schema: MeResponse, apply: saveMe }),
+    update,
+    async setCoach(coach) {
+      await update({ coach });
+    },
     completeOnboarding: () =>
       sendThenPull(s, 'POST', '/api/me/onboarding/complete', { schema: MeResponse, apply: saveMe }),
     async onboardingInput() {

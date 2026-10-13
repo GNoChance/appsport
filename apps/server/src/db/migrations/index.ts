@@ -1,5 +1,6 @@
 import type { Kysely } from 'kysely';
 import { socle } from './0001_socle';
+import { coach } from './0002_coach';
 
 export interface Migration {
   id: string;
@@ -8,5 +9,5 @@ export interface Migration {
   up(db: Kysely<any>): Promise<void>;
 }
 
-/** Migrations du socle, dans l'ordre. */
-export const MIGRATIONS: readonly Migration[] = [socle];
+/** Migrations, dans l'ordre (appliquées ensemble dans une seule transaction, voir migrate). */
+export const MIGRATIONS: readonly Migration[] = [socle, coach];

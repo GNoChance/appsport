@@ -7,6 +7,7 @@ import { seedMirror } from '../support/seed';
 
 const WRITES: [string, (r: Repos) => Promise<unknown>][] = [
   ['profile.update', (r) => r.profile.update({ goal: 'strength' })],
+  ['profile.setCoach', (r) => r.profile.setCoach('skald')],
   ['places.create', (r) => r.places.create({ kind: 'home', equipment: [], isPrimary: false })],
   ['gyms.setEquipment', (r) => r.gyms.setEquipment('g-1', 'barbell', true)],
   ['consent.grantHealth', (r) => r.consent.grantHealth()],

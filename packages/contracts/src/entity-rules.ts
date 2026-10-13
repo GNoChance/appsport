@@ -208,6 +208,7 @@ export const entityRules: EntityRulesMap = {
       'sport_code',
       'sport_other_label',
       'cautious_mode',
+      'coach',
     ],
     exported: true,
     onUserDelete: 'cascade',

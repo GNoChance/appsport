@@ -15,10 +15,13 @@ describe('passage de la version précédente (01 §9.1.4)', () => {
   });
   afterEach(() => h.sqlite.close());
 
-  it('le schéma v1 figé est déjà à jour et identique à l’instantané', async () => {
+  it('le schéma v1 figé reçoit 0002_coach et devient identique à l’instantané', async () => {
     h.sqlite.exec(read('../fixtures/schema-v1.sql'));
     h.sqlite.exec("INSERT INTO schema_migrations VALUES ('0001_socle', 0, 'x')");
-    expect(await migrate(h.db, MIGRATIONS, new FakeClock())).toEqual({ applied: [], unknownNonBreaking: [] });
+    expect(await migrate(h.db, MIGRATIONS, new FakeClock())).toEqual({
+      applied: ['0002_coach'],
+      unknownNonBreaking: [],
+    });
     expect(dumpSchema(h.sqlite)).toBe(read('../__snapshots__/schema.sql'));
   });
 });

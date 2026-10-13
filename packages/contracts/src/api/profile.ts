@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CoachIdSchema } from '../coach';
 import { SPORT_OTHER_LABEL_MAX, SportCodeSchema } from '../sports';
 import { OnboardingStep } from './auth';
 
@@ -28,8 +29,9 @@ export const EXPERIENCE_LABELS: Record<Experience, string> = {
 export const DAYS_PER_WEEK = [2, 3, 4] as const;
 export const SESSION_MINUTES = [30, 45, 60, 75, 90] as const;
 
-/** Strict : tout champ inconnu → 400 validation. */
+/** Strict : tout champ inconnu → 400 validation. `coach` se change mais ne s'efface pas (jamais null). */
 export const TrainingProfilePatch = z.strictObject({
+  coach: CoachIdSchema.optional(),
   goal: Goal.optional(),
   experience: Experience.optional(),
   daysPerWeek: z.literal(DAYS_PER_WEEK).optional(),

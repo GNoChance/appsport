@@ -44,7 +44,7 @@ async function setup() {
 
   // une ligne par table liée du registre : les tables des tâches suivantes sont reprises automatiquement
   const witnessed: Record<string, Record<string, unknown>> = {
-    training_profile: { sportOtherLabel: WITNESSES[0] },
+    training_profile: { sportOtherLabel: WITNESSES[0], coach: 'scribe' },
     health_screening: { questionnaireVersion: WITNESSES[1] },
     limitation: { note: WITNESSES[2] },
   };
@@ -76,6 +76,8 @@ describe("isolation de l'administrateur (P-ADM-1, P-ADM-2, 02 §15 n°14)", () =
       });
       const body = await res.text();
       for (const w of WITNESSES) expect(body, `${r.method} ${r.path}`).not.toContain(w);
+      // Le coach est une valeur d'énumération, pas un témoin unique : c'est sa clé qui ne doit pas sortir.
+      expect(body, `${r.method} ${r.path}`).not.toContain('"coach"');
     }
   });
 

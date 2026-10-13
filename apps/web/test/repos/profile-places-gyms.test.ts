@@ -28,6 +28,7 @@ async function setup() {
       sportCode: null,
       sportOtherLabel: null,
       cautiousMode: false,
+      coach: 'skald',
     },
   ]);
   await seedMirror(db, 'gym', [
@@ -112,7 +113,29 @@ describe('ProfileRepo', () => {
       sportCode: null,
       sportOtherLabel: null,
       cautiousMode: false,
+      coach: 'skald',
     });
+  });
+
+  it('get : coach absent ou inconnu du miroir → null', async () => {
+    const { repos, db } = await setup();
+    await seedMirror(db, 'training_profile', [{ id: 'u-1', ownerId: 'u-1', coach: 'berserker' }]);
+    expect((await repos.profile.get())?.coach).toBeNull();
+    await seedMirror(db, 'training_profile', [{ id: 'u-1', ownerId: 'u-1', coach: null }]);
+    expect((await repos.profile.get())?.coach).toBeNull();
+  });
+
+  it('setCoach : PATCH { coach }, meta.me à jour, un pull', async () => {
+    const { repos, api, sync, db } = await setup();
+    let body: unknown;
+    api.on('PATCH', '/api/me/training-profile', (req) => {
+      body = req.body;
+      return { status: 200, body: makeMe({ onboardingStep: 'availability', onboardingCompletedAt: null }) };
+    });
+    await expect(repos.profile.setCoach('scribe')).resolves.toBeUndefined();
+    expect(body).toEqual({ coach: 'scribe' });
+    expect((await getMeta(db, 'me'))?.onboardingStep).toBe('availability');
+    expect(sync.pullCount).toBe(1);
   });
 
   it('update : PATCH de ce corps, meta.me à jour, un pull', async () => {

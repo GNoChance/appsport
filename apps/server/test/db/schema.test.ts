@@ -66,6 +66,9 @@ describe('schéma du socle', () => {
     bad(profile('session_minutes', '50'));
     bad(profile('sport_other_label', `'${x(41)}'`));
     ok(profile('sport_other_label', `'${x(40)}'`));
+    run('DELETE FROM training_profile');
+    bad(profile('coach', "'berserker'"));
+    ok(profile('coach', "'skald'"));
   });
 
   it('health_screening et limitation', () => {

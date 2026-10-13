@@ -1,5 +1,6 @@
 import {
   BODY_AREAS,
+  COACH_IDS,
   CONSENT_ACTIONS,
   CONSENT_TYPES,
   DAYS_PER_WEEK,
@@ -45,6 +46,7 @@ const ENUMS: Record<string, readonly (string | number)[]> = {
   'training_profile.goal': GOALS,
   'training_profile.experience': EXPERIENCES,
   'training_profile.session_minutes': SESSION_MINUTES,
+  'training_profile.coach': COACH_IDS,
   'user.role': RoleSchema.options,
   'user.status': UserStatusSchema.options,
   'user.onboarding_step': ONBOARDING_STEPS,
