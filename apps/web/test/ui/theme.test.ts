@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, relative, resolve } from 'node:path';
 import { act, renderHook } from '@testing-library/react';
@@ -18,6 +18,17 @@ const SRC = join(WEB, 'src');
 const THEME_DIR = join(SRC, 'ui/theme');
 const read = (path: string) => readFileSync(path, 'utf8');
 const tokensBlocks = () => parseCssBlocks(read(join(THEME_DIR, 'tokens.css')));
+
+function* walk(dir: string): Generator<string> {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) yield* walk(full);
+    else if (entry.isFile()) yield full;
+  }
+}
+const srcFiles = () => [...walk(SRC)];
+/** Chemin depuis src/, en barres obliques. */
+const rel = (f: string) => relative(SRC, f).replaceAll('\\', '/');
 
 const KEY = 'rune.theme';
 const DARK = '(prefers-color-scheme: dark)';
@@ -110,6 +121,30 @@ describe('choix de l’apparence, gardé sur l’appareil', () => {
     });
     expect(() => writeThemeChoice('carnet')).not.toThrow();
   });
+
+  it('stockage bloqué dès l’accès à localStorage (SecurityError) : « auto », aucune levée, le réglage applique', () => {
+    // Navigateur réel (cookies bloqués) : c'est la lecture de `localStorage` elle-même qui lève.
+    const own = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    if (!own) throw new Error('localStorage absent de globalThis');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Accès refusé', 'SecurityError');
+      },
+    });
+    try {
+      expect(() => globalThis.localStorage).toThrow(DOMException);
+      expect(readThemeChoice()).toBe('auto');
+      expect(() => writeThemeChoice('nuit')).not.toThrow();
+      const { result } = renderHook(() => useThemeChoice());
+      act(() => result.current[1]('nuit'));
+      expect(html().getAttribute('data-theme')).toBe('nuit');
+      expect(themeColors()).toEqual(['#05070D']);
+      expect(result.current[0]).toBe('nuit');
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', own);
+    }
+  });
 });
 
 describe('applyTheme', () => {
@@ -198,6 +233,33 @@ describe('applyTheme', () => {
     scheme.set(true);
     expect(themeColors()).toEqual(['#F2ECDF']);
     expect(html().getAttribute('data-theme')).toBe('carnet');
+  });
+
+  it('Auto sans matchMedia : couleur du thème clair, aucune levée', () => {
+    vi.stubGlobal('matchMedia', undefined);
+    expect(() => applyTheme('auto')).not.toThrow();
+    expect(html().hasAttribute('data-theme')).toBe(false);
+    expect(themeColors()).toEqual(['#F1F3F7']);
+    expect(() => applyTheme('sombre')).not.toThrow();
+    expect(themeColors()).toEqual(['#070A12']);
+  });
+
+  it('Auto avec une media query sans addEventListener (ancien Safari) : réglage lu à l’appel, aucune levée', () => {
+    for (const [dark, color] of [
+      [false, '#F1F3F7'],
+      [true, '#070A12'],
+    ] as const) {
+      vi.stubGlobal('matchMedia', (q: string) => ({
+        matches: q === DARK && dark,
+        media: q,
+        addListener() {},
+        removeListener() {},
+      }));
+      expect(() => applyTheme('auto'), `téléphone sombre : ${dark}`).not.toThrow();
+      expect(themeColors(), `téléphone sombre : ${dark}`).toEqual([color]);
+      expect(() => applyTheme('carnet')).not.toThrow();
+      expect(themeColors()).toEqual(['#F2ECDF']);
+    }
   });
 });
 
@@ -388,21 +450,22 @@ describe('tokens.css', () => {
 });
 
 describe('feuilles de style de src/', () => {
-  function* walk(dir: string): Generator<string> {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) yield* walk(full);
-      else if (entry.isFile()) yield full;
-    }
-  }
-  const files = [...walk(SRC)];
+  const files = srcFiles();
   const cssFiles = files.filter((f) => f.endsWith('.css'));
-  const rel = (f: string) => relative(SRC, f).replaceAll('\\', '/');
   const declared = (css: string) => new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
+  /** Seules feuilles qui déclarent des variables sur :root : jetons de thème, puis mouvement (Task 4). */
+  const TOKENS = 'ui/theme/tokens.css';
+  const MOTION = 'ui/motion.css';
+  const rootVars = (file: string) =>
+    parseCssBlocks(read(file))
+      .filter((b) => /:root/.test(b.selector))
+      .flatMap((b) => [...b.declarations.keys()].filter((k) => k.startsWith('--')));
 
-  it('chaque var(--…) lue a une définition : jetons, même fichier ou propriété posée par un composant', () => {
+  it('chaque var(--…) lue a une définition : jetons, mouvement, même fichier ou propriété posée par un composant', () => {
     expect(cssFiles.length).toBeGreaterThan(5);
-    const tokens = declared(read(join(THEME_DIR, 'tokens.css')));
+    // tokens.css toujours ; motion.css dès que Task 4 le crée.
+    const sources = [TOKENS, ...(existsSync(join(SRC, MOTION)) ? [MOTION] : [])];
+    const tokens = new Set(sources.flatMap((source) => [...declared(read(join(SRC, source)))]));
     const fromComponents = new Set(
       files
         .filter((f) => /\.tsx?$/.test(f))
@@ -419,11 +482,14 @@ describe('feuilles de style de src/', () => {
     }
   });
 
-  it('les jetons n’ont qu’une source : aucune autre feuille ne déclare de variable sur :root', () => {
-    for (const file of cssFiles.filter((f) => rel(f) !== 'ui/theme/tokens.css')) {
-      const rootBlocks = parseCssBlocks(read(file)).filter((b) => /:root/.test(b.selector));
-      const vars = rootBlocks.flatMap((b) => [...b.declarations.keys()].filter((k) => k.startsWith('--')));
-      expect(vars, rel(file)).toEqual([]);
+  it('les jetons n’ont qu’une source : hors tokens.css, seul motion.css déclare sur :root, sans jeton de thème', () => {
+    const themeTokens = declared(read(join(SRC, TOKENS)));
+    expect(themeTokens.has('--bg')).toBe(true);
+    for (const file of cssFiles.filter((f) => rel(f) !== TOKENS)) {
+      const vars = rootVars(file);
+      // motion.css garde ses propres variables (--ease, --dur-*), jamais un jeton de thème.
+      const forbidden = rel(file) === MOTION ? vars.filter((v) => themeTokens.has(v)) : vars;
+      expect(forbidden, rel(file)).toEqual([]);
     }
   });
 });
@@ -461,15 +527,26 @@ describe('polices embarquées', () => {
       expect(() => require.resolve(match?.[1] ?? ''), src).not.toThrow();
     }
   });
+
+  it('seul ui/theme/fonts.css cite @fontsource (une feuille Fontsource ajouterait sous-ensembles et .woff)', () => {
+    // Le build (6 woff2 latins émis et précachés, rien d'autre) est vérifié par e2e/theme.spec.ts.
+    const citing = [...srcFiles(), join(WEB, 'index.html')]
+      .filter((f) => read(f).includes('@fontsource'))
+      .map(rel);
+    expect(citing).toEqual(['ui/theme/fonts.css']);
+  });
 });
 
 describe('main.tsx', () => {
-  it('charge jetons et polices et applique le thème gardé avant createRoot', () => {
+  it('charge jetons et polices et applique le thème gardé avant createRoot, au premier niveau', () => {
     const main = read(join(SRC, 'main.tsx'));
     expect(main).toMatch(/^import '\.\/ui\/theme\/tokens\.css';$/m);
     expect(main).toMatch(/^import '\.\/ui\/theme\/fonts\.css';$/m);
-    const apply = main.indexOf('applyTheme(readThemeChoice());');
-    expect(apply).toBeGreaterThan(-1);
-    expect(apply).toBeLessThan(main.indexOf('createRoot('));
+    // Ligne entière, sans retrait : ni commentée, ni dans une fonction appelée plus tard.
+    const apply = /^applyTheme\(readThemeChoice\(\)\);$/m.exec(main);
+    const render = /^createRoot\(/m.exec(main);
+    expect(apply, 'appel de premier niveau').not.toBeNull();
+    expect(render, 'rendu de premier niveau').not.toBeNull();
+    expect(apply?.index).toBeLessThan(render?.index ?? -1);
   });
 });
