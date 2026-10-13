@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { render, screen } from '@testing-library/react';
-import { createElement, Fragment } from 'react';
+import { act, render, screen } from '@testing-library/react';
+import { createElement, Fragment, useId } from 'react';
+import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { RuneMark, RuneWordmark } from '../../src/ui/Logo';
 
@@ -14,33 +15,75 @@ const LOGO_SOURCE = join(WEB, 'src/ui/Logo.tsx');
 /** Fond nuit du logo : --bg du thème sombre (tokens.css) et fond de l'icône maskable. */
 const NIGHT = '#070A12';
 
-/** Éléments sous `svg` dans l'ordre du document, sans le titre ni les simples groupes de mise en couleur. */
+/** Style du groupe qui met cadre et repères de la marque mono à `--rune-mark-frame`. */
+const FRAME_COLOR_STYLE = /^color:\s*var\(--rune-mark-frame,\s*currentColor\);?$/;
+
+/** Ce groupe de mise en couleur, absent des fichiers de docs/brand : un `g` dont ce style est le seul attribut. */
+const isFrameColorGroup = (el: Element): boolean =>
+  el.tagName.toLowerCase() === 'g' &&
+  el.attributes.length === 1 &&
+  FRAME_COLOR_STYLE.test(el.getAttribute('style') ?? '');
+
+/** Éléments sous `svg` dans l'ordre du document, sans le titre ni le groupe de mise en couleur. */
 function drawing(svg: Element): Element[] {
-  return [...svg.querySelectorAll('*')].filter((el) => {
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'title') return false;
-    const attrs = [...el.attributes].map((a) => a.name);
-    return !(tag === 'g' && attrs.every((name) => name === 'style'));
-  });
+  return [...svg.querySelectorAll('*')].filter(
+    (el) => el.tagName.toLowerCase() !== 'title' && !isFrameColorGroup(el),
+  );
+}
+
+/** Place dans l'arbre : balises des ancêtres depuis le svg, sans le groupe de mise en couleur. */
+function lineage(el: Element, svg: Element): string {
+  const tags: string[] = [];
+  for (let parent = el.parentElement; parent && parent !== svg; parent = parent.parentElement) {
+    if (!isFrameColorGroup(parent)) tags.unshift(parent.tagName.toLowerCase());
+  }
+  return ['svg', ...tags].join('>');
 }
 
 /**
- * Dessin normalisé : balise et attributs (noms en minuscules, triés), sans `id` ni `style` ; chaque
- * `url(#…)` devient le rang de sa cible parmi les définitions, pour comparer deux jeux d'identifiants.
+ * Dessin normalisé : place dans l'arbre, balise et attributs (noms en minuscules, triés, `style` compris),
+ * sans `id` ; chaque `url(#…)` devient le rang de sa cible parmi les définitions, pour comparer deux jeux
+ * d'identifiants.
  */
 function normalized(svg: Element): string[] {
   const elements = drawing(svg);
   const defs = elements.filter((el) => el.id).map((el) => el.id);
   return elements.map((el) => {
     const attrs = [...el.attributes]
-      .filter((a) => a.name !== 'id' && a.name !== 'style')
+      .filter((a) => a.name !== 'id')
       .map((a) => {
         const value = a.value.replace(/url\(#([^)]+)\)/g, (_, id: string) => `url(#def${defs.indexOf(id)})`);
         return `${a.name.toLowerCase()}=${value}`;
       })
       .sort();
-    return [el.tagName.toLowerCase(), ...attrs].join(' ');
+    return [lineage(el, svg), el.tagName.toLowerCase(), ...attrs].join(' ');
   });
+}
+
+/** Cibles `#…` d'une marque : ses `url(#…)` et l'id de son titre (`aria-labelledby`). */
+function references(svg: Element): string[] {
+  const values = [svg, ...svg.querySelectorAll('*')].flatMap((el) =>
+    [...el.attributes].map((a) => (a.name === 'aria-labelledby' ? `url(#${a.value})` : a.value)),
+  );
+  return values.flatMap((value) => [...value.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1] ?? ''));
+}
+
+/**
+ * Identifiants des marques rendues : `perMark` ids par marque, tous distincts et dans [A-Za-z0-9_-] ;
+ * chaque référence d'une marque vise un id de cette même marque.
+ */
+function expectOwnIds(container: Element, perMark: number): void {
+  const svgs = [...container.querySelectorAll('svg')];
+  const ids = [...container.querySelectorAll('[id]')].map((el) => el.id);
+  expect(ids).toHaveLength(svgs.length * perMark);
+  expect(new Set(ids).size).toBe(ids.length);
+  for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
+  for (const svg of svgs) {
+    const own = new Set([...svg.querySelectorAll('[id]')].map((el) => el.id));
+    const refs = references(svg);
+    expect(refs.length).toBeGreaterThan(0);
+    for (const ref of refs) expect(own.has(ref), ref).toBe(true);
+  }
 }
 
 /** Fichier SVG de docs/brand/, analysé comme l'est un SVG en ligne. */
@@ -120,9 +163,7 @@ describe('RuneMark', () => {
     const { container } = render(createElement(RuneMark));
     const [frame, ticks, rune] = [...svgOf(container).querySelectorAll('path')];
     for (const part of [frame, ticks]) {
-      expect(part?.closest('g')?.getAttribute('style')).toMatch(
-        /^color:\s*var\(--rune-mark-frame,\s*currentColor\);?$/,
-      );
+      expect(part?.closest('g')?.getAttribute('style')).toMatch(FRAME_COLOR_STYLE);
     }
     expect(rune?.closest('g')).toBeNull();
     expect(rune?.getAttribute('fill')).toBe('currentColor');
@@ -133,28 +174,54 @@ describe('RuneMark', () => {
     expect(normalized(svgOf(container))).toEqual(normalized(brandSvg('rune-mark.svg')));
   });
 
-  it('deux marques avec lueur : aucun id en double, chaque url(#…) vise sa propre marque', () => {
-    const { container } = render(
-      createElement(
-        Fragment,
-        null,
-        createElement(RuneMark, { glow: true, title: 'Rune' }),
-        createElement(RuneMark, { glow: true, title: 'Logo de Rune' }),
-      ),
-    );
-    expect(screen.getAllByRole('img')).toHaveLength(2);
-    expect(screen.getByRole('img', { name: 'Rune' })).not.toBe(
-      screen.getByRole('img', { name: 'Logo de Rune' }),
-    );
-    const ids = [...container.querySelectorAll('[id]')].map((el) => el.id);
-    expect(ids).toHaveLength(8); // par marque : titre, 2 dégradés, 1 filtre
-    expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
-    for (const svg of container.querySelectorAll('svg')) {
-      const own = new Set([...svg.querySelectorAll('[id]')].map((el) => el.id));
-      const refs = [...svg.innerHTML.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]);
-      expect(refs.length).toBeGreaterThan(0);
-      for (const ref of refs) expect(own.has(ref ?? ''), ref).toBe(true);
+  // Par marque : 2 dégradés et 1 filtre, plus l'id du titre quand elle en a un.
+  it.each([
+    { cas: 'sans titre (décoratives)', titles: [undefined, undefined], perMark: 3 },
+    { cas: 'au même titre', titles: ['Rune', 'Rune'], perMark: 4 },
+    { cas: 'à titres différents', titles: ['Rune', 'Logo de Rune'], perMark: 4 },
+  ])(
+    'deux marques avec lueur $cas : ids distincts, chaque url(#…) vise sa propre marque',
+    ({ titles, perMark }) => {
+      const { container } = render(
+        createElement(
+          Fragment,
+          null,
+          ...titles.map((title, key) => createElement(RuneMark, { key, glow: true, title })),
+        ),
+      );
+      expect(container.querySelectorAll('svg')).toHaveLength(2);
+      expectOwnIds(container, perMark);
+    },
+  );
+
+  it('useId à caractères interdits (identifierPrefix) : ids réduits à [A-Za-z0-9_-], références intactes', () => {
+    // React 19.3 rend déjà des useId sûrs (_r_0_) : ce préfixe y glisse un deux-points et des guillemets
+    // français, pour que l'assainissement de Logo.tsx soit réellement éprouvé (la sonde le vérifie).
+    let raw = '';
+    function Probe() {
+      raw = useId();
+      return null;
+    }
+    const host = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(host, { identifierPrefix: 'p:«»' });
+    try {
+      act(() => {
+        root.render(
+          createElement(
+            Fragment,
+            null,
+            createElement(Probe),
+            createElement(RuneMark, { glow: true, title: 'Rune' }),
+            createElement(RuneMark, { glow: true, title: 'Rune' }),
+          ),
+        );
+      });
+      expect(raw).not.toMatch(/^[A-Za-z0-9_-]+$/);
+      expectOwnIds(host, 4);
+      expect(screen.getAllByRole('img', { name: 'Rune' })).toHaveLength(2);
+    } finally {
+      act(() => root.unmount());
+      host.remove();
     }
   });
 
