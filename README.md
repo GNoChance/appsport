@@ -6,19 +6,29 @@
 
 <p align="center"><em>Grave ta progression.</em></p>
 
-Rune est une application web installable (PWA) de suivi de musculation, auto-hébergée, pour un cercle privé. Elle propose des programmes d'entraînement, un suivi des séances qui marche hors ligne, des fiches d'exercices pour débutants, un coach IA et des conseils nutrition.
+Rune est une application web installable (PWA) de suivi de musculation, auto-hébergée, pour un cercle privé. Elle proposera des programmes d'entraînement, un suivi des séances qui marche hors ligne, des fiches d'exercices pour débutants, un coach IA au choix et des repères nutrition.
 
-> Rune s'appelait **appsport** pendant le cadrage. Le dépôt, les paquets (`@appsport/…`) et les fichiers techniques gardent ce nom de code pour l'instant.
+> Rune portait un autre nom de code pendant le cadrage. Tout s'appelle désormais Rune : le dépôt, les paquets (`@rune/…`), le serveur et les scripts. Seuls `docs/superpowers/` et `docs/research/` gardent l'ancien nom, par historique : y lire « rune » partout où un identifiant porte l'ancien nom.
 
-> **Statut : brique 1 (socle) en finition.** La spécification est versionnée dans [`docs/superpowers/specs/`](docs/superpowers/specs/2026-10-06-appsport-design.md). Le socle est codé et en revue finale avant d'être fusionné dans `main` : comptes sur invitation, onboarding, PWA hors ligne, synchronisation, administration, déploiement, sauvegardes et procédures. La refonte visuelle aux couleurs de Rune est prévue en fin de socle.
+> **Statut : brique 1 (socle) codée, refonte visuelle en cours.** Le socle est fait et relu : comptes sur invitation, onboarding, PWA hors ligne, synchronisation, administration, déploiement, sauvegardes et procédures. Il reçoit en ce moment sa refonte aux couleurs de Rune : thèmes, nouvelle navigation, choix du coach, onglet Progression. **Pas de mise en production avant la fin des cinq briques.** Les spécifications sont dans [`docs/superpowers/specs/`](docs/superpowers/specs/) : la [spec principale](docs/superpowers/specs/2026-10-06-appsport-design.md) et la [spec de la refonte](docs/superpowers/specs/2026-10-13-refonte-rune-design.md).
 
 ## Ce que fera l'app
 
 - **Profil selon le contexte** : à l'inscription, chacun indique où il s'entraîne : au poids du corps à la maison, en salle (et laquelle), ou en sport loisir.
+- **Un coach au choix**, dès la première étape de l'onboarding :
+  - **L'Ombre**, froid et exigeant ;
+  - **le Skald**, mentor qui raconte ta saga ;
+  - **le Scribe**, calme et précis.
+
+  Au début, il parle par des messages écrits à l'avance. La vraie conversation arrive avec la brique 4.
 - **Programmes** adaptés au contexte et au niveau, et **suivi des séances** (séries, répétitions, charges, progression), utilisable hors ligne à la salle.
+- **Progression façon RPG** : des rangs de E à S, en pierres runiques, pour le profil et pour chaque groupe musculaire, des quêtes, et un écran LEVEL UP.
 - **Bibliothèque d'exercices** pour débutants : visuels, consignes, muscles travaillés, matériel nécessaire.
-- **Coach IA**, « le Skald », qui conseille sur l'entraînement et la nutrition à partir du profil et de l'historique.
-- **Nutrition** : besoins caloriques, macronutriments et conseils.
+- **Nutrition** :
+  - des repères du jour ;
+  - des idées de repas par moment de la journée, avec des options sans gluten et végétariennes ;
+  - les pas saisis à la main ;
+  - un mode sans chiffres pour qui le préfère.
 
 Public visé : un cercle privé (inscription sur invitation).
 
@@ -31,8 +41,15 @@ Public visé : un cercle privé (inscription sur invitation).
 
 - **Le nom.** Une rune se grave, comme la progression qu'on note séance après séance.
 - **Le logo, « Rang brisé ».** La rune Raidō ᚱ, qui est aussi un R et veut dire « le voyage », est placée dans un badge de rang hexagonal. Sa jambe traverse le cadre et en sort : la progression ne reste pas dans le rang qu'on t'a donné.
-- **La palette.** Le noir de nuit `#05070D`, le bleu glace `#5ED8FF`, le violet d'éveil `#8C6BFF` (hauts rangs et récompenses) et le givre `#F2FDFF`. Sur les thèmes clairs, le symbole s'affiche en une seule couleur.
-- **Pistes pour la suite** (à spécifier) : des thèmes au choix (carnet, salle de nuit, coach calme), plusieurs tempéraments de coach, une progression façon RPG avec des rangs de E à S par groupe musculaire, et une carte de fin de séance à partager.
+- **La palette.**
+  - Le noir de nuit `#05070D`.
+  - Le bleu glace `#5ED8FF`.
+  - Le violet d'éveil `#8C6BFF`, pour les hauts rangs et les récompenses.
+  - Le givre `#F2FDFF`.
+
+  Sur les thèmes clairs, le symbole s'affiche en une seule couleur.
+- **Les thèmes.** Par défaut, l'appli passe en clair ou en sombre comme le téléphone. On peut aussi forcer Clair ou Sombre, ou choisir l'un des deux thèmes bonus : Carnet (papier crème et encre) ou Salle de nuit (néon et cadres HUD).
+- **La typographie.** Chakra Petch pour les titres, les chiffres et les rangs, Barlow pour le texte.
 
 Les fichiers du logo sont dans [`docs/brand/`](docs/brand/).
 
@@ -41,17 +58,43 @@ Les fichiers du logo sont dans [`docs/brand/`](docs/brand/).
 | # | Brique | Contenu |
 |---|--------|---------|
 | 0 | Vision et architecture | Choix techniques, hébergement, modèle de données |
-| 1 | Socle | Comptes sur invitation, onboarding, PWA, déploiement |
+| 1 | Socle | Comptes sur invitation, onboarding, PWA, déploiement, puis la refonte Rune : thèmes, navigation, choix du coach, Progression en avant-goût |
 | 2 | Exercices | Fiches débutant rédigées en français (brouillon IA, relecture humaine), illustrations, recherche par matériel |
-| 3 | Programmes et suivi | Modèles de programmes, séance en cours, historique, progression |
-| 4 | Coach IA | Conseils personnalisés, ajustement des programmes |
-| 5 | Nutrition | Objectifs caloriques et macros, conseils |
+| 3 | Programmes et séances | Modèles de programmes, séance en cours, historique, records, progression RPG |
+| 4 | Coach IA | Conversation avec le coach choisi, conseils personnalisés, ajustement des programmes |
+| 5 | Nutrition | Repères du jour, idées de repas, sans gluten et végétarien, pas du jour |
 
-Chaque brique suit le même cycle : spécification, plan d'implémentation, puis code.
+Chaque brique suit le même cycle : spécification, plan d'implémentation, puis code relu. La mise en production vient après la brique 5.
+
+## Lancer Rune en local (sans Docker)
+
+Il faut Node 24 et pnpm 10. Les commandes ci-dessous sont pour PowerShell, sous Windows ; les données vont dans un dossier hors du dépôt.
+
+```powershell
+pnpm install
+pnpm --filter @rune/web build
+
+$Data = "$HOME\rune-data"
+New-Item -ItemType Directory -Force $Data | Out-Null
+New-Item -ItemType File -Force "$Data\.rune-volume" | Out-Null
+$env:APP_ORIGIN = 'http://localhost:3100'; $env:PORT = '3100'; $env:HOST = '127.0.0.1'
+$env:RUNE_DATA_DIR = $Data
+$env:RUNE_PUBLIC_DIR = "$PWD\apps\web\dist"
+$env:RUNE_CONTENT_DIR = "$PWD\data"
+
+cd apps\server
+node --import tsx src/main.ts init                                       # une seule fois : crée la base
+node --import tsx src/main.ts admin:bootstrap --birth-date 1990-01-01    # une seule fois : lien d'invitation du premier admin
+node --import tsx src/main.ts                                            # démarre Rune sur http://localhost:3100
+```
+
+Ensuite, ouvrir le lien d'invitation affiché pour créer le compte admin. Sur téléphone, l'appli installée a besoin du HTTPS : ce sera pour le serveur, derrière Tailscale.
+
+Pour les tests : `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm --filter @rune/web test:e2e` (Chromium et WebKit), et `pnpm test:infra` depuis Git Bash pour les scripts de l'hôte.
 
 ## Hébergement
 
-Serveur personnel (16 Go de RAM, 3 To de stockage), joignable par Tailscale. Le déploiement (conteneur Docker, HTTPS, sauvegardes restic, supervision) est décrit dans la section Exploitation de la spécification.
+Serveur personnel (16 Go de RAM, 3 To de stockage), joignable par Tailscale à l'adresse `https://rune.<tailnet>.ts.net`. Le déploiement (conteneur Docker, HTTPS, sauvegardes restic chiffrées en local et chez Backblaze B2, supervision) est décrit dans [`docs/exploitation/`](docs/exploitation/). Docker ne sert que sur le serveur, jamais pour développer.
 
 ## Crédits
 
