@@ -107,21 +107,37 @@
   font-size: 0.875rem;
 }
 
+/*
+ * Boutons (GUIDE, Primary/Secondary/Danger button) : 52 px, rayon 14, Barlow 600 17. Retour du geste en
+ * 150 ms sur la courbe unique ; sous mouvement réduit, aucun déplacement (voir en bas de la feuille).
+ */
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
-  padding: var(--space-2) var(--space-4);
+  gap: var(--space-2);
+  min-height: 52px;
+  padding: var(--space-2) 20px;
   border-radius: var(--radius-control);
-  border: 1px solid var(--field-border);
+  border: 1.5px solid transparent;
+  background: transparent;
   font: inherit;
+  font-size: 1.0625rem;
   font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
   cursor: pointer;
+  transition:
+    transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .button:disabled {
-  opacity: 0.6;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -132,65 +148,144 @@
 }
 
 .secondary {
-  background: var(--surface);
-  color: var(--text);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ghost {
+  color: var(--accent);
 }
 
 .danger {
-  background: var(--surface);
   border-color: var(--danger);
   color: var(--danger);
 }
 
+/* Pleine largeur (sur téléphone, la largeur de l'écran moins les marges). */
+.block {
+  width: 100%;
+}
+
+@media (hover: hover) {
+  .primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 88%, var(--text));
+  }
+
+  .secondary:hover:not(:disabled),
+  .ghost:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  .danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+  }
+}
+
+/* Champ (GUIDE, Field) : libellé 14/600 au-dessus, contrôle de 52 px en 16 px (pas de zoom sur iOS). */
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .field input,
 .field select,
 .field textarea {
-  min-height: 44px;
-  padding: var(--space-2) var(--space-3);
+  min-height: 52px;
+  padding: 13px var(--space-4);
   border: 1px solid var(--field-border);
   border-radius: var(--radius-control);
   background: var(--field-bg);
   color: var(--text);
   font: inherit;
+  font-size: 16px;
+}
+
+/* Valeur qu'on ne modifie pas ici (date de naissance) : contour pointillé, texte secondaire. */
+.field input:read-only {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* Erreur : le contour passe au danger et s'épaissit d'un demi-pixel (1,5 px). */
+.field [aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: inset 0 0 0 0.5px var(--danger);
 }
 
 .label {
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
 .hint {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
   color: var(--text-muted);
 }
 
 .fieldError {
-  font-size: 0.875rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.84375rem;
+  font-weight: 500;
+  line-height: 1.35;
   color: var(--danger);
 }
 
+.fieldError svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* Bandeau (GUIDE, Banner) : rayon 14, icône du ton puis le texte. */
 .banner {
-  padding: var(--space-3) var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 14px var(--space-4);
   border-radius: var(--radius-control);
   border: 1px solid var(--border);
 }
 
-.info {
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+.bannerIcon {
+  flex: none;
+  display: flex;
+  margin-top: 2px;
 }
 
-.warning {
+.bannerBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.bannerInfo {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.bannerInfo .bannerIcon {
+  color: var(--accent);
+}
+
+.bannerWarning {
   background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning-text) 30%, transparent);
 }
 
-.error {
-  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+.bannerWarning .bannerIcon {
+  color: var(--warning-text);
+}
+
+.bannerError {
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
   border-color: var(--danger);
+}
+
+.bannerError .bannerIcon {
+  color: var(--danger);
 }
 
 .backdrop {
@@ -243,32 +338,596 @@
   gap: var(--space-2);
 }
 
-.choices {
+/* Légende d'un groupe de choix : comme un libellé de champ. */
+.choiceGroup {
+  min-width: 0;
   border: 0;
   margin: 0;
   padding: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: var(--space-3);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.choiceStack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/*
+ * Vrai contrôle (radio, case) transparent posé sur toute sa carte ou sa pastille, dans son `<label>` :
+ * le doigt, la souris et le clavier le visent directement ; l'étiquette montre son état (`:has`).
+ */
+.overlayInput {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.overlayInput:disabled {
+  cursor: not-allowed;
+}
+
+/*
+ * Carte de choix (GUIDE, Choice card) : rayon 16 en clair et en sombre (celui des cartes du thème moins 2,
+ * donc presque droit dans le Carnet), icône à gauche, titre 600, coche à droite.
+ */
+.choiceCard {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 10px 14px 10px 10px;
+  border-radius: calc(var(--radius-card) - 2px);
+  border: 2px solid var(--border);
+  background: var(--surface);
+  transition:
+    border-color 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.choiceIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-muted) 12%, var(--surface));
+  color: var(--text-muted);
+}
+
+.choiceIcon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.choiceText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.choiceTitle {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.choiceDescription {
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+/* Rond (choix unique) ou carré arrondi (choix multiple), plein d'accent et coché quand le choix est fait. */
+.choiceMark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-muted) 70%, var(--surface));
+}
+
+.choiceMark[data-type="checkbox"] {
+  border-radius: 7px;
+}
+
+/* Pastilles (GUIDE, Chips) : 44 px, rayon 999 ; largeurs égales tant que les libellés tiennent. */
+.chipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  position: relative;
+  flex: 1 1 0;
+  min-width: max-content;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+  color: var(--text);
+  font-size: 0.96875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.choiceCard:has(.overlayInput:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.choiceCard:has(.overlayInput:checked) .choiceIcon {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent);
+}
+
+.choiceCard:has(.overlayInput:checked) .choiceMark {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.chip:has(.overlayInput:checked) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.choiceCard:has(.overlayInput:focus-visible),
+.chip:has(.overlayInput:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.choiceCard:has(.overlayInput:disabled),
+.chip:has(.overlayInput:disabled) {
+  opacity: 0.45;
+}
+
+@media (hover: hover) {
+  .choiceCard:has(.overlayInput:hover:not(:disabled, :checked)) {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+
+  .chip:has(.overlayInput:hover:not(:disabled, :checked)) {
+    border-color: var(--accent);
+  }
+}
+
+/* Petit ressort de la coche à l'apparition (220 ms) ; sous mouvement réduit, un simple fondu. */
+.checkGlyph {
+  animation: check-pop 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes check-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes check-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Coche de la pastille choisie, en pastillon sur son coin : elle ne prend pas de place au libellé. */
+.chipCheck {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-text);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.chipCheck svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Interrupteur (maquettes Profil et Salle) : piste 50 × 30 dans une cible de 52 × 44. */
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 44px;
+}
+
+.switchText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.switchLabel {
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.switch {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 52px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.switchTrack {
+  display: flex;
+  align-items: center;
+  width: 50px;
+  height: 30px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--field-border);
+  transition: background-color 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.switchThumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition:
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.switch[aria-checked="true"] .switchTrack {
+  background: var(--accent);
+}
+
+.switch[aria-checked="true"] .switchThumb {
+  transform: translateX(20px);
+  background: var(--accent-text);
+}
+
+/* Progression de l'onboarding : segments de 6 px, dégradé d'accent étalé sur toute la barre. */
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.segments {
+  flex: 1;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--space-1);
+}
+
+.segment {
+  height: 6px;
+  border-radius: 3px;
+  background-color: color-mix(in srgb, var(--text-muted) 18%, var(--surface));
+}
+
+/* Chaque segment fait montre sa tranche du dégradé, comme si la barre entière en était peinte. */
+.segment[data-done] {
+  background-image: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background-size: calc(var(--segment-last) * 100% + 100%) 100%;
+  background-position: calc(var(--segment-index) / var(--segment-last) * 100%) 0;
+  transition: background-color 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.progressText {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Badges (GUIDE, Badges) : rôle en contour accent, statut en teinte avec un point. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 0.78125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.badgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badgeAccent {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+/* Vert assombri vers le texte : 4,5:1 sur sa teinte dans chaque thème (le vert seul n'y suffit pas en clair). */
+.badgeSuccess {
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+  color: color-mix(in srgb, var(--success) 70%, var(--text));
+}
+
+.badgeMuted {
+  background: color-mix(in srgb, var(--text-muted) 12%, var(--surface));
+  color: var(--text-muted);
+}
+
+.badgeWarning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.badgeDanger {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+/* Listes (GUIDE, List row) : lignes de 56 px regroupées dans une carte, séparées d'un trait. */
+.listSection {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.choices legend {
+.listTitle {
+  margin: 0 0 0 var(--space-1);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
   font-weight: 600;
-  margin-bottom: var(--space-2);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-.choice {
+.listGroup {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.listItem + .listItem {
+  border-top: 1px solid var(--border);
+}
+
+.row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: 44px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--field-border);
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: var(--space-2) 14px var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+}
+
+a.row,
+button.row {
+  cursor: pointer;
+  transition: background-color 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+a.row:focus-visible,
+button.row:focus-visible {
+  outline-offset: -2px;
+}
+
+@media (hover: hover) {
+  a.row:hover,
+  button.row:hover {
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  }
+}
+
+.rowIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.rowIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rowLabel {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.rowValue {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowBadge {
+  flex: none;
+  display: flex;
+}
+
+.rowChevron {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.row[data-tone="danger"] {
+  color: var(--danger);
+}
+
+.row[data-tone="danger"] .rowIcon {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+/* État vide (GUIDE, Empty state) : icône de 48 px dans un cercle teinté d'accent, titre, phrase, action. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  margin-bottom: var(--space-2);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  color: var(--accent);
+}
+
+.emptyIcon svg {
+  width: 48px;
+  height: 48px;
+}
+
+.emptyTitle {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.emptyText {
+  margin: 0;
+  max-width: 32ch;
+  color: var(--text-muted);
+}
+
+.emptyAction {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+/* En-tête de page interne (GUIDE, Inner page header) : Retour 44 × 44, titre 24/700. */
+.pageHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.backButton {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   border-radius: var(--radius-control);
+  border: 1px solid var(--border);
   background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pageTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .healthWarning {
   font-size: 0.875rem;
   color: var(--text-muted);
+}
+
+/* Mouvement réduit (spec refonte §7) : ni déplacement ni ressort, des fondus simples. */
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .switchThumb {
+    transition-property: background-color;
+  }
+
+  .button:active:not(:disabled) {
+    transform: none;
+  }
+
+  .checkGlyph {
+    animation-name: check-fade;
+  }
 }
