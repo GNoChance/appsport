@@ -1537,6 +1537,27 @@ describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', 
     expect(to).toMatch(/^- Personne de confiance[^\n]*copie scellée[^\n]*P9/m);
   });
 
+  it('fiche : la copie scellée est dite là où les clés sont nommées, mot de passe Unix compris (R-OPS-14)', () => {
+    // Contenu de l'enveloppe selon 08 §11 R-OPS-14 : phrase LUKS, mot de passe Unix, mot de passe restic, clé B2.
+    expect(section(fiche, 'Destinataires')).toMatch(
+      /^- Personne de confiance[^\n]*\(phrase du volume chiffré, mot de passe du compte Unix du serveur, mot de passe des sauvegardes, clé B2\)/m,
+    );
+    expect(section(fiche, 'Transferts hors UE')).toMatch(
+      /^- Backblaze[^\n]*les clés restent chez le porteur \(copie scellée chez la personne de confiance, voir Destinataires\)/m,
+    );
+  });
+
+  it('fiche : version datée, sans exception de version que nulle décision ne donne', () => {
+    const header = fiche.slice(0, fiche.indexOf('\n## '));
+    expect(header).toMatch(
+      new RegExp(
+        `^Version ${PRIVACY_POLICY_VERSION.replace('.', '\\.')} \\(\`PRIVACY_POLICY_VERSION\`\\), [^\\n]*\\d{4}-\\d{2}-\\d{2}`,
+        'm',
+      ),
+    );
+    expect(header).not.toMatch(/reste \d+\.\d+ tant que|version antérieure/);
+  });
+
   it('page Confidentialité : la copie scellée est dite, comme dans la fiche (T45-F32)', () => {
     const page = read('apps/web/src/features/public/privacy-content.ts');
     expect(page).toContain('copie scellée');
@@ -1554,7 +1575,7 @@ describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', 
       '« Télécharger mes données »',
       'Résultat attendu : chaque proche confirme son export',
     ]);
-    const timers = stepRunning(p9, 'sudo systemctl stop rune-backup.timer rune-restore-test.timer');
+    const timers = stepRunning(p9, 'sudo systemctl disable --now rune-backup.timer rune-restore-test.timer');
     const offsite = stepRunning(p9, '--unsafe-allow-remove-all');
     const local = stepRunning(p9, 'sudo rm -rf /srv/backup/restic');
     const off = stepRunning(p9, 'sudo poweroff');
@@ -1578,11 +1599,73 @@ describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', 
     expect(b2[1]).toMatch(/ snapshots'$/);
     expect(offsite.body).toContain('Keep only the last version of the file');
 
-    // Dépôt local, instantanés de la base (bases remplacées comprises) et cache restic.
+    // Dépôt local, instantanés de la base (bases remplacées comprises) et cache restic, chacun sous son montage.
     for (const path of ['/srv/backup/restic', '/srv/rune/data/snapshots', '/srv/rune/cache/restic']) {
-      expect(codeOf(local.body), path).toMatch(new RegExp(`^\\s*sudo rm -rf [^\\n]*${path}(?: |$)`, 'm'));
+      expect(codeOf(local.body), path).toMatch(
+        new RegExp(`^\\s*findmnt /srv/\\w+ && sudo rm -rf [^\\n]*${path}(?: |$)`, 'm'),
+      );
     }
     expect(p9).toContain('30 jours');
+  });
+
+  it("P9 : plus rien ne recrée de sauvegarde avant l'effacement : timers désactivés, services arrêtés et vérifiés, clés B2 retirées", () => {
+    // rune-unlock (étape 3 après un redémarrage) relance rune-backup.service, puis rune-restore-test.service,
+    // sans passer par les timers : arrêter les timers seuls laisserait la sauvegarde téléverser après l'effacement.
+    const stop = stepRunning(p9, 'sudo systemctl disable --now rune-backup.timer rune-restore-test.timer');
+    expectInOrder(codeOf(stop.body), [
+      'findmnt /srv/rune',
+      'sudo systemctl disable --now rune-backup.timer rune-restore-test.timer',
+      'sudo systemctl stop rune-backup.service rune-restore-test.service',
+      'systemctl is-active rune-backup.service rune-restore-test.service',
+    ]);
+    expect(stop.body).toMatch(/Résultat attendu :[^\n]*deux lignes, chacune `inactive` ou `failed`/);
+    expect(stop.body).toMatch(/Sinon :[^\n]*`activating`[^\n]*attendre/);
+    expect(p9).not.toContain('systemctl stop rune-backup.timer');
+
+    const offsite = stepRunning(p9, '--unsafe-allow-remove-all');
+    expect(stop.n, "services vérifiés arrêtés avant l'effacement hors site").toBeLessThan(offsite.n);
+    // Clés B2 retirées après la vérification : un déverrouillage ultérieur ne peut plus rien téléverser.
+    expectInOrder(codeOf(offsite.body), [
+      '--unsafe-allow-remove-all --prune',
+      " snapshots'",
+      'sudo rm /srv/rune/secrets/b2.env',
+    ]);
+    // L'admin qui revient remet ce que P9 a retiré (le texte de l'étape est sur la ligne de son titre).
+    expect(p9).toMatch(
+      /^\d+\. \*\*Garder l'enveloppe[^\n]*`b2\.env`[^\n]*« Dépôts restic »[^\n]*« Timers systemd »/m,
+    );
+  });
+
+  it("P9 : rien ne s'efface à vide : volumes montés vérifiés, verrou périmé levé, contrôle positif", () => {
+    const offsite = stepRunning(p9, '--unsafe-allow-remove-all');
+    const sinon = /^\s*Sinon :.*$/m.exec(offsite.body)?.[0] ?? '';
+    // Volume verrouillé (redémarrage) : b2.env et restic.pass absents ; revenir au déverrouillage.
+    for (const needle of [
+      'b2.env: No such file or directory',
+      'Please specify repository location',
+      'étapes 2, 3 et 5',
+    ]) {
+      expect(sinon, needle).toContain(needle);
+    }
+    // Services arrêtés (étape 5) : un verrou restant est périmé, restic unlock le lève.
+    expect(sinon).toMatch(
+      /`repository is already locked`[^\n]*`sudo bash -c 'set -a; \. \/srv\/rune\/secrets\/b2\.env; set \+a; restic -r "\$RESTIC_OFFSITE_REPOSITORY" --password-file \/srv\/rune\/secrets\/restic\.pass --no-cache unlock'`/,
+    );
+    expect(sinon).not.toContain('attendre 10 minutes');
+
+    const local = stepRunning(p9, 'sudo rm -rf /srv/backup/restic');
+    const code = codeOf(local.body);
+    // Chaque effacement est enchaîné à la vérification de son montage : disque absent, rien ne passe pour fait.
+    const removals = code.split('\n').filter((line) => line.includes('rm -rf'));
+    expect(removals).toEqual([
+      '   findmnt /srv/backup && sudo rm -rf /srv/backup/restic',
+      "   findmnt /srv/rune && sudo rm -rf /srv/rune/data/snapshots /srv/rune/cache/restic && sudo bash -c 'rm -rf /srv/rune/tmp/restore-test-*'",
+    ]);
+    // Contrôle positif : la base vive et le système de fichiers du disque sont listés, les sauvegardes non.
+    expect(local.body).toMatch(
+      /Résultat attendu :[^\n]*`lost\+found`[^\n]*`rune\.db`[^\n]*ni `restic` ni `snapshots`/,
+    );
+    expect(local.body).toMatch(/Sinon :[^\n]*étapes 2, 3 et 5/);
   });
 
   it("P9 : sans export possible, rien n'est effacé (les sauvegardes permettront de reconstruire)", () => {

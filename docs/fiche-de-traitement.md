@@ -1,6 +1,6 @@
 # Fiche de traitement Rune
 
-Version 1.0 (`PRIVACY_POLICY_VERSION`), 2026-10-13. La version reste 1.0 tant que l'appli n'est pas en service : personne n'a encore accepté de version antérieure.
+Version 1.0 (`PRIVACY_POLICY_VERSION`), complétée le 2026-10-13, avant toute mise en service.
 
 Cette fiche tient lieu de registre des traitements, obligatoire dès qu'on traite des données de santé (RGPD, art. 30.5). Elle est la source de la page Confidentialité de l'appli (`apps/web/src/features/public/privacy-content.ts`) : toute modification de fond change les deux, et la version `PRIVACY_POLICY_VERSION` (03 §1, §13.5). L'exemption domestique (art. 2.2.c) est plausible mais pas garantie : on ne s'y fie pas.
 
@@ -38,14 +38,14 @@ Aucun e-mail n'est collecté : l'identifiant est un pseudo. Les empreintes de mo
 - Anthropic (coach, brique 4) : avec l'accord coach, les messages et le dossier du coach : tranche d'âge (`age_band`, jamais l'âge exact), niveau, objectif, contexte, matériel, programme, historique récent ; C2 seulement si les accords santé et coach sont actifs (P-COA-1). Jamais : pseudo, date de naissance, identifiant interne, nom ou enseigne de la salle, autres membres, adresse IP.
 - Backblaze (B2) : sauvegardes chiffrées côté client avant de quitter le serveur ; Backblaze ne voit que des données chiffrées.
 - Tailscale (réseau) : comptes Tailscale des proches et métadonnées de leurs appareils ; le trafic de l'appli reste chiffré de bout en bout.
-- Personne de confiance majeure, gardienne de l'enveloppe de secours : aucun accès au quotidien. La copie scellée des clés (phrase du volume chiffré, mot de passe des sauvegardes, clé B2) n'est ouverte qu'en cas d'indisponibilité longue de l'admin, pour que les proches exportent leurs données, puis pour effacer les sauvegardes et arrêter le service (P9).
+- Personne de confiance majeure, gardienne de l'enveloppe de secours : aucun accès au quotidien. La copie scellée des clés (phrase du volume chiffré, mot de passe du compte Unix du serveur, mot de passe des sauvegardes, clé B2) n'est ouverte qu'en cas d'indisponibilité longue de l'admin, pour que les proches exportent leurs données, puis pour effacer les sauvegardes et arrêter le service (P9).
 
 Aucun autre sous-traitant : ni statistiques, ni traceur, ni service tiers dans l'appli (P-LOG-4) ; la supervision (Healthchecks.io) ne reçoit aucune donnée personnelle.
 
 ## Transferts hors UE
 
 - Anthropic, États-Unis : messages et dossier du coach, avec l'accord coach qui l'annonce. Anthropic n'entraîne pas ses modèles sur ces données et les efface sous 30 jours, ou jusqu'à 2 ans si ses filtres de sécurité signalent un échange.
-- Backblaze, société américaine : données stockées en région UE (EU Central), chiffrées côté client ; les clés restent chez le porteur. Choix assumé, inscrit ici.
+- Backblaze, société américaine : données stockées en région UE (EU Central), chiffrées côté client ; les clés restent chez le porteur (copie scellée chez la personne de confiance, voir Destinataires). Choix assumé, inscrit ici.
 - Tailscale, société américaine : serveur de coordination et relais éventuels, sans accès au contenu du trafic.
 
 ## Durées de conservation
