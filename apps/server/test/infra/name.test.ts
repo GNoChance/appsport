@@ -49,6 +49,20 @@ describe("tout s'appelle Rune", () => {
     expect(hits).toEqual([]);
   });
 
+  it("le nom ne s'élide jamais : « de `rune-update` », « que Rune », « le volume rune »", () => {
+    // « rune » commence par une consonne : une lettre et une apostrophe juste devant sont un reste du renommage.
+    const elided = /\p{L}['’]`?rune/iu;
+    const hits = trackedFiles().flatMap((rel) => {
+      const bytes = readFileSync(join(ROOT, rel));
+      if (bytes.includes(0)) return [];
+      return bytes
+        .toString('utf8')
+        .split('\n')
+        .flatMap((line, i) => (elided.test(line) ? [`${rel}:${i + 1}`] : []));
+    });
+    expect(hits).toEqual([]);
+  });
+
   it("P1 donne l'adresse définitive https://rune.<tailnet>.ts.net, à APP_ORIGIN et RUNE_URL compris", () => {
     const p1 = readFileSync(join(ROOT, 'docs/exploitation/P1-installation.md'), 'utf8');
     // Les deux lignes qui pilotent l'hôte : l'origine que vérifie le serveur, l'adresse que sonde rune-alive.
