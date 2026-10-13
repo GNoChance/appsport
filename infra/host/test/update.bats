@@ -256,7 +256,7 @@ assert_backup_failed() {
     "restic -r $OFFSITE backup *" \
     "git -C $RUNE_REPO checkout --quiet v1.2.0"
 
-  # deploy.log non inscriptible : avertissement, et le message d'échec s'affiche quand même.
+  # deploy.log non inscriptible : avertissement, le message d'échec s'affiche et la page santé le montre quand même.
   reset_host
   on restic "-r $OFFSITE backup *" 1
   break_deploy_log
@@ -264,6 +264,7 @@ assert_backup_failed() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Avertissement : deploy.log non écrit."* ]]
   [[ "$output" == *"Échec de l'instantané ou de la sauvegarde pre-deploy. Le service n'a pas été modifié."* ]]
+  assert_failed_deploy_status
 }
 
 @test "nouvelle version KO, image précédente saine : retour image seule, ni restore ni privacy, rolled-back-image" {
