@@ -87,13 +87,19 @@ export function RuneMark({ size = 28, glow = false, title }: RuneMarkProps) {
   );
 }
 
+/**
+ * Espacement du mot : 0,22 em (en-têtes), ou `--rune-wordmark-tracking` posée par le parent (0,3 em pour le grand
+ * mot de la connexion, A01).
+ */
+const TRACKING = 'var(--rune-wordmark-tracking, 0.22em)';
+
 /** Le mot RUNE des maquettes ; taille et couleur viennent du parent. */
 const WORDMARK: CSSProperties = {
   fontFamily: 'var(--font-display)',
   fontWeight: 700,
-  letterSpacing: '0.22em',
+  letterSpacing: TRACKING,
   // L'espacement suit aussi le E final : la marge négative le retire, le mot se centre sur ses lettres.
-  marginInlineEnd: '-0.22em',
+  marginInlineEnd: `calc(-1 * ${TRACKING})`,
 };
 
 /** Le mot « RUNE » en Chakra Petch espacé, identique dans les 5 thèmes. */

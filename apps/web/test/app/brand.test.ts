@@ -164,13 +164,26 @@ describe('RuneMark', () => {
 });
 
 describe('RuneWordmark', () => {
+  /** Le mot, rendu dans un parent en 10 px (1 em = 10 px) qui pose `parentStyle`. */
+  function wordIn(parentStyle: Record<string, string>): HTMLElement {
+    render(
+      createElement('div', { style: { fontSize: '10px', ...parentStyle } }, createElement(RuneWordmark)),
+    );
+    return screen.getByText('RUNE');
+  }
+
   it('le mot « RUNE » en police d’affichage, espacé de 0,22 em, centré sur ses lettres', () => {
-    render(createElement(RuneWordmark));
-    const word = screen.getByText('RUNE');
+    const word = wordIn({});
     expect(word.style.fontFamily).toBe('var(--font-display)');
     expect(word.style.fontWeight).toBe('700');
-    expect(word.style.letterSpacing).toBe('0.22em');
+    expect(getComputedStyle(word).letterSpacing).toBe('2.2px');
     // L'espacement qui suit le E final est retiré : rien ne dépasse à droite du mot.
-    expect(word.style.marginInlineEnd).toBe('-0.22em');
+    expect(getComputedStyle(word).marginInlineEnd).toBe('calc(-1 * 0.22em)');
+  });
+
+  it('--rune-wordmark-tracking règle l’espacement et la marge qui le compense (0,3 em de la connexion, A01)', () => {
+    const word = getComputedStyle(wordIn({ '--rune-wordmark-tracking': '0.3em' }));
+    expect(word.letterSpacing).toBe('3px');
+    expect(word.marginInlineEnd).toBe('calc(-1 * 0.3em)');
   });
 });
