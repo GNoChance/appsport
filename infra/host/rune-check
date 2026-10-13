@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# rune-check (08 §9) : timer de 04:00. Disques /, $RUNE_ROOT et $BACKUP_ROOT au-delà de 80 %, SMART de
+# chaque disque, redémarrage requis par une mise à jour ; section host de status.json (volume monté seulement),
+# puis Healthchecks host : ping, ou /fail avec les problèmes joints par « ; ». Ne prend pas le verrou.
+# Codes : 0 OK, 1 problème signalé.
+set -euo pipefail
+# shellcheck source-path=SCRIPTDIR source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+
+MAX_USED_PCT=80
+
+# used_pct <montage> : pourcentage occupé (df --output=pcent), vide si illisible.
+used_pct() {
+  local pct
+  pct=$("$DF" --output=pcent "$1" 2>/dev/null | tail -n1 | tr -dc '0-9') || pct=""
+  if [ -n "$pct" ]; then printf '%s\n' "$((10#$pct))"; fi
+}
+
+# smart_ok <périphérique> [type] : seule la sortie compte (smartctl rend un masque de bits non nul même sain).
+smart_ok() {
+  local out
+  local -a opts=(-H)
+  if [ -n "${2:-}" ]; then opts+=(-d "$2"); fi
+  out=$("$SMARTCTL" "${opts[@]}" "$1" 2>&1) || true
+  grep -qE 'PASSED|SMART Health Status: OK' <<<"$out"
+}
+
+has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# shellcheck disable=SC2016 # variables des filtres jq, pas du shell
+main() {
+  local mount pct dev type json detail="" disks='[]' smart=true restart=false ok=true
+  local -a problems=() devices=() mounts=(/ "$RUNE_ROOT" "$BACKUP_ROOT")
+  require_cmds "$JQ" "$CURL"
+  # df ou smartctl absent : un seul problème qui le nomme, pas une fausse alarme par disque.
+  if ! has_cmd "$DF"; then
+    problems+=("df absent de l'hôte")
+    mounts=()
+  fi
+  for mount in "${mounts[@]}"; do
+    pct=$(used_pct "$mount")
+    if [ -z "$pct" ]; then
+      problems+=("disque $mount illisible")
+      continue
+    fi
+    disks=$("$JQ" -c --arg m "$mount" --argjson p "$pct" '. + [{mount: $m, usedPct: $p}]' <<<"$disks")
+    if [ "$pct" -gt "$MAX_USED_PCT" ]; then problems+=("disque $mount à $pct %"); fi
+  done
+  read -ra devices <<<"$SMART_DEVICES"
+  if ! has_cmd "$SMARTCTL"; then
+    smart=false
+    problems+=("smartctl absent de l'hôte")
+    devices=()
+  elif [ "${#devices[@]}" -eq 0 ]; then
+    smart=false
+    problems+=("SMART : aucun disque détecté")
+  fi
+  for dev in "${devices[@]}"; do
+    # <type>:<chemin> ; un chemin commence par /, et ceux de /dev/disk/by-id contiennent souvent « : ».
+    type=""
+    if [[ "$dev" != /* && "$dev" == *:* ]]; then
+      type=${dev%%:*}
+      dev=${dev#*:}
+    fi
+    if ! smart_ok "$dev" "$type"; then
+      smart=false
+      problems+=("SMART KO sur $dev")
+    fi
+  done
+  if [ -e "$REBOOT_REQUIRED_FILE" ]; then
+    restart=true
+    problems+=("redémarrage requis")
+  fi
+  if [ "${#problems[@]}" -gt 0 ]; then
+    ok=false
+    detail=$(join_problems "${problems[@]}")
+  fi
+  json=$("$JQ" -cn --arg at "$(now_iso)" --argjson ok "$ok" --arg d "$detail" --argjson disks "$disks" \
+    --argjson smart "$smart" --argjson restart "$restart" \
+    '{at: $at, ok: $ok} + (if $d == "" then {} else {detail: $d} end)
+      + {disks: $disks, smartOk: $smart, rebootRequired: $restart}')
+  # Volume verrouillé : rien n'est écrit sur le disque en clair, le ping part quand même.
+  if volume_ready; then
+    status_merge host "$json" || log "Avertissement : status.json non mis à jour."
+  else
+    log "Volume non monté : status.json non mis à jour."
+  fi
+  if [ "$ok" = true ]; then
+    hc_ping host || log "Avertissement : ping host non reçu par Healthchecks."
+    return 0
+  fi
+  log "Problèmes : $detail"
+  hc_ping host fail "$detail" || log "Avertissement : problèmes non signalés à Healthchecks."
+  return 1
+}
+
+main "$@"; exit $?

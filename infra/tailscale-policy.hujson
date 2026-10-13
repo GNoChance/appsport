@@ -1,0 +1,11 @@
+// Collé dans la console Tailscale (Access controls). Aucun proche n'est membre : partage de la machine seulement (R-OPS-8).
+{
+  "grants": [
+    { "src": ["autogroup:member"], "dst": ["*"], "ip": ["*"] },
+    { "src": ["autogroup:shared"], "dst": ["*"], "ip": ["tcp:443"] }
+  ],
+  "ssh": [
+    { "action": "check", "src": ["autogroup:member"], "dst": ["autogroup:self"],
+      "users": ["autogroup:nonroot"] }
+  ]
+}

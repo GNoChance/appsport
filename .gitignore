@@ -4,6 +4,8 @@ node_modules/
 # Builds et rapports
 dist/
 build/
+# Tests du bundle serveur (apps/server/test/build), pas une sortie de build
+!apps/*/test/build/
 coverage/
 
 # Secrets et environnement
@@ -17,3 +19,9 @@ coverage/
 # Système
 .DS_Store
 Thumbs.db
+
+# Tests et E2E
+.e2e-data/
+apps/*/dist/
+test-results/
+playwright-report/

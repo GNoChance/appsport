@@ -1,0 +1,25 @@
+{
+  "name": "rune",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.0",
+  "engines": {
+    "node": ">=24.7"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
+    "test": "vitest run",
+    "test:e2e": "pnpm --filter @rune/web test:e2e",
+    "test:infra": "env LC_ALL=C.UTF-8 bats infra/host/test",
+    "build": "pnpm --filter @rune/web build && pnpm build:server",
+    "build:server": "pnpm --filter @rune/server build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2",
+    "@types/node": "^24.7",
+    "bats": "^1.13.0",
+    "typescript": "^7",
+    "vitest": "^5"
+  }
+}

@@ -1,0 +1,8 @@
+.lead {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.notice {
+  margin: 0 0 var(--space-2);
+}
