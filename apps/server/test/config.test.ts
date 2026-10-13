@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ConfigError, loadConfig } from '../src/config';
+import { ConfigError, DB_FILE, dataDirFrom, loadConfig, SENTINEL_FILE } from '../src/config';
 
 describe('loadConfig', () => {
   it('exige APP_ORIGIN', () => {
@@ -31,6 +31,15 @@ describe('loadConfig', () => {
     });
     expect(cfg.dbPath).toBe(join('/data', 'rune.db'));
     expect(cfg.sentinelPath).toBe(join('/data', '.rune-volume'));
+  });
+
+  it('dbPath et sentinelPath : DB_FILE et SENTINEL_FILE, seuls noms du serveur, sous dataDirFrom(env)', () => {
+    expect(DB_FILE).toBe('rune.db');
+    expect(SENTINEL_FILE).toBe('.rune-volume');
+    const env = { APP_ORIGIN: 'https://a.ts.net', RUNE_DATA_DIR: '/srv/ailleurs' };
+    const cfg = loadConfig(env);
+    expect(cfg.dbPath).toBe(join(dataDirFrom(env), DB_FILE));
+    expect(cfg.sentinelPath).toBe(join(dataDirFrom(env), SENTINEL_FILE));
   });
 
   it('autorise http sur localhost et 127.0.0.1 avec le cookie de développement', () => {

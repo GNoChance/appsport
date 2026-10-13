@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { parisDate } from '@rune/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from '../../src/cli';
+import { loadConfig } from '../../src/config';
 import { readOnly, sha256 } from './helpers';
 
 const BAD_TAG = (tag: string) => `Étiquette invalide « ${tag} » : attendu daily ou pre-vX.Y.Z.`;
@@ -202,6 +203,29 @@ describe('restore', () => {
     expect(lines.at(-1)).toBe('Lancez maintenant privacy:reapply, avant de redémarrer le service.');
     expect(listSnapshots().filter((name) => name.startsWith('replaced-'))).toEqual([]);
     expect(existsSync(dbPath)).toBe(true);
+  });
+
+  it('restore écrit la base que loadConfig ouvre et que db:stats lit (aucun nom de fichier propre à chacun)', async () => {
+    const snapshot = await snapshotDaily();
+    const configured = loadConfig(env).dbPath;
+    rmSync(configured);
+    lines = [];
+    expect(await cli('restore', snapshot)).toBe(0);
+    const [, epoch] = /: ([0-9a-f-]{36}) \(epoch_base_rev \d+\)/.exec(lines.at(-2) ?? '') ?? [];
+    expect(readOnly(configured, (s) => s.prepare('SELECT server_epoch FROM server_meta').get())).toEqual({
+      server_epoch: epoch,
+    });
+    // db:stats tel que rune-restore-test le lance : seul RUNE_DATA_DIR.
+    const stats: string[] = [];
+    const statsCode = await runCli(
+      ['db:stats'],
+      { RUNE_DATA_DIR: dir },
+      (line) => stats.push(line),
+      (line) => errors.push(line),
+    );
+    expect(errors).toEqual([]);
+    expect(statsCode).toBe(0);
+    expect(JSON.parse(stats[0] as string)).toMatchObject({ integrity: 'ok' });
   });
 
   it('sans sentinelle → 1, base inchangée', async () => {

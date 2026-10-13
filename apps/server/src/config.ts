@@ -59,6 +59,13 @@ const orDefault = (value: string | undefined, fallback: string): string =>
 export const dataDirFrom = (env: Record<string, string | undefined>): string =>
   orDefault(env.RUNE_DATA_DIR, '/data');
 
+/**
+ * Noms de la base et de la sentinelle dans le dossier des données : seule source côté serveur (configuration,
+ * `db:stats`, restauration), pour qu'une restauration écrive la base que le service rouvre.
+ */
+export const DB_FILE = 'rune.db';
+export const SENTINEL_FILE = '.rune-volume';
+
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const origin = parseOrigin(env.APP_ORIGIN);
   const secure = origin.protocol === 'https:';
@@ -69,8 +76,8 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     port: parsePort(env.PORT),
     host: orDefault(env.HOST, '0.0.0.0'),
     dataDir,
-    dbPath: join(dataDir, 'rune.db'),
-    sentinelPath: join(dataDir, '.rune-volume'),
+    dbPath: join(dataDir, DB_FILE),
+    sentinelPath: join(dataDir, SENTINEL_FILE),
     publicDir: orDefault(env.RUNE_PUBLIC_DIR, '/app/public'),
     contentDir: orDefault(env.RUNE_CONTENT_DIR, '/app/data'),
     swKillSwitch: env.SW_KILL_SWITCH === '1',

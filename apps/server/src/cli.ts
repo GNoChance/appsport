@@ -7,7 +7,7 @@ import { CamelCasePlugin, Kysely } from 'kysely';
 import { z } from 'zod';
 import { bootstrapAdminInvitation } from './auth/bootstrap';
 import { createPasswordReset } from './auth/password-reset';
-import { type AppConfig, dataDirFrom, loadConfig } from './config';
+import { type AppConfig, DB_FILE, dataDirFrom, loadConfig } from './config';
 import { migrate } from './db/migrate';
 import { MIGRATIONS, type Migration } from './db/migrations/index';
 import { openDatabase } from './db/open';
@@ -311,7 +311,7 @@ async function runSessionsActive(args: string[], ctx: CliContext): Promise<numbe
  * lecture seule, sans garde, withAppDeps ni migration ; une migration cassante inconnue ne gêne pas.
  */
 async function runDbStats(_args: string[], ctx: CliContext): Promise<number> {
-  const dbPath = join(dataDirFrom(ctx.env), 'rune.db');
+  const dbPath = join(dataDirFrom(ctx.env), DB_FILE);
   if (!existsSync(dbPath)) {
     ctx.err(`Base introuvable : ${dbPath}.`);
     return 1;

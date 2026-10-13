@@ -1,12 +1,12 @@
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { backup, DatabaseSync } from 'node:sqlite';
+import { DB_FILE } from '../config';
 import { openDatabase } from '../db/open';
 import type { Clock, IdGen } from '../deps';
 import { rotateServerEpoch } from '../sync/epoch';
 import { snapshotsDir } from './snapshot';
 
-const DB_FILE = 'rune.db';
 /** La base et ses fichiers annexes : un -wal laissé à côté serait rejoué sur la base restaurée. */
 const DB_SUFFIXES = ['', '-wal', '-shm'] as const;
 
