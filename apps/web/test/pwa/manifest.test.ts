@@ -113,8 +113,9 @@ describe('manifeste PWA', () => {
     expect(count).toMatchObject({ otherColor: 0, whiteOutsideSafeZone: 0 });
   });
 
-  it('index.html relie le manifeste, l’icône de l’onglet, l’icône Apple et la couleur du thème', () => {
+  it('index.html : titre « Rune », manifeste, icône de l’onglet, icône Apple et couleur du thème', () => {
     const html = readFileSync(join(WEB, 'index.html'), 'utf8');
+    expect(html).toContain('<title>Rune</title>');
     expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest">');
     // Icône déjà en précache : pas de requête /favicon.ico (404 journalisé), même hors ligne.
     expect(html).toContain('<link rel="icon" type="image/png" href="/icons/icon-192.png">');

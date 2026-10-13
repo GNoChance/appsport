@@ -101,7 +101,7 @@ async function openWithdraw() {
 }
 
 describe('PrivacySettingsPage (02 §11, R-CST-5, 03 §13)', () => {
-  it('version en vigueur, lien vers la page, accords santé et coach', async () => {
+  it('version en vigueur, lien vers la page, accords santé et coach, export de « tout ce que Rune garde »', async () => {
     await renderPrivacy();
     expect(screen.getByText('Version en vigueur : 1.0')).toBeTruthy();
     expect(
@@ -109,6 +109,7 @@ describe('PrivacySettingsPage (02 §11, R-CST-5, 03 §13)', () => {
     ).toBe('/privacy');
     expect(consentValue('Accord santé')).toBe('Donné le 01/10/2026');
     expect(consentValue('Accord coach')).toBe('Non donné');
+    expect(screen.getByText('Un fichier JSON avec tout ce que Rune garde sur ton compte.')).toBeTruthy();
     expect(button('Télécharger mes données')).toBeTruthy();
     expect(button('Supprimer mon compte')).toBeTruthy();
   });

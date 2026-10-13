@@ -69,8 +69,9 @@ const submitWith = (username: string, password: string, confirm = password) => {
 };
 
 describe('accueil (03 §13.1, R-ARR-1)', () => {
-  it('porteur, rappel « pas un service médical », lien vers Confidentialité', async () => {
+  it('titre « Bienvenue sur Rune », porteur, rappel « pas un service médical », lien vers Confidentialité', async () => {
     await renderInvite();
+    expect(screen.getByRole('heading', { level: 1, name: 'Bienvenue sur Rune' })).toBeTruthy();
     expect(document.body.textContent).toContain(WELCOME);
     expect(screen.getByRole('link', { name: 'Confidentialité et règles' }).getAttribute('href')).toBe(
       '/privacy',
