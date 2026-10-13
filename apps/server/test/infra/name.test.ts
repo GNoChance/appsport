@@ -49,10 +49,15 @@ describe("tout s'appelle Rune", () => {
     expect(hits).toEqual([]);
   });
 
-  it("les procédures donnent l'adresse définitive rune.<tailnet>.ts.net", () => {
-    expect(readFileSync(join(ROOT, 'docs/exploitation/P1-installation.md'), 'utf8')).toContain(
-      'rune.<tailnet>.ts.net',
-    );
+  it("P1 donne l'adresse définitive https://rune.<tailnet>.ts.net, à APP_ORIGIN et RUNE_URL compris", () => {
+    const p1 = readFileSync(join(ROOT, 'docs/exploitation/P1-installation.md'), 'utf8');
+    // Les deux lignes qui pilotent l'hôte : l'origine que vérifie le serveur, l'adresse que sonde rune-alive.
+    expect(p1).toMatch(/^\s*APP_ORIGIN=https:\/\/rune\.<tailnet>\.ts\.net$/m);
+    expect(p1).toMatch(/^\s*RUNE_URL=https:\/\/rune\.<tailnet>\.ts\.net$/m);
+    // Toute machine du tailnet que nomme la procédure est `rune` : ni « prune », ni « runes ».
+    const hosts = [...p1.matchAll(/(?<![\w.-])([\w.-]+)\.<tailnet>\.ts\.net/g)].map((m) => m[1]);
+    expect(hosts.length).toBeGreaterThan(0);
+    expect(new Set(hosts)).toEqual(new Set(['rune']));
   });
 
   it('R-MDP-3 refuse un mot de passe qui contient « rune », sans tenir compte de la casse', () => {
