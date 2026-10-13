@@ -59,7 +59,7 @@ function stubColorScheme(dark: boolean) {
   };
 }
 
-/** Comme index.html : une balise theme-color dans le head. */
+/** Une balise theme-color dans le head (index.html en a une par schéma de couleurs : test dédié plus bas). */
 function resetDocument() {
   html().removeAttribute('data-theme');
   for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.remove();

@@ -5,23 +5,39 @@ import { describe, expect, it } from 'vitest';
 
 const WEB = resolve(import.meta.dirname, '../..');
 const PUBLIC = join(WEB, 'public');
-const TEAL = [0x0f, 0x76, 0x6e];
-const WHITE = [0xff, 0xff, 0xff];
+/** Fond nuit du logo (--bg du thème sombre), opaque. */
+const NIGHT = [0x07, 0x0a, 0x12, 0xff];
+const TRANSPARENT = 0;
 
 interface Png {
   width: number;
   height: number;
+  /** [R, V, B, A] ; A vaut 255 pour un PNG sans canal alpha. */
   pixel(x: number, y: number): number[];
 }
 
-/** PNG RVB 8 bits sans filtre, tel que l'écrit scripts/make-icons.mjs ; taille lue dans l'IHDR. */
+/** Prédicteur de Paeth (filtre 4 du format PNG). */
+function paeth(a: number, b: number, c: number): number {
+  const p = a + b - c;
+  const [pa, pb, pc] = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)];
+  if (pa <= pb && pa <= pc) return a;
+  return pb <= pc ? b : c;
+}
+
+/**
+ * PNG 8 bits RVB ou RVBA, non entrelacé, tel que l'écrit le Chromium de scripts/render-icons.mjs : taille lue
+ * dans l'IHDR, lignes défiltrées (les 5 filtres du format).
+ */
 function readPng(name: string): Png {
   const bytes = readFileSync(join(PUBLIC, 'icons', name));
   expect([...bytes.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   expect(bytes.toString('latin1', 12, 16)).toBe('IHDR');
   const width = bytes.readUInt32BE(16);
   const height = bytes.readUInt32BE(20);
-  expect([bytes[24], bytes[25]]).toEqual([8, 2]);
+  const [depth, colorType, , , interlace] = bytes.subarray(24, 29);
+  expect({ depth, interlace }, name).toEqual({ depth: 8, interlace: 0 });
+  expect([2, 6], name).toContain(colorType);
+  const channels = colorType === 6 ? 4 : 3;
   const idat: Buffer[] = [];
   for (let at = 8; at < bytes.length; ) {
     const length = bytes.readUInt32BE(at);
@@ -30,16 +46,44 @@ function readPng(name: string): Png {
     at += 12 + length;
   }
   const raw = inflateSync(Buffer.concat(idat));
-  const stride = 1 + width * 3;
-  expect(raw.length).toBe(height * stride);
-  const filters = new Set<number | undefined>();
-  for (let y = 0; y < height; y++) filters.add(raw[y * stride]);
-  expect([...filters]).toEqual([0]);
+  const stride = width * channels;
+  expect(raw.length, name).toBe(height * (1 + stride));
+  const data = new Uint8Array(height * stride);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (1 + stride)];
+    expect([0, 1, 2, 3, 4], name).toContain(filter);
+    for (let i = 0; i < stride; i++) {
+      const x = raw[y * (1 + stride) + 1 + i] ?? 0;
+      const a = i >= channels ? (data[y * stride + i - channels] ?? 0) : 0;
+      const b = y > 0 ? (data[(y - 1) * stride + i] ?? 0) : 0;
+      const c = i >= channels && y > 0 ? (data[(y - 1) * stride + i - channels] ?? 0) : 0;
+      const predicted = [0, a, b, (a + b) >> 1, paeth(a, b, c)][filter ?? 0] ?? 0;
+      data[y * stride + i] = (x + predicted) & 0xff;
+    }
+  }
   return {
     width,
     height,
-    pixel: (x, y) => [...raw.subarray(y * stride + 1 + x * 3, y * stride + 4 + x * 3)],
+    pixel: (x, y) => {
+      const at = (y * width + x) * channels;
+      const rgb = [...data.subarray(at, at + 3)];
+      return channels === 4 ? [...rgb, data[at + 3] ?? 0] : [...rgb, 0xff];
+    },
   };
+}
+
+/** Chaque pixel de l'image, avec ses coordonnées. */
+function* pixels(png: Png): Generator<[number, number, number[]]> {
+  for (let y = 0; y < png.height; y++) {
+    for (let x = 0; x < png.width; x++) yield [x, y, png.pixel(x, y)];
+  }
+}
+
+/** Rune glacée de rune-icon.svg au centre de l'icône : bleu glacé opaque (dégradé #F2FDFF → #5ED8FF). */
+function expectIceRuneAtCenter(png: Png, name: string): void {
+  const c = Math.floor(png.width / 2);
+  const [r = 0, g = 0, b = 0, a = 0] = png.pixel(c, c);
+  expect({ name, a, iceBlue: b >= 220 && g >= 180 && r < g }).toEqual({ name, a: 0xff, iceBlue: true });
 }
 
 describe('manifeste PWA', () => {
@@ -58,15 +102,16 @@ describe('manifeste PWA', () => {
     expect(m).not.toHaveProperty('orientation');
     // Identité de l'appli installée fixée, indépendante de start_url (R-PWA-7).
     expect(m.id).toBe('/');
+    // Fond nuit du logo pour l'écran de lancement et la barre de l'appli installée (spec refonte §3).
     expect(m).toMatchObject({
       description: 'Suivi de musculation entre proches',
       dir: 'ltr',
-      background_color: '#ffffff',
-      theme_color: '#0f766e',
+      background_color: '#070A12',
+      theme_color: '#070A12',
     });
   });
 
-  it('icônes 192 et 512 « any », 512 « maskable » ; les 4 PNG ont la bonne taille (IHDR)', () => {
+  it('icônes 192 et 512 « any », 512 « maskable » ; les 5 PNG ont la bonne taille (IHDR)', () => {
     expect(m.icons).toEqual([
       { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
@@ -77,40 +122,49 @@ describe('manifeste PWA', () => {
       ['icon-512.png', 512],
       ['icon-maskable-512.png', 512],
       ['apple-touch-icon-180.png', 180],
+      ['favicon-32.png', 32],
     ] as const) {
       const png = readPng(name);
       expect([png.width, png.height], name).toEqual([size, size]);
     }
   });
 
-  it('haltère blanc sur fond #0f766e, contenu dans la zone sûre de 80 % pour l’icône maskable', () => {
-    for (const name of [
-      'icon-192.png',
-      'icon-512.png',
-      'apple-touch-icon-180.png',
-      'icon-maskable-512.png',
-    ]) {
+  it('« any » et onglet : le badge de rune-icon.svg, coins arrondis transparents, rune glacée au centre', () => {
+    for (const name of ['icon-192.png', 'icon-512.png', 'favicon-32.png']) {
       const png = readPng(name);
-      const c = png.width / 2;
-      expect(png.pixel(0, 0), name).toEqual(TEAL);
-      expect(png.pixel(png.width - 1, png.height - 1), name).toEqual(TEAL);
-      expect(png.pixel(Math.floor(c), Math.floor(c)), name).toEqual(WHITE);
+      const last = png.width - 1;
+      const corners = [png.pixel(0, 0), png.pixel(last, 0), png.pixel(0, last), png.pixel(last, last)];
+      expect(
+        corners.map((p) => p[3]),
+        name,
+      ).toEqual([TRANSPARENT, TRANSPARENT, TRANSPARENT, TRANSPARENT]);
+      const c = Math.floor(png.width / 2);
+      expect(png.pixel(c, c)[3], name).toBe(0xff);
+      if (png.width > 32) expectIceRuneAtCenter(png, name);
     }
-    const maskable = readPng('icon-maskable-512.png');
-    const center = maskable.width / 2;
-    const radius = 0.4 * maskable.width;
-    const count = { white: 0, otherColor: 0, whiteOutsideSafeZone: 0 };
-    for (let y = 0; y < maskable.height; y++) {
-      for (let x = 0; x < maskable.width; x++) {
-        const p = maskable.pixel(x, y).join();
-        if (p === WHITE.join()) {
-          count.white++;
-          if (Math.hypot(x + 0.5 - center, y + 0.5 - center) > radius) count.whiteOutsideSafeZone++;
-        } else if (p !== TEAL.join()) count.otherColor++;
-      }
+  });
+
+  it('maskable : opaque, badge au centre, marge de 10 % en #070A12 tout autour', () => {
+    const png = readPng('icon-maskable-512.png');
+    const band = Math.floor(0.1 * png.width);
+    const count = { notOpaque: 0, bandNotNight: 0 };
+    for (const [x, y, p] of pixels(png)) {
+      if (p[3] !== 0xff) count.notOpaque++;
+      const inBand = x < band || y < band || x >= png.width - band || y >= png.height - band;
+      if (inBand && p.join() !== NIGHT.join()) count.bandNotNight++;
     }
-    expect(count.white).toBeGreaterThan(0);
-    expect(count).toMatchObject({ otherColor: 0, whiteOutsideSafeZone: 0 });
+    expect(count).toEqual({ notOpaque: 0, bandNotNight: 0 });
+    expectIceRuneAtCenter(png, 'icon-maskable-512.png');
+  });
+
+  it('Apple : opaque (iOS noircit la transparence), coins sur #070A12, rune glacée au centre', () => {
+    const png = readPng('apple-touch-icon-180.png');
+    let notOpaque = 0;
+    for (const [, , p] of pixels(png)) if (p[3] !== 0xff) notOpaque++;
+    expect(notOpaque).toBe(0);
+    expect(png.pixel(0, 0)).toEqual(NIGHT);
+    expect(png.pixel(png.width - 1, png.height - 1)).toEqual(NIGHT);
+    expectIceRuneAtCenter(png, 'apple-touch-icon-180.png');
   });
 
   it('index.html : titre « Rune », manifeste, icône de l’onglet, icône Apple et couleur du thème', () => {
@@ -118,8 +172,14 @@ describe('manifeste PWA', () => {
     expect(html).toContain('<title>Rune</title>');
     expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest">');
     // Icône déjà en précache : pas de requête /favicon.ico (404 journalisé), même hors ligne.
-    expect(html).toContain('<link rel="icon" type="image/png" href="/icons/icon-192.png">');
+    expect(html).toContain('<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">');
     expect(html).toContain('<link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png">');
-    expect(html).toContain('<meta name="theme-color" content="#0f766e">');
+    // Avant le script, la barre suit le téléphone comme Auto (thème par défaut) : --bg du clair et du sombre.
+    // main.tsx applique ensuite le thème gardé à chacune de ces balises (ui/theme/theme.ts).
+    const themeColors = [...html.matchAll(/<meta name="theme-color"[^>]*>/g)].map((t) => t[0]);
+    expect(themeColors).toEqual([
+      '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F1F3F7">',
+      '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#070A12">',
+    ]);
   });
 });
