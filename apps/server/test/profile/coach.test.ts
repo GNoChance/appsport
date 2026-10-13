@@ -186,6 +186,32 @@ describe('POST /api/me/onboarding/complete : coach exigé', () => {
     expect(await res.json()).toEqual({ error: 'validation', field: 'coach' });
   });
 
+  it("déjà terminé sans coach (compte d'avant 0002) : 200 inchangé, rien écrit", async () => {
+    const c = await context();
+    const u = await createUserAndLogin(c, { onboarded: true });
+    await insertFixtureRow(c.deps.db, 'training_profile', {
+      ownerId: u.id,
+      goal: 'muscle',
+      experience: 'none',
+      daysPerWeek: 3,
+      sessionMinutes: 45,
+      coach: null,
+    });
+    const before = {
+      user: await userRow(c, u.id),
+      profile: await profileRow(c, u.id),
+      counter: await syncCounter(c),
+    };
+    c.clock.set('2026-10-06T10:01:00.000Z');
+
+    const res = await complete(c, u.cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ onboardingCompletedAt: '2026-10-06T10:00:00.000Z' });
+    expect(await userRow(c, u.id)).toEqual(before.user);
+    expect(await profileRow(c, u.id)).toEqual(before.profile);
+    expect(await syncCounter(c)).toBe(before.counter);
+  });
+
   it('avec un coach : 200 et onboarding terminé', async () => {
     const c = await context();
     const u = await createUserAndLogin(c);
