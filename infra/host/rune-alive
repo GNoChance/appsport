@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# appsport-alive (08 §9, §13.3) : timer de 5 min. /api/health par l'URL https://appsport.<tailnet>.ts.net
+# rune-alive (08 §9, §13.3) : timer de 5 min. /api/health par l'URL https://rune.<tailnet>.ts.net
 # (certificat, tailscale serve, appli et base) ; Healthchecks alive : ping, ou /fail avec le motif (volume
 # verrouillé, appli KO). Le silence signale le serveur, la box ou le courant coupés.
 # Codes : 0 OK, 1 KO.
@@ -25,10 +25,10 @@ health_field() {
 main() {
   local body rc=0 status db
   require_cmds "$JQ" "$CURL"
-  volume_mounted || ko "volume verrouillé : lancer appsport-unlock"
-  [ -n "${APPSPORT_URL:-}" ] || ko "APPSPORT_URL absente de healthchecks.env"
+  volume_mounted || ko "volume verrouillé : lancer rune-unlock"
+  [ -n "${RUNE_URL:-}" ] || ko "RUNE_URL absente de healthchecks.env"
   # --fail-with-body : un 503 garde son corps, lu par jq quel que soit le statut.
-  body=$("$CURL" -sS --fail-with-body --max-time 10 "$APPSPORT_URL/api/health") || rc=$?
+  body=$("$CURL" -sS --fail-with-body --max-time 10 "$RUNE_URL/api/health") || rc=$?
   status=$(health_field "$body" status)
   db=$(health_field "$body" db)
   if [ "$rc" -eq 0 ] && [ "$status" = ok ]; then

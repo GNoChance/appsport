@@ -9,7 +9,7 @@ import {
   type GymDetail,
   type GymHistoryAction,
   type UpdateGymRequest,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { z } from 'zod';
 import { ApiError } from '../../api/client';

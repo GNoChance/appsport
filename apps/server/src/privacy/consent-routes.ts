@@ -8,7 +8,7 @@ import {
   LimitationPatch,
   ReplayWithdrawRequest,
   WithdrawConsentRequest,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { type Context, Hono } from 'hono';
 import type { AppEnv, SessionUser } from '../app-env';
 import { createIpLimiter, type IpLimiter } from '../auth/limiter';

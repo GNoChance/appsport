@@ -1,4 +1,4 @@
-import { EXPERIENCE_LABELS, GOAL_LABELS, OnboardingStep, SPORTS } from '@appsport/contracts';
+import { EXPERIENCE_LABELS, GOAL_LABELS, OnboardingStep, SPORTS } from '@rune/contracts';
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { ApiError } from '../../api/client';

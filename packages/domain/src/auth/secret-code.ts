@@ -1,4 +1,4 @@
-import { SECRET_CODE_LENGTH } from '@appsport/contracts';
+import { SECRET_CODE_LENGTH } from '@rune/contracts';
 
 export const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 

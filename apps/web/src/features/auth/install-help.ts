@@ -14,7 +14,7 @@ export function detectPlatform(userAgent: string): InstallPlatform {
 }
 
 const IOS_HELP =
-  "Sur iPhone : touche Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite appsport depuis l'écran d'accueil et colle le code.";
+  "Sur iPhone : touche Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite Rune depuis l'écran d'accueil et colle le code.";
 const ANDROID_HELP = "Sur Android : ouvre le menu ⋮ puis « Installer l'application ».";
 
 /** Consigne d'installation du système, les deux quand il n'est pas reconnu (R-ARR-2). */

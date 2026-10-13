@@ -1,4 +1,4 @@
-import type { PulledRow } from '@appsport/contracts';
+import type { PulledRow } from '@rune/contracts';
 import type { AppDb, MirrorRow } from '../local-db/db';
 
 /**

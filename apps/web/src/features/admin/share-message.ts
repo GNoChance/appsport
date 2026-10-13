@@ -1,4 +1,4 @@
-import { INVITATION_TTL_DAYS } from '@appsport/contracts';
+import { INVITATION_TTL_DAYS } from '@rune/contracts';
 
 /**
  * Message de partage d'une invitation (R-INV-9) : les trois étapes de l'arrivée, puis le lien seul

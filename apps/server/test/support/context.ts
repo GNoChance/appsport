@@ -1,4 +1,4 @@
-import type { EntityRulesMap } from '@appsport/contracts';
+import type { EntityRulesMap } from '@rune/contracts';
 import type { Hono } from 'hono';
 import { createApp } from '../../src/app';
 import type { AppEnv } from '../../src/app-env';
@@ -62,7 +62,7 @@ export async function createTestContext(
     throw error;
   }
   const config: AppConfig = {
-    ...loadConfig({ APP_ORIGIN: 'https://appsport.test.ts.net' }),
+    ...loadConfig({ APP_ORIGIN: 'https://rune.test.ts.net' }),
     argon2: TEST_ARGON2,
     ...opts.config,
   };

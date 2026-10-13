@@ -2,7 +2,7 @@ import type { SwRequest, SwScope, SwWindowClient } from '../../src/sw/sw';
 
 // Navigateur factice du service worker (Cache Storage, réseau, clients), en mémoire et déterministe.
 
-const DEFAULT_ORIGIN = 'https://appsport.test';
+const DEFAULT_ORIGIN = 'https://rune.test';
 
 interface StoredResponse {
   body: ArrayBuffer;
@@ -15,7 +15,7 @@ interface StoredResponse {
 export type FakeFailure = Error | undefined;
 
 export interface FakeCacheStorageOptions {
-  /** 'https://appsport.test' par défaut. */
+  /** 'https://rune.test' par défaut. */
   origin?: string;
   /** `Cache.put` de `url` (absolue) dans `cacheName` : lève l'erreur rendue, sans rien écrire. */
   failPut?: (cacheName: string, url: string) => FakeFailure;

@@ -1,4 +1,4 @@
-import { ADULT_AGE, type AgeBand, PARIS_TZ } from '@appsport/contracts';
+import { ADULT_AGE, type AgeBand, PARIS_TZ } from '@rune/contracts';
 
 const CIVIL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 

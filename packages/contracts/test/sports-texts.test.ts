@@ -40,9 +40,9 @@ describe('textes versionnés', () => {
   it('consentement santé', () => {
     expect(HEALTH_CONSENT_TEXT.version).toBe('1.0');
     expect(HEALTH_CONSENT_TEXT.text).toBe(
-      "J'accepte qu'appsport enregistre mes données de santé : limitations et zones sensibles, réponses de prudence, douleurs signalées pendant les séances, taille, poids, profil et suivi nutritionnels. Elles servent uniquement à adapter mes séances et mes repères. Elles restent sur le serveur du cercle et l'administrateur ne les consulte pas dans l'appli. Je peux retirer cet accord à tout moment : elles seront alors supprimées.",
+      "J'accepte que Rune enregistre mes données de santé : limitations et zones sensibles, réponses de prudence, douleurs signalées pendant les séances, taille, poids, profil et suivi nutritionnels. Elles servent uniquement à adapter mes séances et mes repères. Elles restent sur le serveur du cercle et l'administrateur ne les consulte pas dans l'appli. Je peux retirer cet accord à tout moment : elles seront alors supprimées.",
     );
-    expect(HEALTH_CONSENT_TEXT.text).toMatch(/^J'accepte qu'appsport enregistre mes données de santé/);
+    expect(HEALTH_CONSENT_TEXT.text).toMatch(/^J'accepte que Rune enregistre mes données de santé/);
     expect(HEALTH_CONSENT_TEXT.text).toMatch(/elles seront alors supprimées\.$/);
     expect(HEALTH_CONSENT_TEXT.text).not.toContain('’');
   });

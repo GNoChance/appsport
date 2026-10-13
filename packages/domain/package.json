@@ -1,5 +1,5 @@
 {
-  "name": "@appsport/domain",
+  "name": "@rune/domain",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "test": "vitest run --root ../.. --project domain"
   },
   "dependencies": {
-    "@appsport/contracts": "workspace:*"
+    "@rune/contracts": "workspace:*"
   },
   "devDependencies": {
     "fast-check": "^4.10.2"

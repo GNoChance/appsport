@@ -25,7 +25,7 @@ let dir: string;
 let S: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'appsport-reapply-'));
+  dir = mkdtempSync(join(tmpdir(), 'rune-reapply-'));
   S = join(dir, 'S.db');
 });
 

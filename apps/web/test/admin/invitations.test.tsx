@@ -1,4 +1,4 @@
-import { INVITATION_NOTE_MAX, type InvitationSummary } from '@appsport/contracts';
+import { INVITATION_NOTE_MAX, type InvitationSummary } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvitationsPage } from '../../src/features/admin/InvitationsPage';
@@ -80,13 +80,13 @@ afterEach(() => {
 
 describe('buildInvitationShareMessage (R-INV-9)', () => {
   it('trois étapes, puis le lien sur la dernière ligne', () => {
-    const origin = 'https://appsport.example';
+    const origin = 'https://rune.example';
     expect(buildInvitationShareMessage(origin, `${origin}/invite#${CODE}`, CODE)).toBe(
       [
         '1. Installe Tailscale et accepte le partage.',
-        "2. Ouvre https://appsport.example et installe l'appli.",
+        "2. Ouvre https://rune.example et installe l'appli.",
         `3. Dans l'appli, colle ce lien ou tape le code ${CODE} (valable 7 jours).`,
-        `https://appsport.example/invite#${CODE}`,
+        `https://rune.example/invite#${CODE}`,
       ].join('\n'),
     );
   });
@@ -352,14 +352,14 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     },
   );
 
-  it('400 under_min_age → « appsport est réservé aux 16 ans et plus », aucun code', async () => {
+  it('400 under_min_age → « Rune est réservé aux 16 ans et plus », aucun code', async () => {
     const api = createFakeApi().on('POST', '/api/admin/invitations', {
       status: 400,
       body: { error: 'under_min_age' },
     });
     await renderInvitations({ api });
     create('2015-05-01');
-    expect(await screen.findByText('appsport est réservé aux 16 ans et plus')).toBeTruthy();
+    expect(await screen.findByText('Rune est réservé aux 16 ans et plus')).toBeTruthy();
     expect(screen.queryByText('Ce code ne sera plus affiché.')).toBeNull();
     expect((screen.getByLabelText('Date de naissance') as HTMLInputElement).value).toBe('2015-05-01');
   });

@@ -1,4 +1,4 @@
-import { EPOCH_HEADER } from '@appsport/contracts';
+import { EPOCH_HEADER } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getServerMeta } from '../../src/db/server-meta';
 import { createTestContext, type TestContext } from '../support';

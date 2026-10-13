@@ -1,4 +1,4 @@
-import { IllustrationRef } from '@appsport/contracts';
+import { IllustrationRef } from '@rune/contracts';
 import { z } from 'zod';
 import type { AppDb } from '../local-db/db';
 import { getMeta, setMeta } from '../local-db/meta';

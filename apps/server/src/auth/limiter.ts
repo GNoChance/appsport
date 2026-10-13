@@ -1,4 +1,4 @@
-import { CODE_CHECKS_PER_HOUR, LOGIN_LIMITS } from '@appsport/contracts';
+import { CODE_CHECKS_PER_HOUR, LOGIN_LIMITS } from '@rune/contracts';
 import type { AppDeps, Clock } from '../deps';
 
 type Verdict = { allowed: true } | { allowed: false; retryAfterS: number };

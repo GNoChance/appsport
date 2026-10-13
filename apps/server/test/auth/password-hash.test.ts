@@ -12,7 +12,7 @@ describe('hashPassword', () => {
   });
 
   it('la configuration porte ARGON2_PARAMS', () => {
-    expect(loadConfig({ APP_ORIGIN: 'https://appsport.test.ts.net' }).argon2).toEqual(ARGON2_PARAMS);
+    expect(loadConfig({ APP_ORIGIN: 'https://rune.test.ts.net' }).argon2).toEqual(ARGON2_PARAMS);
   });
 
   it('deux hachés du même mot de passe diffèrent', async () => {

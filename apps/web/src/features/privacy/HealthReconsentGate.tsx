@@ -1,4 +1,4 @@
-import { HEALTH_CONSENT_TEXT } from '@appsport/contracts';
+import { HEALTH_CONSENT_TEXT } from '@rune/contracts';
 import { useCallback, useState } from 'react';
 import { useLive, useMe, useSyncState } from '../../app-services';
 import { useRepos } from '../../repos';

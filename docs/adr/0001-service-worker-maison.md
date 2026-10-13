@@ -43,7 +43,7 @@ qu'elles le restent. Rien de ce dont nous avons besoin (un cache par build, une 
      le même hachage, un octet changé en donne un autre ;
    - lit `LOCAL_DB_VERSION` dans `src/local-db/db.ts` ;
    - écrit `dist/sw.js`, dont la première ligne est le manifeste
-     `self.__APPSPORT_PRECACHE__ = {"buildHash":…,"files":[…],"localDbVersion":…};`, suivie du code du SW
+     `self.__RUNE_PRECACHE__ = {"buildHash":…,"files":[…],"localDbVersion":…};`, suivie du code du SW
      enveloppé dans une fonction ouverte par `"use strict"` : sous la ligne du manifeste, la directive
      qu'esbuild place en tête du script n'en serait plus une, et le SW tournerait en mode non strict.
      Tout changement de la coquille change donc `sw.js` octet pour octet, et le navigateur détecte la mise à
@@ -73,7 +73,7 @@ qu'elles le restent. Rien de ce dont nous avons besoin (un cache par build, une 
    pas non plus : le navigateur active de lui-même un SW en attente à la fermeture de l'appli
    (décision 7). Trois règles :
    - **marqueur** : la plus haute version de base locale connue de l'appareil est gardée dans Cache Storage,
-     cache `appsport-meta`, entrée `/__sw/local-db-version` (réponse synthétique dont le corps est l'entier).
+     cache `rune-meta`, entrée `/__sw/local-db-version` (réponse synthétique dont le corps est l'entier).
      Le SW n'ouvre donc jamais IndexedDB. Le marqueur n'est jamais abaissé. La page l'écrit après l'ouverture
      de Dexie (`LOCAL_DB_VERSION`) ; le SW l'écrit dans son `activate` (son `localDbVersion`), avant que la
      page de son build ne tourne. `cachesToDelete` ne vise que les `shell-*`, et l'interrupteur d'urgence que
@@ -131,7 +131,7 @@ navigation, du marqueur de base locale et de l'interrupteur d'urgence. Les const
   le bundle du serveur (`server.mjs`).
 - Le SW ne profite pas des stratégies toutes faites de Workbox. Il n'en a pas besoin : ses deux caches de
   contenu (`shell-<buildHash>` et `illustrations-v1`) ne contiennent que des URL versionnées par le build ou
-  par l'empreinte du fichier. Un troisième cache, `appsport-meta`, ne contient que le marqueur de la
+  par l'empreinte du fichier. Un troisième cache, `rune-meta`, ne contient que le marqueur de la
   décision 5.
 - Une nouvelle version ne tourne sur un téléphone qu'après le clic sur « Mettre à jour », ou après une
   fermeture complète de l'appli (décision 7) ; jamais une version de schéma plus ancien (décision 5). Une

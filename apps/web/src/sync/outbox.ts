@@ -1,4 +1,4 @@
-import { camelToSnake, type EntityRulesMap, entityRules, SYNC_PROTOCOL, SyncOp } from '@appsport/contracts';
+import { camelToSnake, type EntityRulesMap, entityRules, SYNC_PROTOCOL, SyncOp } from '@rune/contracts';
 import { stripC2Fields } from '../local-db/c2';
 import type { AppDb, MirrorRow, OutboxOp } from '../local-db/db';
 

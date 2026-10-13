@@ -41,7 +41,7 @@ describe('liens de réinitialisation (R-RST-1 à R-RST-4)', () => {
     const { lea, adminCookie } = await setup();
     const old = await login(ctx, 'lea', lea.password);
     const { body: r } = await link(adminCookie, lea.id);
-    expect(r.link).toBe(`https://appsport.test.ts.net/reset#${r.code}`);
+    expect(r.link).toBe(`https://rune.test.ts.net/reset#${r.code}`);
     expect(r.expiresAt).toBe('2026-10-07T10:00:00.000Z');
 
     const checked = await check(r.code.toLowerCase());
@@ -168,9 +168,9 @@ describe('admin:reset (CLI)', () => {
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
   it('affiche trois lignes pour un pseudo normalisé, refuse un inconnu', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'appsport-reset-'));
-    writeFileSync(join(dir, '.appsport-volume'), '');
-    const env = { APP_ORIGIN: 'https://appsport.test.ts.net', APPSPORT_DATA_DIR: dir };
+    dir = mkdtempSync(join(tmpdir(), 'rune-reset-'));
+    writeFileSync(join(dir, '.rune-volume'), '');
+    const env = { APP_ORIGIN: 'https://rune.test.ts.net', RUNE_DATA_DIR: dir };
     const out: string[] = [];
     const err: string[] = [];
     const o = (l: string): void => {
@@ -188,7 +188,7 @@ describe('admin:reset (CLI)', () => {
     expect(await runCli(['admin:bootstrap', '--birth-date', '1985-03-02'], env, o, e)).toBe(0);
     const code = (out[2] as string).slice('Code : '.length);
     out.length = 0;
-    const c = await createTestContext({ dbPath: join(dir, 'appsport.db') });
+    const c = await createTestContext({ dbPath: join(dir, 'rune.db') });
     try {
       await acceptInvitation(
         c.deps,
@@ -199,7 +199,7 @@ describe('admin:reset (CLI)', () => {
       expect(out).toHaveLength(3);
       expect(out[0]).toBe('Lien de réinitialisation pour porteur (valable 24 h)');
       expect(out[1]).toMatch(
-        /^Lien : https:\/\/appsport\.test\.ts\.net\/reset#[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/,
+        /^Lien : https:\/\/rune\.test\.ts\.net\/reset#[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/,
       );
       const resetCode = (out[1] as string).split('#')[1] as string;
       expect(out[2]).toBe(`Code : ${resetCode}`);

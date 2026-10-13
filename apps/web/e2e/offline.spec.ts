@@ -1,4 +1,4 @@
-import { SYNC_TIMEOUT_MS } from '@appsport/contracts';
+import { SYNC_TIMEOUT_MS } from '@rune/contracts';
 import { expect, test } from './support/fixtures';
 import { loginViaUi, setupOnboardedAdmin } from './support/flows';
 import { idbGetAll, triggerForeground } from './support/pwa';

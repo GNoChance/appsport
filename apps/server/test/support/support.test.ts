@@ -1,4 +1,4 @@
-import { isUuidV7 } from '@appsport/domain';
+import { isUuidV7 } from '@rune/domain';
 import { describe, expect, it } from 'vitest';
 import { FakeClock, seqIds } from './index';
 

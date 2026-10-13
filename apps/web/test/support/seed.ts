@@ -1,5 +1,5 @@
-import { SYNC_PROTOCOL, SyncOp } from '@appsport/contracts';
-import { createMonotonicUuidV7 } from '@appsport/domain';
+import { SYNC_PROTOCOL, SyncOp } from '@rune/contracts';
+import { createMonotonicUuidV7 } from '@rune/domain';
 import type { AppDb, OutboxOp } from '../../src/local-db/db';
 import { applyPulledRows } from '../../src/sync/apply-pull';
 import { DEFAULT_NOW } from './render';

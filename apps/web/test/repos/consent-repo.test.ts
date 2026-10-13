@@ -1,4 +1,4 @@
-import type { MeResponse } from '@appsport/contracts';
+import type { MeResponse } from '@rune/contracts';
 import { describe, expect, it } from 'vitest';
 import { getMeta } from '../../src/local-db/meta';
 import { createRepos } from '../../src/repos';

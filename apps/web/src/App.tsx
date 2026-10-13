@@ -1,4 +1,4 @@
-import type { MeResponse } from '@appsport/contracts';
+import type { MeResponse } from '@rune/contracts';
 import { useEffect, useRef } from 'react';
 import { Redirect, Route, Switch, useLocation } from 'wouter';
 import { useMeState, useSyncState } from './app-services';

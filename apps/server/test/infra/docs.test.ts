@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PRIVACY_POLICY_VERSION } from '@appsport/contracts';
+import { PRIVACY_POLICY_VERSION } from '@rune/contracts';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -24,7 +24,7 @@ const RUNBOOK = 'infra/RUNBOOK-reconstruction.md';
 
 const doc = (name: string): string => read(`docs/exploitation/${name}.md`);
 const p = Object.fromEntries(PROCEDURES.map((name, i) => [i + 1, doc(name)])) as Record<number, string>;
-const installer = doc('installer-appsport');
+const installer = doc('installer-rune');
 const recette = doc('recette-telephones');
 const runbook = read(RUNBOOK);
 const fiche = read('docs/fiche-de-traitement.md');
@@ -36,7 +36,7 @@ const opsText = (): string => [...Object.values(p), installer, recette, runbook]
 /** Les mêmes pages, par chemin : les contrôles de format et de commandes se font page par page. */
 const OPS_DOCS: Readonly<Record<string, string>> = {
   ...Object.fromEntries(PROCEDURES.map((name, i) => [`docs/exploitation/${name}.md`, p[i + 1] as string])),
-  'docs/exploitation/installer-appsport.md': installer,
+  'docs/exploitation/installer-rune.md': installer,
   'docs/exploitation/recette-telephones.md': recette,
   [RUNBOOK]: runbook,
 };
@@ -156,16 +156,16 @@ const CLI = [
   'db:stats',
 ] as const;
 const SCRIPTS = [
-  'appsport-unlock',
-  'appsport-update',
-  'appsport-backup',
-  'appsport-restore-test',
-  'appsport-alive',
-  'appsport-check',
+  'rune-unlock',
+  'rune-update',
+  'rune-backup',
+  'rune-restore-test',
+  'rune-alive',
+  'rune-check',
 ] as const;
 /** Préfixe des commandes compose des scripts hôte (infra/host/lib/common.sh). */
 const COMPOSE =
-  'docker compose --project-name appsport -f /opt/appsport/infra/compose.yaml --env-file /srv/appsport/deploy.env';
+  'docker compose --project-name rune -f /opt/rune/infra/compose.yaml --env-file /srv/rune/deploy.env';
 
 /** Texte entre la ligne qui commence par `start` et la suivante qui commence par `end`. */
 function between(text: string, start: string, end: string): string {
@@ -242,8 +242,8 @@ describe('docs/exploitation : procédures P1 à P9 (08 §12)', () => {
     });
   });
 
-  it("fiche « Installer appsport », recette sur téléphones et runbook : même format d'étapes", () => {
-    expectSteps('installer-appsport', installer);
+  it("fiche « Installer Rune », recette sur téléphones et runbook : même format d'étapes", () => {
+    expectSteps('installer-rune', installer);
     expectSteps('recette-telephones', recette);
     expectSteps(RUNBOOK, runbook);
   });
@@ -258,7 +258,7 @@ describe('docs/exploitation : procédures P1 à P9 (08 §12)', () => {
     }
   });
 
-  it('les 6 scripts appsport-* de 08 §15 sont cités', () => {
+  it('les 6 scripts rune-* de 08 §15 sont cités', () => {
     for (const script of SCRIPTS) expect(opsText()).toContain(script);
   });
 
@@ -327,15 +327,15 @@ describe('P1 Installation initiale', () => {
   it('chaque décision dans sa section', () => {
     const where: Record<string, readonly string[]> = {
       'Volume chiffré': [
-        'appsport /dev/disk/by-partlabel/appsport-data none luks,noauto',
-        '/dev/mapper/appsport /srv/appsport ext4 noauto,nofail 0 2',
-        'chattr +i /srv/appsport',
+        'rune /dev/disk/by-partlabel/rune-data none luks,noauto',
+        '/dev/mapper/rune /srv/rune ext4 noauto,nofail 0 2',
+        'chattr +i /srv/rune',
         '6 mots',
       ],
       Docker: [
         'systemctl disable docker.service docker.socket',
-        '"data-root": "/srv/appsport/docker"',
-        'RequiresMountsFor=/srv/appsport',
+        '"data-root": "/srv/rune/docker"',
+        'RequiresMountsFor=/srv/rune',
       ],
       Tailscale: [
         'tailscale up --ssh',
@@ -345,7 +345,7 @@ describe('P1 Installation initiale', () => {
       'Pare-feu (ufw)': ['IPV6=yes', '/etc/default/ufw', 'allow in on tailscale0'],
       'Dépôt et secrets': [
         'known_hosts',
-        'ln -s /opt/appsport/infra/host/appsport-* /usr/local/sbin/',
+        'ln -s /opt/rune/infra/host/rune-* /usr/local/sbin/',
         'VITE_OWNER_FIRST_NAME',
         'chmod 600',
       ],
@@ -356,8 +356,8 @@ describe('P1 Installation initiale', () => {
         'AWS_ACCESS_KEY_ID',
         'AWS_SECRET_ACCESS_KEY',
       ],
-      Healthchecks: ['APPSPORT_URL'],
-      'Initialisation de la base et invitation admin': ['chown -R 1000:1000 /srv/appsport/data'],
+      Healthchecks: ['RUNE_URL'],
+      'Initialisation de la base et invitation admin': ['chown -R 1000:1000 /srv/rune/data'],
     };
     for (const [title, needles] of Object.entries(where)) {
       const body = section(p1, title);
@@ -367,7 +367,7 @@ describe('P1 Installation initiale', () => {
 
   it('chattr +i sur le point de montage vide avant le premier montage (R-OPS-1)', () => {
     const body = section(p1, 'Volume chiffré');
-    expect(body.indexOf('chattr +i /srv/appsport')).toBeLessThan(body.indexOf('mount /srv/appsport'));
+    expect(body.indexOf('chattr +i /srv/rune')).toBeLessThan(body.indexOf('mount /srv/rune'));
   });
 
   it("IPv6 filtré avant l'activation du pare-feu (03 §10)", () => {
@@ -392,23 +392,23 @@ describe('P1 Installation initiale', () => {
     }
   });
 
-  it("première installation dans l'ordre, sans appsport-update (qui exige une appli saine)", () => {
+  it("première installation dans l'ordre, sans rune-update (qui exige une appli saine)", () => {
     const text = [
       section(p1, 'Initialisation de la base et invitation admin'),
       section(p1, 'Premier déploiement'),
     ].join('\n');
     expectInOrder(text, [
-      'APPSPORT_VERSION=v',
+      'RUNE_VERSION=v',
       ' pull',
-      '.appsport-volume',
-      'chown -R 1000:1000 /srv/appsport/data',
+      '.rune-volume',
+      'chown -R 1000:1000 /srv/rune/data',
       'server.mjs init',
       'server.mjs admin:bootstrap',
       ' up -d',
     ]);
     expect(text).toContain(`${COMPOSE} run --rm --no-deps app node /app/server.mjs init`);
     expect(text).toContain(`${COMPOSE} run --rm --no-deps app node /app/server.mjs admin:bootstrap`);
-    expect(text).not.toContain('appsport-update');
+    expect(text).not.toContain('rune-update');
   });
 
   it('Recette : les 11 critères de 08 §13, puis la recette sur téléphones', () => {
@@ -469,22 +469,22 @@ describe('P1 Installation initiale', () => {
     expect(stepWith('Docker', 'systemctl disable docker.service').body).toContain('phrase LUKS');
   });
 
-  it('Tailscale SSH : ssh appsport ouvre le compte <compte>, quel que soit le nom de session du PC', () => {
-    expect(stepWith('Tailscale', 'ssh appsport').body).toContain('User <compte>');
+  it('Tailscale SSH : ssh rune ouvre le compte <compte>, quel que soit le nom de session du PC', () => {
+    expect(stepWith('Tailscale', 'ssh rune').body).toContain('User <compte>');
   });
 
   it('Healthchecks : SMART_DEVICES entre guillemets (fichier lu par bash), ligne mal formée reconnue', () => {
     const values = [...opsText().matchAll(/SMART_DEVICES=(\S)/g)].map((m) => m[1]);
     expect(values.length).toBeGreaterThan(0);
     for (const first of values) expect(first).toBe('"');
-    expect(stepWith('Healthchecks', 'sudo appsport-check').body).toMatch(
+    expect(stepWith('Healthchecks', 'sudo rune-check').body).toMatch(
       /healthchecks\.env: line N: [^\n]*No such file or directory/,
     );
   });
 
   it("Healthchecks : alertes attendues jusqu'au premier déploiement, annoncées (08 §9)", () => {
     const body = section(p1, 'Healthchecks');
-    expect(body).toContain('volume verrouillé : lancer appsport-unlock');
+    expect(body).toContain('volume verrouillé : lancer rune-unlock');
     expect(body).toContain('« Premier déploiement », étape 4');
   });
 
@@ -499,31 +499,27 @@ describe('P1 Installation initiale', () => {
     expect(body).toContain('Ctrl+C');
     expectInOrder(body, [
       'systemctl start --no-ask-password docker',
-      'systemctl stop docker.socket systemd-cryptsetup@appsport.service',
-      'findmnt /srv/appsport',
-      'ls -A /srv/appsport',
-      'touch /srv/appsport/essai',
-      '.appsport-volume.essai /srv/appsport/data/.appsport-volume',
+      'systemctl stop docker.socket systemd-cryptsetup@rune.service',
+      'findmnt /srv/rune',
+      'ls -A /srv/rune',
+      'touch /srv/rune/essai',
+      '.rune-volume.essai /srv/rune/data/.rune-volume',
       'http://127.0.0.1:3000/api/health',
     ]);
   });
 
   it('Recette 8 : version suivante nommée, remise en service après le retour arrière', () => {
     const body = (steps(section(p1, 'Recette')).find((s) => s.n === 8) as { body: string }).body;
-    expect(body).not.toMatch(/appsport-update vX\.Y\.Z(?!\+1)/);
-    expect(body.lastIndexOf('sudo appsport-update vX.Y.Z+1')).toBeGreaterThan(
-      body.indexOf('sudo appsport-update --rollback'),
+    expect(body).not.toMatch(/rune-update vX\.Y\.Z(?!\+1)/);
+    expect(body.lastIndexOf('sudo rune-update vX.Y.Z+1')).toBeGreaterThan(
+      body.indexOf('sudo rune-update --rollback'),
     );
   });
 });
 
 describe('P2 à P9', () => {
-  it('P2 : Tailscale SSH puis appsport-unlock, sinon P8', () => {
-    expectInOrder(p[2] as string, [
-      'ssh appsport',
-      'sudo appsport-unlock',
-      'OK : appsport répond (version vX.Y.Z).',
-    ]);
+  it('P2 : Tailscale SSH puis rune-unlock, sinon P8', () => {
+    expectInOrder(p[2] as string, ['ssh rune', 'sudo rune-unlock', 'OK : Rune répond (version vX.Y.Z).']);
     expect(p[2]).toContain('P8');
   });
 
@@ -536,7 +532,7 @@ describe('P2 à P9', () => {
       expect(at, before).toBeGreaterThanOrEqual(0);
       expect(at, `${before} avant git tag`).toBeLessThan(tag);
     }
-    expectInOrder(p3, ['git tag', 'release', 'sudo appsport-update vX.Y.Z', 'deploy.log']);
+    expectInOrder(p3, ['git tag', 'release', 'sudo rune-update vX.Y.Z', 'deploy.log']);
     for (const result of [
       'ok',
       'pull-failed',
@@ -547,7 +543,7 @@ describe('P2 à P9', () => {
     ]) {
       expect(p3).toContain(`| \`${result}\` |`);
     }
-    expect(p3).toContain('sudo appsport-update --rollback');
+    expect(p3).toContain('sudo rune-update --rollback');
     expect(p3).toMatch(/jeton GHCR expiré[^\n]*P5/);
   });
 
@@ -616,19 +612,19 @@ describe('P2 à P9', () => {
   });
 
   it('P3 : séances listées → N ; attente de 2 min par étape, jamais interrompue ; reprise par tmux', () => {
-    expect(read('infra/host/appsport-update')).toContain('Séances en cours depuis moins de 3 h :');
-    const body = p3Step('sudo appsport-update vX.Y.Z').body;
+    expect(read('infra/host/rune-update')).toContain('Séances en cours depuis moins de 3 h :');
+    const body = p3Step('sudo rune-update vX.Y.Z').body;
     expect(body).toMatch(/Séances en cours depuis moins de 3 h :[^\n]*répondre `N`/);
     expect(body).toContain('tmux attach -t deploiement');
     expect(body).toContain('2 min');
     expect(body).toContain('Ctrl+C');
   });
 
-  it("P3 : chaque refus d'appsport-update a sa conduite (08 §12)", () => {
+  it('P3 : chaque refus de rune-update a sa conduite (08 §12)', () => {
     const p3 = p[3] as string;
-    const script = read('infra/host/appsport-update') + read('infra/host/lib/common.sh');
+    const script = read('infra/host/rune-update') + read('infra/host/lib/common.sh');
     for (const message of [
-      'Usage : appsport-update vX.Y.Z [--yes]',
+      'Usage : rune-update vX.Y.Z [--yes]',
       ' : lancez avec sudo.',
       " absente de l'hôte. Rien n'a été changé.",
       " absente. Rien n'a été changé.",
@@ -657,7 +653,7 @@ describe('P2 à P9', () => {
     expect(recover.body).toContain('ne répond pas après restauration');
     expectInOrder(recover.body, [
       'reapply-pending',
-      'APPSPORT_VERSION=<version à garder>',
+      'RUNE_VERSION=<version à garder>',
       'checkout <version à garder>',
       ' up -d',
       'pre-<version abandonnée>.db',
@@ -668,26 +664,26 @@ describe('P2 à P9', () => {
 
   it("P3 : fichiers de l'hôte réinstallés, Docker relancé pour daemon.json, nouveaux scripts liés", () => {
     const body = p3Step('<version précédente> vX.Y.Z -- infra/').body;
-    expect(body).toMatch(/git -C \/opt\/appsport diff [^\n]* infra\/host /);
+    expect(body).toMatch(/git -C \/opt\/rune diff [^\n]* infra\/host /);
     expect(body).toContain('sudo systemctl restart docker');
-    expect(body).toContain('sudo ln -s /opt/appsport/infra/host/appsport-');
+    expect(body).toContain('sudo ln -s /opt/rune/infra/host/rune-');
   });
 
   it('P4 « Sur place » : collecte, marqueur, arrêt, restauration, réapplication, liste retirée, puis seulement redémarrage', () => {
     const body = section(p[4] as string, 'Sur place');
     expectInOrder(body, [
       'server.mjs privacy:collect',
-      'tee /srv/appsport/reapply-pending',
+      'tee /srv/rune/reapply-pending',
       'stop app',
       'server.mjs restore',
       'server.mjs privacy:reapply',
-      'rm /srv/appsport/data/ops/privacy-',
+      'rm /srv/rune/data/ops/privacy-',
       'up -d',
     ]);
     expect(body).toContain(`${COMPOSE} run --rm --no-deps app node /app/server.mjs restore`);
     expect(body).toContain(`${COMPOSE} run --rm --no-deps app node /app/server.mjs privacy:reapply`);
-    const rm = body.split(/\r?\n/).find((line) => line.includes('rm /srv/appsport/data/ops/privacy-'));
-    expect(rm, 'la liste et le marqueur sont retirés ensemble').toContain('/srv/appsport/reapply-pending');
+    const rm = body.split(/\r?\n/).find((line) => line.includes('rm /srv/rune/data/ops/privacy-'));
+    expect(rm, 'la liste et le marqueur sont retirés ensemble').toContain('/srv/rune/reapply-pending');
     expect(body).toContain('--source');
     expect(body).toContain('replaced-');
     expect(body).toContain('Aucun administrateur actif');
@@ -709,7 +705,7 @@ describe('P2 à P9', () => {
 
   it('P5 : tableau de 08 §10, rotations et enveloppe refaite', () => {
     for (const needle of [
-      'appsport-prod-AAAAMM',
+      'rune-prod-AAAAMM',
       'restic key add',
       'key remove',
       'luksAddKey',
@@ -729,7 +725,7 @@ describe('P2 à P9', () => {
       'date de naissance',
       'MIN_AGE',
       'Share',
-      'installer-appsport.md',
+      'installer-rune.md',
     ]);
     expectInOrder(section(p6, 'Retirer un proche'), ['Share', 'Désactiver']);
   });
@@ -769,7 +765,7 @@ describe('P2 à P9', () => {
 
   it('P9 : déverrouillage au clavier, export par les proches, rien sans admin', () => {
     for (const needle of [
-      'appsport-unlock',
+      'rune-unlock',
       'export',
       "Aucune invitation ni réinitialisation n'est possible sans admin.",
     ]) {
@@ -802,20 +798,20 @@ describe('P4 et P8 : restauration sans retour de données, alertes et incidents'
 
   it("« Sur place », étape 1 : un marqueur ne prouve pas la restauration, l'état se vérifie d'abord", () => {
     const first = steps(surPlace)[0]?.body ?? '';
-    expect(first).toContain("-name 'replaced-*' -newer /srv/appsport/reapply-pending");
+    expect(first).toContain("-name 'replaced-*' -newer /srv/rune/reapply-pending");
     expect(first).toContain('Marqueur');
     expect(first).not.toContain('la base est déjà restaurée');
   });
 
   it("« Sur place » : un instantané pre-vX.Y.Z se restaure avec la version d'avant (08 §8, R-DEP-4)", () => {
     expectInOrder(surPlace, [
-      'APPSPORT_VERSION=v<précédente>',
-      'git -C /opt/appsport checkout v<précédente>',
+      'RUNE_VERSION=v<précédente>',
+      'git -C /opt/rune checkout v<précédente>',
       'stop app',
       'server.mjs restore',
       'server.mjs privacy:reapply',
     ]);
-    expect(surPlace).toContain('appsport-update --rollback');
+    expect(surPlace).toContain('rune-update --rollback');
   });
 
   it("« Sur place », réapplication : admin désactivé, l'amorçage refusé a sa conduite (R-ROLE-5)", () => {
@@ -833,8 +829,8 @@ describe('P4 et P8 : restauration sans retour de données, alertes et incidents'
 
   it('« Nouvelle machine » : dépôt à la version restaurée dès le clone, instant de collecte calculé', () => {
     expectInOrder(nouvelle, [
-      'cat /srv/appsport/deploy.env',
-      'git -C /opt/appsport checkout vX.Y.Z',
+      'cat /srv/rune/deploy.env',
+      'git -C /opt/rune checkout vX.Y.Z',
       'Timers systemd',
       'pull app',
       'stat -c %Y',
@@ -851,7 +847,7 @@ describe('P4 et P8 : restauration sans retour de données, alertes et incidents'
   });
 
   it("alerte alive /fail et déverrouillage : jamais de up -d tant qu'une réapplication attend (03 §8)", () => {
-    expect(codeOf(steps(aliveFail)[1]?.body ?? '')).toContain('sudo cat /srv/appsport/reapply-pending');
+    expect(codeOf(steps(aliveFail)[1]?.body ?? '')).toContain('sudo cat /srv/rune/reapply-pending');
     for (const title of ['Alerte `alive` : /fail', 'Déverrouillage en échec']) {
       const ups = codeOf(section(p8, title))
         .split('\n')
@@ -859,7 +855,7 @@ describe('P4 et P8 : restauration sans retour de données, alertes et incidents'
       expect(ups.length, title).toBeGreaterThan(0);
       for (const line of ups) {
         expect(line.trim(), title).toMatch(
-          /^sudo test ! -e \/srv\/appsport\/reapply-pending && sudo docker compose /,
+          /^sudo test ! -e \/srv\/rune\/reapply-pending && sudo docker compose /,
         );
       }
     }
@@ -867,11 +863,11 @@ describe('P4 et P8 : restauration sans retour de données, alertes et incidents'
 
   it('chaque motif envoyé à Healthchecks par les scripts a sa conduite dans la section de son alerte (08 §9)', () => {
     const where: Record<string, string> = {
-      'appsport-alive': 'Alerte `alive` : /fail',
-      'appsport-unlock': 'Alerte `alive` : /fail',
-      'appsport-backup': 'Alerte `backup`',
-      'appsport-restore-test': 'Alerte `restore-test`',
-      'appsport-check': 'Alerte `host`',
+      'rune-alive': 'Alerte `alive` : /fail',
+      'rune-unlock': 'Alerte `alive` : /fail',
+      'rune-backup': 'Alerte `backup`',
+      'rune-restore-test': 'Alerte `restore-test`',
+      'rune-check': 'Alerte `host`',
     };
     for (const [script, title] of Object.entries(where)) {
       const motifs = scriptMotifs(read(`infra/host/${script}`));
@@ -884,20 +880,20 @@ describe('P4 et P8 : restauration sans retour de données, alertes et incidents'
   it('déverrouillage en échec : Docker arrêté avant de fermer le volume (R-OPS-2)', () => {
     expectInOrder(section(p8, 'Déverrouillage en échec'), [
       'systemctl stop docker.service docker.socket',
-      'umount /srv/appsport',
-      'cryptsetup close appsport',
-      'cryptsetup status appsport',
+      'umount /srv/rune',
+      'cryptsetup close rune',
+      'cryptsetup status rune',
     ]);
   });
 
   it('restore-test : vérification du dépôt hors site et dépôt local abîmé mis de côté avant init (R-OPS-11)', () => {
     const body = section(p8, 'Alerte `restore-test`');
     expect(body).toContain(
-      'restic -r "$RESTIC_OFFSITE_REPOSITORY" --password-file /srv/appsport/secrets/restic.pass check',
+      'restic -r "$RESTIC_OFFSITE_REPOSITORY" --password-file /srv/rune/secrets/restic.pass check',
     );
     expectInOrder(body, [
       'sudo mv /srv/backup/restic /srv/backup/restic.abime-',
-      '/srv/appsport/secrets/restic.pass init',
+      '/srv/rune/secrets/restic.pass init',
     ]);
   });
 
@@ -933,7 +929,7 @@ describe('P4 et P8 : restauration sans retour de données, alertes et incidents'
 });
 
 describe('fiches pour les proches et recette', () => {
-  it('installer-appsport : 08 §6 côté proche et §11, une capture par étape', () => {
+  it('installer-rune : 08 §6 côté proche et §11, une capture par étape', () => {
     for (const needle of [
       "Sur l'écran d'accueil",
       "Installer l'application",
@@ -1123,7 +1119,7 @@ describe('registres de vie privée (03 §1, §14)', () => {
 describe('hygiène des documents', () => {
   const docs = {
     ...Object.fromEntries(PROCEDURES.map((name, i) => [`docs/exploitation/${name}.md`, p[i + 1] as string])),
-    'docs/exploitation/installer-appsport.md': installer,
+    'docs/exploitation/installer-rune.md': installer,
     'docs/exploitation/recette-telephones.md': recette,
     [RUNBOOK]: runbook,
     'docs/fiche-de-traitement.md': fiche,
@@ -1170,8 +1166,8 @@ describe('hygiène des documents', () => {
   });
 
   it('secrets écrits en place sur le volume chiffré : jamais sudoedit, qui en copie un dans /var/tmp en clair', () => {
-    expect(opsText()).not.toMatch(/sudoedit \/srv\/appsport\/secrets/);
-    expect(opsText()).toContain('sudo nano /srv/appsport/secrets/restic.pass');
+    expect(opsText()).not.toMatch(/sudoedit \/srv\/rune\/secrets/);
+    expect(opsText()).toContain('sudo nano /srv/rune/secrets/restic.pass');
   });
 
   it('propriétaire 1000 lu en numérique (ls -n), pas sous le nom du premier compte Debian', () => {
@@ -1251,7 +1247,7 @@ describe('commandes sûres à recopier', () => {
   it('après up -d ou docker run -d, /api/health est attendu 2 min au plus (R-OPS-6), jamais sondé une seule fois', () => {
     const pages = {
       ...Object.fromEntries(PROCEDURES.map((name, i) => [name, p[i + 1] as string])),
-      'installer-appsport': installer,
+      'installer-rune': installer,
       'recette-telephones': recette,
       [RUNBOOK]: runbook,
     };
@@ -1272,10 +1268,10 @@ describe('commandes sûres à recopier', () => {
   });
 
   it('P5 : restic garde son cache sur le volume chiffré, comme les scripts hôte', () => {
-    expect(read('infra/host/lib/common.sh')).toContain('RESTIC_CACHE_DIR="$APPSPORT_ROOT/cache/restic"');
+    expect(read('infra/host/lib/common.sh')).toContain('RESTIC_CACHE_DIR="$RUNE_ROOT/cache/restic"');
     const lines = proseLines(p[5] as string).filter((l) => l.code && /\brestic -r\b/.test(l.line));
     expect(lines.length).toBeGreaterThan(0);
-    for (const { line } of lines) expect(line).toContain('--cache-dir /srv/appsport/cache/restic');
+    for (const { line } of lines) expect(line).toContain('--cache-dir /srv/rune/cache/restic');
   });
 
   it('P5 : clé de développement vérifiée sur le PC ; enveloppe refaite après le mot de passe Unix', () => {
@@ -1291,8 +1287,8 @@ describe('commandes sûres à recopier', () => {
     expectInOrder(section(p[5] as string, 'Clé de déploiement git'), [
       'ssh-keygen',
       'Add deploy key',
-      '-i /srv/appsport/secrets/deploy_key.new ',
-      'mv /srv/appsport/secrets/deploy_key.new ',
+      '-i /srv/rune/secrets/deploy_key.new ',
+      'mv /srv/rune/secrets/deploy_key.new ',
       "Supprimer l'ancienne clé sur GitHub",
     ]);
   });
@@ -1300,9 +1296,9 @@ describe('commandes sûres à recopier', () => {
   it('P5 : URL Healthchecks : les 4 contrôles neufs au vert avant de supprimer les anciens (08 §9)', () => {
     const body = section(p[5] as string, 'URL de ping Healthchecks');
     expectInOrder(body, [
-      'sudoedit /etc/appsport/healthchecks.env',
-      'sudo appsport-check',
-      'sudo systemctl start appsport-backup.service',
+      'sudoedit /etc/rune/healthchecks.env',
+      'sudo rune-check',
+      'sudo systemctl start rune-backup.service',
       'HC_RESTORE_TEST_URL',
       'Supprimer les anciens contrôles',
     ]);
@@ -1315,7 +1311,7 @@ describe('commandes sûres à recopier', () => {
     expect(unlock).toContain('tout autre message');
     expect(unlock).toContain('disque');
     const catchUp = all.find((s) => s.n === 3)?.body ?? '';
-    expect(catchUp).toContain('systemctl status appsport-backup.service appsport-restore-test.service');
+    expect(catchUp).toContain('systemctl status rune-backup.service rune-restore-test.service');
     expect(catchUp).toContain('Sauvegarde terminée : local+offsite.');
     expect(catchUp).not.toContain('list-units');
   });
@@ -1328,7 +1324,7 @@ describe('commandes sûres à recopier', () => {
     expect(sourced.length).toBeGreaterThan(0);
     for (const line of sourced) expect(line).toMatch(/\(\s*set -a;/);
     for (const line of code.filter((l) => /\brestic -r\b/.test(l))) expect(line).toContain('--no-cache');
-    expect(runbook).toContain('ls restaure/srv/appsport/secrets');
+    expect(runbook).toContain('ls restaure/srv/rune/secrets');
     const all = steps(runbook);
     const putBack = all.find((s) => s.head.startsWith("Remettre l'identité Tailscale"));
     expect(putBack?.body).toContain('sudo mv /var/lib/tailscale.avant-exercice /var/lib/tailscale');
@@ -1338,7 +1334,7 @@ describe('commandes sûres à recopier', () => {
 });
 
 describe('fiches des proches et recette : revue de la tâche 45', () => {
-  it("installer-appsport : absence de l'admin selon 08 §11, MagicDNS des deux côtés, invitation depuis la connexion", () => {
+  it("installer-rune : absence de l'admin selon 08 §11, MagicDNS des deux côtés, invitation depuis la connexion", () => {
     expect(installer).not.toContain('tout consulter');
     expect(installer).toContain('la synchronisation et le coach');
     const help = section(installer, 'Dépannage');
@@ -1380,9 +1376,9 @@ describe('fiches des proches et recette : revue de la tâche 45', () => {
     expect(recette).not.toContain('$PWD/data');
     expect(recette).toMatch(/fictiv/);
     const prep = section(recette, 'Préparation');
-    expectInOrder(prep, ['rm -rf ~/appsport-recette', 'cp -r']);
-    expect(prep).toContain('APPSPORT_CONTENT_DIR=~/appsport-recette/a/content');
-    expect(recette).toContain('APPSPORT_CONTENT_DIR=~/appsport-recette/b/content');
+    expectInOrder(prep, ['rm -rf ~/rune-recette', 'cp -r']);
+    expect(prep).toContain('RUNE_CONTENT_DIR=~/rune-recette/a/content');
+    expect(recette).toContain('RUNE_CONTENT_DIR=~/rune-recette/b/content');
     expect(prep).toContain('La base existe déjà');
     expect(prep).toContain('Un administrateur existe déjà');
   });
@@ -1413,7 +1409,7 @@ describe('fiches des proches et recette : revue de la tâche 45', () => {
     for (const needle of [
       'tailscale serve reset',
       'tailscale serve status',
-      'rm -rf ~/appsport-recette',
+      'rm -rf ~/rune-recette',
       'Administration → Membres',
       'partage',
       'données du site',

@@ -36,7 +36,7 @@ describe('auth-constants', () => {
       SESSION_MAX_DAYS,
       ADMIN_PASSWORD_REMINDER_MONTHS,
     ]).toEqual([7, 24, 24, 16, 60, 3, 24, 12, 14, 128, 90, 365, 12]);
-    expect(RESERVED_USERNAMES).toEqual(['admin', 'appsport', 'systeme']);
+    expect(RESERVED_USERNAMES).toEqual(['admin', 'rune', 'appsport', 'systeme']);
     expect(CODE_CHECKS_PER_HOUR).toBe(20);
     expect(LOGIN_LIMITS).toEqual({
       consecutiveThreshold: 5,

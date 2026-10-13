@@ -1,4 +1,4 @@
-import { CreateGymRequest, GymEquipmentCode, UpdateGymRequest } from '@appsport/contracts';
+import { CreateGymRequest, GymEquipmentCode, UpdateGymRequest } from '@rune/contracts';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppEnv } from '../app-env';

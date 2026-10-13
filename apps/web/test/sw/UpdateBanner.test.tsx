@@ -241,7 +241,7 @@ describe('cadres (AppShell, PublicShell)', () => {
     expect(banner()).toBeNull();
     fireEvent.click(screen.getByRole('link', { name: 'Aide' }));
     await screen.findByRole('heading', { level: 1, name: 'Aide' });
-    fireEvent.click(screen.getByRole('link', { name: 'appsport' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Rune' }));
     await screen.findByRole('navigation', { name: 'Navigation principale' });
     await settle();
     expect(banner()).toBeNull();
@@ -269,7 +269,7 @@ describe('cadres (AppShell, PublicShell)', () => {
     await liveReadsDone(db);
     expect(watch.seen()).toBe(0);
     // Contrôle positif : même membre, même contrôleur, cadre connecté.
-    fireEvent.click(screen.getByRole('link', { name: 'appsport' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Rune' }));
     await screen.findByTestId('update-banner');
   });
 

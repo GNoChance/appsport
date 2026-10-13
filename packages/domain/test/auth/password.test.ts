@@ -1,4 +1,4 @@
-import type { Role } from '@appsport/contracts';
+import type { Role } from '@rune/contracts';
 import { describe, expect, it } from 'vitest';
 import { passwordLength, validatePassword } from '../../src/auth/password';
 
@@ -22,14 +22,14 @@ describe('validatePassword', () => {
     expect(validatePassword('SOLEIL123456', member)).toEqual({ ok: false, reason: 'common' });
   });
 
-  it('refuse le pseudo et appsport', () => {
+  it('refuse le pseudo et « rune », sans tenir compte de la casse', () => {
     expect(validatePassword('xxÉloïse_2 et la mer', { ...member, username: 'éloïse_2' })).toEqual({
       ok: false,
       reason: 'contains_username',
     });
-    expect(validatePassword('mon appSport adoré', member)).toEqual({
+    expect(validatePassword('mon RuNe adoré', member)).toEqual({
       ok: false,
-      reason: 'contains_appsport',
+      reason: 'contains_app_name',
     });
   });
 

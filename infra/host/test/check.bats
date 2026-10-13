@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
-# appsport-check (08 §9) : disques au-delà de 80 %, SMART, reboot-required ; section host de status.json.
+# rune-check (08 §9) : disques au-delà de 80 %, SMART, reboot-required ; section host de status.json.
 
 setup() {
   source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
-  CHECK="$HOST_DIR/appsport-check"
-  STATUS_FILE="$APPSPORT_ROOT/data/ops/status.json"
+  CHECK="$HOST_DIR/rune-check"
+  STATUS_FILE="$RUNE_ROOT/data/ops/status.json"
 }
 
 # df --output=pcent <montage> : en-tête puis pourcentage.
@@ -18,13 +18,13 @@ disk_at() { on df "--output=pcent $1" 0 "printf 'Use%%\n %s%%\n' $2"; }
   [ "$status" -eq 0 ]
   assert_calls_in_order \
     "df --output=pcent /" \
-    "df --output=pcent $APPSPORT_ROOT" \
+    "df --output=pcent $RUNE_ROOT" \
     "df --output=pcent $BACKUP_ROOT" \
     "smartctl -H /dev/sda" \
     "smartctl -H /dev/sdb" \
     "curl * https://hc.test/host"
   [[ "$(tail -n1 "$CALLS")" == "curl "*" https://hc.test/host" ]]
-  jq -e --arg r "$APPSPORT_ROOT" --arg b "$BACKUP_ROOT" \
+  jq -e --arg r "$RUNE_ROOT" --arg b "$BACKUP_ROOT" \
     '.host | .ok == true and .smartOk == true and .rebootRequired == false and (.at | test("Z$"))
       and .disks == [{mount: "/", usedPct: 42}, {mount: $r, usedPct: 42}, {mount: $b, usedPct: 42}]' "$STATUS_FILE"
   assert_ops_modes
@@ -58,11 +58,11 @@ disk_at() { on df "--output=pcent $1" 0 "printf 'Use%%\n %s%%\n' $2"; }
 
 @test "reboot-required présent : « redémarrage requis », problèmes joints par « ; »" {
   : >"$REBOOT_REQUIRED_FILE"
-  disk_at "$APPSPORT_ROOT" 91
+  disk_at "$RUNE_ROOT" 91
   run "$CHECK"
   [ "$status" -eq 1 ]
   assert_calls_in_order \
-    "curl *--data-raw disque $APPSPORT_ROOT à 91 % ; redémarrage requis https://hc.test/host/fail"
+    "curl *--data-raw disque $RUNE_ROOT à 91 % ; redémarrage requis https://hc.test/host/fail"
   jq -e '.host | .ok == false and .rebootRequired == true' "$STATUS_FILE"
 }
 

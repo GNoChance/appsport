@@ -16,8 +16,8 @@ let dir: string;
 let env: Record<string, string>;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'appsport-start-'));
-  env = { APP_ORIGIN: 'http://localhost:3999', APPSPORT_DATA_DIR: dir, HOST: '127.0.0.1', PORT: '0' };
+  dir = mkdtempSync(join(tmpdir(), 'rune-start-'));
+  env = { APP_ORIGIN: 'http://localhost:3999', RUNE_DATA_DIR: dir, HOST: '127.0.0.1', PORT: '0' };
 });
 
 afterEach(() => {
@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 const initVolume = async (): Promise<void> => {
-  writeFileSync(join(dir, '.appsport-volume'), '');
+  writeFileSync(join(dir, '.rune-volume'), '');
   expect(
     await runCli(
       ['init'],
@@ -54,11 +54,11 @@ describe('garde de démarrage', () => {
   });
 
   it('sentinelle sans base → no_database ; startServer rejette et ne crée aucun fichier', async () => {
-    writeFileSync(join(dir, '.appsport-volume'), '');
+    writeFileSync(join(dir, '.rune-volume'), '');
     const error = startupError(() => assertStartupPreconditions(loadConfig(env)));
     expect((error as StartupError).code).toBe('no_database');
     await expect(startServer(env)).rejects.toMatchObject({ code: 'no_database' });
-    expect(readdirSync(dir)).toEqual(['.appsport-volume']);
+    expect(readdirSync(dir)).toEqual(['.rune-volume']);
   });
 });
 
@@ -128,7 +128,7 @@ describe('startServer', () => {
 
   it("migration inconnue cassante → { name: 'MigrationError', code: 'unknown_breaking_migration' }", async () => {
     await initVolume();
-    const { sqlite } = openDatabase(join(dir, 'appsport.db'));
+    const { sqlite } = openDatabase(join(dir, 'rune.db'));
     sqlite.exec("INSERT INTO schema_migrations (id, breaking, applied_at) VALUES ('0002_future', 1, 't')");
     sqlite.close();
     const error = await startServer(env, { logger: createLogger(() => {}) }).catch((e: unknown) => e);
@@ -138,7 +138,7 @@ describe('startServer', () => {
 
   it('migrations inconnues non cassantes → démarre et journalise unknown_migration', async () => {
     await initVolume();
-    const { sqlite } = openDatabase(join(dir, 'appsport.db'));
+    const { sqlite } = openDatabase(join(dir, 'rune.db'));
     sqlite.exec("INSERT INTO schema_migrations (id, breaking, applied_at) VALUES ('0002_future', 0, 't')");
     sqlite.close();
     const lines: string[] = [];

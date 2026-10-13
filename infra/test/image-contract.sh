@@ -9,7 +9,7 @@ IMAGE="${1:?usage : image-contract.sh <image> <version>}"
 VERSION="${2:?usage : image-contract.sh <image> <version>}"
 HOST_PORT=3300
 APP_ORIGIN="http://127.0.0.1:${HOST_PORT}"
-NAME="appsport-contract-$$"
+NAME="rune-contract-$$"
 # Faux secret passé au conteneur : il ne doit jamais apparaître dans ses journaux (01 §3).
 CANARY="contrat-canari-$$"
 DATA_DIR="$(mktemp -d)"
@@ -79,16 +79,16 @@ guard_refuses() {
   return 1
 }
 guard_refuses 'Volume de données absent' || fail "3. démarrage non refusé sans fichier sentinelle"
-touch "$DATA_DIR/.appsport-volume"
+touch "$DATA_DIR/.rune-volume"
 guard_refuses 'Base introuvable' || fail "3. démarrage non refusé sans base"
-[[ ! -e "$DATA_DIR/appsport.db" ]] || fail "3. une base vide a été créée"
+[[ ! -e "$DATA_DIR/rune.db" ]] || fail "3. une base vide a été créée"
 ok 3 "démarrage refusé sans sentinelle puis sans base, aucune base créée"
 
 # 4. init crée la base du volume neuf.
 timeout -k 10 60 docker run --rm --name "$NAME-init" "${run_args[@]}" "$IMAGE" node /app/server.mjs init >/dev/null ||
   fail "4. init en échec ou au-delà de 60 s"
-[[ -f "$DATA_DIR/appsport.db" ]] || fail "4. init n'a pas créé appsport.db"
-ok 4 "init crée /data/appsport.db"
+[[ -f "$DATA_DIR/rune.db" ]] || fail "4. init n'a pas créé rune.db"
+ok 4 "init crée /data/rune.db"
 
 # 5. Le service répond sur /api/health en 60 s au plus, avec la version de l'image ; / sert la PWA ;
 #    la sonde HEALTHCHECK de l'image, exécutée dans le conteneur, réussit.

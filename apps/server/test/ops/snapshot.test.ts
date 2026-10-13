@@ -138,7 +138,7 @@ describe('pruneSnapshots', () => {
     const path = join(dir, name);
     if (kind === 'dir') {
       mkdirSync(path);
-      writeFileSync(join(path, 'appsport.db'), 'ancienne');
+      writeFileSync(join(path, 'rune.db'), 'ancienne');
     } else {
       writeFileSync(path, name);
     }
@@ -146,7 +146,7 @@ describe('pruneSnapshots', () => {
   };
 
   it('garde les 3 plus récents de chaque préfixe (mtime, pas le nom) ; les autres fichiers sont ignorés', async () => {
-    scratch = mkdtempSync(join(tmpdir(), 'appsport-prune-'));
+    scratch = mkdtempSync(join(tmpdir(), 'rune-prune-'));
     const dir = snapshots(scratch);
     mkdirSync(dir);
     for (const day of [1, 2, 3, 4, 5]) place(dir, `daily-2026100${day}.db`, `2026-10-0${day}T01:30:00Z`);
@@ -170,7 +170,7 @@ describe('pruneSnapshots', () => {
   });
 
   it('rien de plus de 30 jours, même seul de son groupe ; bases remplacées comprises (R-OPS-10, R-OPS-16)', async () => {
-    scratch = mkdtempSync(join(tmpdir(), 'appsport-prune-'));
+    scratch = mkdtempSync(join(tmpdir(), 'rune-prune-'));
     const dir = snapshots(scratch);
     mkdirSync(dir);
     place(dir, 'pre-v1.0.0.db', '2026-09-06T00:00:00Z');
@@ -183,7 +183,7 @@ describe('pruneSnapshots', () => {
   });
 
   it("base remplacée : l'âge vient de l'horodatage du nom, qu'un accès récent ne rajeunit pas (R-OPS-16, T40-F10)", async () => {
-    scratch = mkdtempSync(join(tmpdir(), 'appsport-prune-'));
+    scratch = mkdtempSync(join(tmpdir(), 'rune-prune-'));
     const dir = snapshots(scratch);
     mkdirSync(dir);
     // Ouverte récemment (sqlite3, privacy:collect) : mtime du dossier remis à neuf, données de plus de 30 jours.
@@ -199,7 +199,7 @@ describe('pruneSnapshots', () => {
   });
 
   it('instantané interrompu (.partial et annexes) : supprimé passé 30 jours, jamais compté (R-OPS-10, T40-F3)', async () => {
-    scratch = mkdtempSync(join(tmpdir(), 'appsport-prune-'));
+    scratch = mkdtempSync(join(tmpdir(), 'rune-prune-'));
     const dir = snapshots(scratch);
     mkdirSync(dir);
     place(dir, 'daily-20261001.db.partial', '2026-09-01T03:30:00Z');
@@ -226,7 +226,7 @@ describe('pruneSnapshots', () => {
   });
 
   it('sans dossier snapshots → rien à faire', async () => {
-    scratch = mkdtempSync(join(tmpdir(), 'appsport-prune-'));
+    scratch = mkdtempSync(join(tmpdir(), 'rune-prune-'));
     expect(await pruneSnapshots(scratch, new Date())).toEqual([]);
   });
 });

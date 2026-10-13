@@ -1,4 +1,4 @@
-import type { ApiErrorCode } from '@appsport/contracts';
+import type { ApiErrorCode } from '@rune/contracts';
 import {
   type FormEvent,
   type ReactNode,

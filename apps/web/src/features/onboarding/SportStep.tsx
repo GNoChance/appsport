@@ -5,7 +5,7 @@ import {
   SPORT_OTHER_LABEL_MAX,
   SPORTS,
   type SportCode,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { useId, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';

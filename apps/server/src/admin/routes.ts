@@ -3,8 +3,8 @@ import {
   SetBirthDateRequest,
   SetRoleRequest,
   SetStatusRequest,
-} from '@appsport/contracts';
-import { usernameKey } from '@appsport/domain';
+} from '@rune/contracts';
+import { usernameKey } from '@rune/domain';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env';
 import { verifyUserPassword } from '../auth/me';

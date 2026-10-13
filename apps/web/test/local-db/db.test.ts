@@ -1,4 +1,4 @@
-import { entityRules, mirroredTables, snakeToCamel } from '@appsport/contracts';
+import { entityRules, mirroredTables, snakeToCamel } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   type AppDb,
@@ -44,12 +44,12 @@ describe('STORE_SCHEMAS', () => {
 });
 
 describe('createAppDb', () => {
-  it("ouvre la base 'appsport' à LOCAL_DB_VERSION", async () => {
+  it("ouvre la base 'rune' à LOCAL_DB_VERSION", async () => {
     const db = createAppDb();
     opened.push(db);
     await db.open();
     expect(db.name).toBe(LOCAL_DB_NAME);
-    expect(LOCAL_DB_NAME).toBe('appsport');
+    expect(LOCAL_DB_NAME).toBe('rune');
     expect(db.verno).toBe(LOCAL_DB_VERSION);
   });
 

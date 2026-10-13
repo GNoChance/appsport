@@ -28,8 +28,8 @@ describe('constantes partagées', () => {
       PRIVACY_POLICY_VERSION: '1.0',
       SYNC_PROTOCOL: 1,
       MIN_PROTOCOL: 1,
-      PROTOCOL_HEADER: 'X-Appsport-Protocol',
-      EPOCH_HEADER: 'X-Appsport-Epoch',
+      PROTOCOL_HEADER: 'X-Rune-Protocol',
+      EPOCH_HEADER: 'X-Rune-Epoch',
     });
   });
 

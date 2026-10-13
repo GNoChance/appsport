@@ -20,8 +20,8 @@ describe('parseSecretCode', () => {
     'abcd-efgh-jkmn-pqrs',
     ' abcd efgh jkmn pqrs ',
     'abcdefghjkmnpqrs',
-    'https://appsport.tail1234.ts.net/invite#abcd-efgh-jkmn-pqrs',
-    'https://appsport.tail1234.ts.net/reset#ABCD-EFGH-JKMN-PQRS',
+    'https://rune.tail1234.ts.net/invite#abcd-efgh-jkmn-pqrs',
+    'https://rune.tail1234.ts.net/reset#ABCD-EFGH-JKMN-PQRS',
   ])('accepte %s', (s) => {
     expect(parseSecretCode(s)).toBe('ABCDEFGHJKMNPQRS');
   });

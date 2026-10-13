@@ -30,7 +30,7 @@ export function buildPrivacySections(rawOwner: string | undefined): readonly Pri
     {
       title: 'Qui est responsable',
       items: [
-        `appsport est un outil de suivi entre proches, hébergé chez ${host}. Ce n'est pas un service médical.`,
+        `Rune est un outil de suivi entre proches, hébergé chez ${host}. Ce n'est pas un service médical.`,
         `Le responsable des données est ${owner}, qui héberge le serveur chez lui, à titre personnel et sans but lucratif.`,
         `Pour toute question ou demande, ${contact}.`,
       ],
@@ -93,7 +93,7 @@ export function buildPrivacySections(rawOwner: string | undefined): readonly Pri
     {
       title: 'Règles pour les 16-17 ans',
       items: [
-        "appsport est réservé aux 16 ans et plus. Ta date de naissance est saisie par l'administrateur et tu ne peux pas la modifier.",
+        "Rune est réservé aux 16 ans et plus. Ta date de naissance est saisie par l'administrateur et tu ne peux pas la modifier.",
         "Dès 15 ans, tu donnes seul tes accords : aucun accord parental n'est demandé.",
         "La progression prudente s'applique jusqu'à 18 ans.",
         'Ta présence dans « qui va à cette salle » est désactivée par défaut, lieu par lieu.',

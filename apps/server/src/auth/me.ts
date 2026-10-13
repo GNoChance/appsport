@@ -1,5 +1,5 @@
-import { ADMIN_PASSWORD_REMINDER_MONTHS, type AgeBand, type MeResponse } from '@appsport/contracts';
-import { ageBandOn, computeCautious, parisDate, usernameKey } from '@appsport/domain';
+import { ADMIN_PASSWORD_REMINDER_MONTHS, type AgeBand, type MeResponse } from '@rune/contracts';
+import { ageBandOn, computeCautious, parisDate, usernameKey } from '@rune/domain';
 import type { SessionUser } from '../app-env';
 import { writeStamp } from '../db/rev';
 import type { DbExecutor } from '../db/schema';

@@ -1,4 +1,4 @@
-import { PullQuery, type PullResponse, PushEnvelope, type PushResponse } from '@appsport/contracts';
+import { PullQuery, type PullResponse, PushEnvelope, type PushResponse } from '@rune/contracts';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env';
 import { requireUser } from '../auth/session';

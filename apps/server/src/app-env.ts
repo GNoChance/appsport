@@ -1,4 +1,4 @@
-import type { Role } from '@appsport/contracts';
+import type { Role } from '@rune/contracts';
 
 export interface SessionUser {
   id: string;

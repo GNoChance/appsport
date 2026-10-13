@@ -1,4 +1,4 @@
-import { entityRules } from '@appsport/contracts';
+import { entityRules } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { deleteAccount } from '../../src/privacy/delete-account';
 import { createTestContext, createUser, insertFixtureRow, login, type TestContext } from '../support';

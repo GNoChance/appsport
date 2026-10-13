@@ -1,4 +1,4 @@
-import { type ConsentStatus, PRIVACY_POLICY_VERSION } from '@appsport/contracts';
+import { type ConsentStatus, PRIVACY_POLICY_VERSION } from '@rune/contracts';
 import { type ReactNode, type RefObject, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useMe } from '../../app-services';
@@ -69,7 +69,7 @@ export function PrivacySettingsPage() {
         )}
       </Section>
       <Section title="Mes données">
-        <p>Un fichier JSON avec tout ce qu'appsport garde sur ton compte.</p>
+        <p>Un fichier JSON avec tout ce que Rune garde sur ton compte.</p>
         <ExportButton />
       </Section>
       <Section title="Suppression du compte">

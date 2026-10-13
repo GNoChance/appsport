@@ -1,5 +1,5 @@
-import { DeleteAccountRequest, UpdateMeRequest } from '@appsport/contracts';
-import { parisDate, usernameKey, validateUsername } from '@appsport/domain';
+import { DeleteAccountRequest, UpdateMeRequest } from '@rune/contracts';
+import { parisDate, usernameKey, validateUsername } from '@rune/domain';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env';
 import { writeStamp } from '../db/rev';
@@ -77,10 +77,7 @@ export function meRoutes(deps: AppDeps): Hono<AppEnv> {
       });
       return data;
     });
-    c.header(
-      'Content-Disposition',
-      `attachment; filename="appsport-export-${parisDate(deps.clock.now())}.json"`,
-    );
+    c.header('Content-Disposition', `attachment; filename="rune-export-${parisDate(deps.clock.now())}.json"`);
     c.header('Cache-Control', 'no-store');
     return c.json(exported);
   });

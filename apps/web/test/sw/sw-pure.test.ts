@@ -13,8 +13,8 @@ describe('cachesToDelete', () => {
     ).toEqual(['shell-aaaaaaaaaaaa']);
   });
 
-  it('garde le marqueur de base locale (appsport-meta, ADR 0001 décision 5)', () => {
-    expect(cachesToDelete(['appsport-meta', 'shell-old000000000'], 'aaaaaaaaaaaa')).toEqual([
+  it('garde le marqueur de base locale (rune-meta, ADR 0001 décision 5)', () => {
+    expect(cachesToDelete(['rune-meta', 'shell-old000000000'], 'aaaaaaaaaaaa')).toEqual([
       'shell-old000000000',
     ]);
   });

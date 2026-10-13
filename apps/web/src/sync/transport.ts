@@ -1,4 +1,4 @@
-import { SYNC_TIMEOUT_MS } from '@appsport/contracts';
+import { SYNC_TIMEOUT_MS } from '@rune/contracts';
 
 /** Accès HTTP de la synchro : `fetch` du navigateur en production, faux serveur en test. */
 export interface SyncTransport {

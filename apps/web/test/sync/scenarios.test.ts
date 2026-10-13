@@ -2,8 +2,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { HEALTH_CONSENT_TEXT, type SyncOp } from '@appsport/contracts';
-import { createMonotonicUuidV7 } from '@appsport/domain';
+import { HEALTH_CONSENT_TEXT, type SyncOp } from '@rune/contracts';
+import { createMonotonicUuidV7 } from '@rune/domain';
 import {
   createLogger,
   createSyncTestContext,
@@ -16,7 +16,7 @@ import {
   snapshotDb,
   type TestContext,
   type TestUser,
-} from '@appsport/server/testing';
+} from '@rune/server/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { localHealthConsentActive } from '../../src/local-db/consent';
 import type { AppDb } from '../../src/local-db/db';
@@ -211,7 +211,7 @@ describe('scénarios de synchro ciblés (deux appareils, vrai serveur)', () => {
     await a.engine.syncNow('manual');
     await b.engine.pullNow();
 
-    const dir = mkdtempSync(join(tmpdir(), 'appsport-epoch-'));
+    const dir = mkdtempSync(join(tmpdir(), 'rune-epoch-'));
     tempDirs.push(dir);
     const snapshot = join(dir, 'S.sqlite');
     await snapshotDb(ctx, snapshot);

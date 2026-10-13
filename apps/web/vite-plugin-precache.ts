@@ -98,7 +98,7 @@ export function precachePlugin(opts: { swEntry?: string } = {}): Plugin {
   let root = process.cwd();
   let outDir = resolve(root, 'dist');
   return {
-    name: 'appsport-precache',
+    name: 'rune-precache',
     apply: 'build',
     configResolved(config) {
       root = config.root;

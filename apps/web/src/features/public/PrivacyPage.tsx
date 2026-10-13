@@ -1,4 +1,4 @@
-import { PRIVACY_POLICY_VERSION } from '@appsport/contracts';
+import { PRIVACY_POLICY_VERSION } from '@rune/contracts';
 import { Page } from '../../ui';
 import { PRIVACY_SECTIONS } from './privacy-content';
 import styles from './public.module.css';

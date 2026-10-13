@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { backup, DatabaseSync } from 'node:sqlite';
-import { parisDate } from '@appsport/domain';
+import { parisDate } from '@rune/domain';
 import type { Clock } from '../deps';
 
 /** `daily` (instantané quotidien) ou `pre-vX.Y.Z` (avant le déploiement de vX.Y.Z) : rien d'autre, pas de chemin. */

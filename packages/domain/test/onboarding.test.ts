@@ -1,4 +1,4 @@
-import { type Experience, type Goal, ONBOARDING_STEPS, type OnboardingStep } from '@appsport/contracts';
+import { type Experience, type Goal, ONBOARDING_STEPS, type OnboardingStep } from '@rune/contracts';
 import { describe, expect, it } from 'vitest';
 import { availableGoals, firstIncompleteStep } from '../src/onboarding';
 

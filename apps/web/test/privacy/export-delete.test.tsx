@@ -1,4 +1,4 @@
-import { EXPORT_FORMAT, type MeResponse } from '@appsport/contracts';
+import { EXPORT_FORMAT, type MeResponse } from '@rune/contracts';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import { getMeta } from '../../src/local-db/meta';
@@ -24,7 +24,7 @@ const EXPORTED = {
 const DELETE_LIST =
   "Ton compte, ton profil, tes lieux, tes données de santé et l'historique de tes accords seront supprimés. Les salles restent : tu y apparaîtras comme « ancien membre ». Le journal de sécurité est gardé 12 mois et les sauvegardes 30 jours au plus.";
 const ANTHROPIC =
-  "Si tu as utilisé le coach, appsport ne peut pas faire effacer tes échanges chez Anthropic : ils y sont effacés sous 30 jours, ou gardés jusqu'à 2 ans si ses filtres de sécurité en ont signalé un.";
+  "Si tu as utilisé le coach, Rune ne peut pas faire effacer tes échanges chez Anthropic : ils y sont effacés sous 30 jours, ou gardés jusqu'à 2 ans si ses filtres de sécurité en ont signalé un.";
 
 interface Click {
   download: string;
@@ -76,9 +76,9 @@ async function expectAccountDeletedScreen(location: () => string, visits: () => 
 
 describe('download.ts', () => {
   it('exportFileName : date civile de Paris (AAAA-MM-JJ)', () => {
-    expect(exportFileName(Date.parse('2026-10-06T12:00:00.000Z'))).toBe('appsport-export-2026-10-06.json');
+    expect(exportFileName(Date.parse('2026-10-06T12:00:00.000Z'))).toBe('rune-export-2026-10-06.json');
     // 22 h 30 UTC = 00 h 30 à Paris le lendemain.
-    expect(exportFileName(Date.parse('2026-10-06T22:30:00.000Z'))).toBe('appsport-export-2026-10-07.json');
+    expect(exportFileName(Date.parse('2026-10-06T22:30:00.000Z'))).toBe('rune-export-2026-10-07.json');
   });
 
   it('downloadJson : Blob JSON indenté, <a download> cliqué une fois puis retiré, URL révoquée ensuite', async () => {
@@ -120,7 +120,7 @@ describe('ExportButton (R-EXP-1, P-DRT-1)', () => {
     expect(clicks).toHaveLength(0);
     fireEvent.click(button('Exporter quand même'));
     await until(() => clicks.length === 1);
-    expect(clicks[0]).toMatchObject({ download: 'appsport-export-2026-10-06.json', href: 'blob:test/1' });
+    expect(clicks[0]).toMatchObject({ download: 'rune-export-2026-10-06.json', href: 'blob:test/1' });
     expect(createUrl).toHaveBeenCalledTimes(1);
     expect(JSON.parse((await blobs[0]?.text()) ?? '')).toEqual(EXPORTED);
     expect(calls(api, EXPORT)).toHaveLength(1);
@@ -153,7 +153,7 @@ describe('ExportButton (R-EXP-1, P-DRT-1)', () => {
     expect(clicks).toHaveLength(0);
     fireEvent.click(button('Exporter quand même'));
     await until(() => clicks.length === 1);
-    expect(clicks[0]?.download).toBe('appsport-export-2026-10-06.json');
+    expect(clicks[0]?.download).toBe('rune-export-2026-10-06.json');
     expect(calls(api, EXPORT)).toHaveLength(1);
   });
 
@@ -162,7 +162,7 @@ describe('ExportButton (R-EXP-1, P-DRT-1)', () => {
     await renderPrivacy({ api });
     fireEvent.click(button('Télécharger mes données'));
     await until(() => clicks.length === 1);
-    expect(clicks[0]?.download).toBe('appsport-export-2026-10-06.json');
+    expect(clicks[0]?.download).toBe('rune-export-2026-10-06.json');
     expect(createUrl).toHaveBeenCalledTimes(1);
   });
 
@@ -200,7 +200,7 @@ describe('DeleteAccountDialog (R-SUP-1, R-SUP-4, R-SUP-5, P-DRT-3, P-DRT-6)', ()
     const dialog = await openDelete();
     fireEvent.click(dialog.getByRole('button', { name: "Télécharger mes données d'abord" }));
     await until(() => clicks.length === 1);
-    expect(clicks[0]?.download).toBe('appsport-export-2026-10-06.json');
+    expect(clicks[0]?.download).toBe('rune-export-2026-10-06.json');
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 

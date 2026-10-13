@@ -1,5 +1,5 @@
-import type { HealthResponse } from '@appsport/contracts';
-import { makeOp } from '@appsport/server/testing';
+import type { HealthResponse } from '@rune/contracts';
+import { makeOp } from '@rune/server/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type AppDb, LOCAL_DB_VERSION } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
@@ -608,7 +608,7 @@ describe('bootServiceWorker', () => {
     expect(registerSpy).not.toHaveBeenCalled();
     expect(swControllerStore.get()).toBeNull();
     expect(f.unregisterCalls).toBe(0);
-    expect((await caches.keys()).sort()).toEqual([LOCAL_DB_MARKER_CACHE, 'autre']);
+    expect((await caches.keys()).sort()).toEqual(['autre', LOCAL_DB_MARKER_CACHE]);
     expect(reload).not.toHaveBeenCalled();
     expect(f.controllerMessages).toEqual([]);
   });

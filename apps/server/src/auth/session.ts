@@ -1,4 +1,4 @@
-import { SESSION_IDLE_DAYS, SESSION_MAX_DAYS, SESSION_TOUCH_INTERVAL_MS } from '@appsport/contracts';
+import { SESSION_IDLE_DAYS, SESSION_MAX_DAYS, SESSION_TOUCH_INTERVAL_MS } from '@rune/contracts';
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AppEnv } from '../app-env';

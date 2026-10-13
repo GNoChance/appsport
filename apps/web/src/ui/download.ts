@@ -1,4 +1,4 @@
-import { parisDate } from '@appsport/domain';
+import { parisDate } from '@rune/domain';
 
 /**
  * Délai avant de libérer l'URL du fichier : Safari annule un téléchargement dont l'URL `blob:` est
@@ -6,9 +6,9 @@ import { parisDate } from '@appsport/domain';
  */
 const REVOKE_AFTER_MS = 40_000;
 
-/** `appsport-export-AAAA-MM-JJ.json`, date civile de Paris (R-EXP-1). */
+/** `rune-export-AAAA-MM-JJ.json`, date civile de Paris (R-EXP-1). */
 export function exportFileName(nowMs: number): string {
-  return `appsport-export-${parisDate(new Date(nowMs))}.json`;
+  return `rune-export-${parisDate(new Date(nowMs))}.json`;
 }
 
 /** Télécharge `data` en JSON indenté : lien `download` ajouté, cliqué puis retiré, URL libérée ensuite. */

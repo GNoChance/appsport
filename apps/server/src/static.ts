@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { join, type PlatformPath, posix, resolve, sep } from 'node:path';
-import { ILLUSTRATION_FILE_RE } from '@appsport/contracts';
+import { ILLUSTRATION_FILE_RE } from '@rune/contracts';
 import type { Context, Hono } from 'hono';
 import { compress } from 'hono/compress';
 import { getMimeType } from 'hono/utils/mime';

@@ -1,4 +1,4 @@
-import { HEALTH_CONSENT_TEXT, type MeResponse, SYNC_PROTOCOL } from '@appsport/contracts';
+import { HEALTH_CONSENT_TEXT, type MeResponse, SYNC_PROTOCOL } from '@rune/contracts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { AppDb } from '../../src/local-db/db';

@@ -1,5 +1,5 @@
-import type { Role } from '@appsport/contracts';
-import { usernameKey } from '@appsport/domain';
+import type { Role } from '@rune/contracts';
+import { usernameKey } from '@rune/domain';
 import { type FormEvent, useState } from 'react';
 import { type DeviceOwner, useRepos } from '../../repos';
 import { Banner, Button, Page } from '../../ui';

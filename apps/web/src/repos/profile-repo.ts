@@ -9,8 +9,8 @@ import {
   SPORT_CODES,
   type SportCode,
   type TrainingProfilePatch,
-} from '@appsport/contracts';
-import type { firstIncompleteStep } from '@appsport/domain';
+} from '@rune/contracts';
+import type { firstIncompleteStep } from '@rune/domain';
 import type { AppServices } from '../app-services';
 import { getMeta, setMeta } from '../local-db/meta';
 import { currentUserId, isLive, oneOf, ownedRows, sendThenPull, text } from './rows';

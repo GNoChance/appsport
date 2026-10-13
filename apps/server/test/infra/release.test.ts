@@ -48,7 +48,7 @@ const runGuard = (script: string, env: Record<string, string>): GuardRun => {
       GITHUB_REF: `refs/tags/${tag}`,
       GITHUB_REF_NAME: tag,
       GITHUB_SHA: SHA,
-      GITHUB_REPOSITORY: 'GNoChance/appsport',
+      GITHUB_REPOSITORY: 'GNoChance/rune',
       STUB_MERGE_BASE_EXIT: '0',
       STUB_GH_OUT: '1',
       STUB_GH_EXIT: '0',
@@ -151,7 +151,7 @@ describe('.github/workflows/release.yml', () => {
       "La CI du commit ${GITHUB_SHA} n'est pas verte : publication refusée. Relancer ce job quand la CI de main sera verte.",
     );
     const calls = [
-      `gh api repos/GNoChance/appsport/actions/workflows/ci.yml/runs?head_sha=${SHA}&status=success --jq .total_count`,
+      `gh api repos/GNoChance/rune/actions/workflows/ci.yml/runs?head_sha=${SHA}&status=success --jq .total_count`,
     ];
     const refused = `La CI du commit ${SHA} n'est pas verte : publication refusée. Relancer ce job quand la CI de main sera verte.\n`;
     for (const out of ['1', '3']) {
@@ -183,7 +183,7 @@ describe('.github/workflows/release.yml', () => {
       file: 'infra/Dockerfile',
       platforms: 'linux/amd64',
       push: true,
-      tags: 'ghcr.io/gnochance/appsport:${{ github.ref_name }}',
+      tags: 'ghcr.io/gnochance/rune:${{ github.ref_name }}',
       'build-args':
         'VERSION=${{ github.ref_name }}\nVITE_OWNER_FIRST_NAME=${{ vars.VITE_OWNER_FIRST_NAME }}\n',
     });

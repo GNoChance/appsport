@@ -1,4 +1,4 @@
-import type { OnboardingStep, TrainingProfilePatch } from '@appsport/contracts';
+import type { OnboardingStep, TrainingProfilePatch } from '@rune/contracts';
 import { type Repos, useRepos } from '../../repos';
 import { Banner, Button, useAction } from '../../ui';
 import styles from './onboarding.module.css';

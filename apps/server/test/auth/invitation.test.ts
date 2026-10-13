@@ -4,7 +4,7 @@ import { createLogger } from '../../src/logger';
 import { createTestContext, createUser, login, type TestContext } from '../support';
 
 const CODE_RE = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/;
-const ORIGIN = 'https://appsport.test.ts.net';
+const ORIGIN = 'https://rune.test.ts.net';
 const PASSWORD = 'tortue verte du jardin';
 
 let ctx: TestContext;

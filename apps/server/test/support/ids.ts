@@ -1,4 +1,4 @@
-import { createMonotonicUuidV7 } from '@appsport/domain';
+import { createMonotonicUuidV7 } from '@rune/domain';
 import type { IdGen } from '../../src/deps';
 
 function mulberry32(seed: number): () => number {

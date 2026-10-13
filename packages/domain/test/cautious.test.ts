@@ -1,4 +1,4 @@
-import type { AgeBand } from '@appsport/contracts';
+import type { AgeBand } from '@rune/contracts';
 import { describe, expect, it } from 'vitest';
 import { computeCautious } from '../src/cautious';
 

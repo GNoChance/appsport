@@ -1,4 +1,4 @@
-import { DAYS_PER_WEEK, SESSION_MINUTES } from '@appsport/contracts';
+import { DAYS_PER_WEEK, SESSION_MINUTES } from '@rune/contracts';
 import { useState } from 'react';
 import { useLive } from '../../app-services';
 import { useRepos } from '../../repos';

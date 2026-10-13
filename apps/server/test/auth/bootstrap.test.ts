@@ -30,7 +30,7 @@ describe('bootstrapAdminInvitation (R-ROLE-5)', () => {
     const c = await open();
     const r = await bootstrapAdminInvitation(c.deps, '1985-03-02');
     expect(r.expiresAt).toBe('2026-10-07T10:00:00.000Z');
-    expect(r.link).toBe(`https://appsport.test.ts.net/invite#${r.code}`);
+    expect(r.link).toBe(`https://rune.test.ts.net/invite#${r.code}`);
     expect(await (await check(c, r.code)).json()).toEqual({ birthDate: '1985-03-02', role: 'admin' });
     const short = await accept(c, r.code, 'porteur', 'treize carac');
     expect(await short.json()).toEqual({ error: 'password_rejected', reason: 'too_short' });
@@ -85,14 +85,14 @@ describe('admin:bootstrap (CLI)', () => {
   async function init(): Promise<void> {
     out.length = 0;
     err.length = 0;
-    dir = mkdtempSync(join(tmpdir(), 'appsport-boot-'));
+    dir = mkdtempSync(join(tmpdir(), 'rune-boot-'));
     env = {
-      APP_ORIGIN: 'https://appsport.test.ts.net',
-      APPSPORT_DATA_DIR: dir,
+      APP_ORIGIN: 'https://rune.test.ts.net',
+      RUNE_DATA_DIR: dir,
       HOST: '127.0.0.1',
       PORT: '0',
     };
-    writeFileSync(join(dir, '.appsport-volume'), '');
+    writeFileSync(join(dir, '.rune-volume'), '');
     expect(await runCli(['init'], env, o, e)).toBe(0);
     out.length = 0;
   }
@@ -104,11 +104,11 @@ describe('admin:bootstrap (CLI)', () => {
     expect(out).toHaveLength(3);
     expect(out[0]).toBe('Invitation administrateur (valable 24 h)');
     expect(out[1]).toMatch(
-      /^Lien : https:\/\/appsport\.test\.ts\.net\/invite#[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$/,
+      /^Lien : https:\/\/rune\.test\.ts\.net\/invite#[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$/,
     );
     const code = out[1]?.split('#')[1] as string;
     expect(out[2]).toBe(`Code : ${code}`);
-    const { sqlite, db } = openDatabase(join(dir, 'appsport.db'));
+    const { sqlite, db } = openDatabase(join(dir, 'rune.db'));
     const rows = await db.selectFrom('invitation').selectAll().execute();
     await db.destroy();
     sqlite.close();

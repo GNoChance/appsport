@@ -42,7 +42,7 @@ describe('errorMessage', () => {
     expect(ERROR_MESSAGES).toMatchObject({
       invalid_credentials: 'Pseudo ou mot de passe incorrect',
       account_disabled: "Compte désactivé, contacte l'administrateur",
-      under_min_age: 'appsport est réservé aux 16 ans et plus',
+      under_min_age: 'Rune est réservé aux 16 ans et plus',
       last_admin: 'Il doit rester au moins un administrateur actif.',
       health_consent_required: 'Cette action demande ton accord santé.',
       rate_limited: "Trop d'essais. Réessaie plus tard.",

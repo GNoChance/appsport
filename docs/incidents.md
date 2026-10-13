@@ -1,6 +1,6 @@
 # Registre des incidents
 
-Registre des incidents de sécurité d'appsport (03 §14). Conduite à tenir, détaillée en P8 « Vol, cambriolage ou fuite » :
+Registre des incidents de sécurité de Rune (03 §14). Conduite à tenir, détaillée en P8 « Vol, cambriolage ou fuite » :
 
 1. couper l'accès : révoquer les partages Tailscale ou arrêter le service ;
 2. évaluer ce qui a été exposé ;

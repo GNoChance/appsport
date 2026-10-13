@@ -33,7 +33,7 @@ describe('plateforme et mode installé (R-ARR-2)', () => {
 
   it("installHelp : une consigne par système, les deux sinon (texte d'origine)", () => {
     expect(installHelp('ios')).toEqual([
-      "Sur iPhone : touche Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite appsport depuis l'écran d'accueil et colle le code.",
+      "Sur iPhone : touche Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite Rune depuis l'écran d'accueil et colle le code.",
     ]);
     expect(installHelp('android')).toEqual([
       "Sur Android : ouvre le menu ⋮ puis « Installer l'application ».",
@@ -70,7 +70,7 @@ describe('mots de passe (R-MDP-1, R-MDP-3)', () => {
   it('un message par motif de rejet', () => {
     expect(Object.keys(PASSWORD_MESSAGES).sort()).toEqual([
       'common',
-      'contains_appsport',
+      'contains_app_name',
       'contains_username',
       'single_char',
       'too_long',

@@ -1,7 +1,7 @@
-import type { SyncOp } from '@appsport/contracts';
+import type { SyncOp } from '@rune/contracts';
 import Dexie, { type Table } from 'dexie';
 
-export const LOCAL_DB_NAME = 'appsport';
+export const LOCAL_DB_NAME = 'rune';
 export const LOCAL_DB_VERSION = 1;
 
 export type OutboxOp = SyncOp;

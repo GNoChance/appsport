@@ -1,4 +1,4 @@
-import { defaultLoadSettings, type MeResponse, type TrainingProfilePatch } from '@appsport/contracts';
+import { defaultLoadSettings, type MeResponse, type TrainingProfilePatch } from '@rune/contracts';
 import { fireEvent, screen } from '@testing-library/react';
 import type { AppDb } from '../../src/local-db/db';
 import type { FakeApi } from './fake-api';

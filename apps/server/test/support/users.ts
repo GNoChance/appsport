@@ -1,4 +1,4 @@
-import { PRIVACY_POLICY_VERSION } from '@appsport/contracts';
+import { PRIVACY_POLICY_VERSION } from '@rune/contracts';
 import { hashPassword } from '../../src/auth/password-hash';
 import { writeStamp } from '../../src/db/rev';
 import type { TestContext } from './context';

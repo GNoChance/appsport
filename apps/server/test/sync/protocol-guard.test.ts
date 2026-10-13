@@ -1,4 +1,4 @@
-import { MIN_PROTOCOL, PROTOCOL_HEADER, SYNC_PROTOCOL } from '@appsport/contracts';
+import { MIN_PROTOCOL, PROTOCOL_HEADER, SYNC_PROTOCOL } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSyncTestContext, type TestContext } from '../support';
 

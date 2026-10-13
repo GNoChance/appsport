@@ -1,5 +1,5 @@
-import { ONBOARDING_STEPS, type OnboardingStep, type PlaceKind } from '@appsport/contracts';
-import { firstIncompleteStep } from '@appsport/domain';
+import { ONBOARDING_STEPS, type OnboardingStep, type PlaceKind } from '@rune/contracts';
+import { firstIncompleteStep } from '@rune/domain';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSyncState } from '../../app-services';
 import { useRepos } from '../../repos';

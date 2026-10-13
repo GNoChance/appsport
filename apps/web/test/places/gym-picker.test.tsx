@@ -4,7 +4,7 @@ import {
   EQUIPMENT_LABELS,
   type EquipmentCode,
   PRESETS,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { EquipmentChecklist, sortEquipment } from '../../src/features/places/EquipmentChecklist';

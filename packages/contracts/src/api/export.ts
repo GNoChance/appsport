@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const EXPORT_FORMAT = 'appsport-export/1';
+export const EXPORT_FORMAT = 'rune-export/1';
 
 const Row = z.record(z.string(), z.unknown());
 

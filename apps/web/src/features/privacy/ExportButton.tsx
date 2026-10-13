@@ -18,7 +18,7 @@ function unsentWarning(n: number | typeof UNKNOWN): string {
 
 /**
  * « Télécharger mes données » (R-EXP-1, P-DRT-1) : export du serveur, en ligne, enregistré sous
- * `appsport-export-AAAA-MM-JJ.json`. Des éléments encore dans la file d'envoi : avertissement
+ * `rune-export-AAAA-MM-JJ.json`. Des éléments encore dans la file d'envoi : avertissement
  * d'abord, et rien ne part avant « Exporter quand même ». File illisible : même chose, puisque des
  * éléments non envoyés pourraient manquer.
  */

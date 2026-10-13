@@ -1,5 +1,5 @@
-import type { MeResponse } from '@appsport/contracts';
-import { createMonotonicUuidV7 } from '@appsport/domain';
+import type { MeResponse } from '@rune/contracts';
+import { createMonotonicUuidV7 } from '@rune/domain';
 import { type RenderResult, render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { Router } from 'wouter';

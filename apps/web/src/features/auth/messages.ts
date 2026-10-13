@@ -7,8 +7,8 @@ import {
   SECRET_CODE_LENGTH,
   USERNAME_MAX,
   USERNAME_MIN,
-} from '@appsport/contracts';
-import { type PasswordRejection, validatePassword } from '@appsport/domain';
+} from '@rune/contracts';
+import { type PasswordRejection, validatePassword } from '@rune/domain';
 import { ApiError } from '../../api/client';
 import { ERROR_MESSAGES, errorMessage } from '../../ui';
 
@@ -18,7 +18,7 @@ export const PASSWORD_MESSAGES: Record<PasswordRejection, string> = {
   too_long: `${PASSWORD_MAX} caractères au plus.`,
   common: 'Ce mot de passe est trop courant. Choisis-en un autre.',
   contains_username: 'Le mot de passe ne doit pas contenir ton pseudo.',
-  contains_appsport: 'Le mot de passe ne doit pas contenir « appsport ».',
+  contains_app_name: 'Le mot de passe ne doit pas contenir « rune ».',
   single_char: 'Le mot de passe ne peut pas répéter un seul caractère.',
 };
 

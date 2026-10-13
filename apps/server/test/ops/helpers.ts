@@ -22,9 +22,9 @@ export interface OpsDataDir {
 
 /** Dossier de données temporaire : sentinelle, base fichier migrée et server_meta initialisé. */
 export async function createOpsDataDir(): Promise<OpsDataDir> {
-  const dir = mkdtempSync(join(tmpdir(), 'appsport-ops-'));
-  writeFileSync(join(dir, '.appsport-volume'), '');
-  const dbPath = join(dir, 'appsport.db');
+  const dir = mkdtempSync(join(tmpdir(), 'rune-ops-'));
+  writeFileSync(join(dir, '.rune-volume'), '');
+  const dbPath = join(dir, 'rune.db');
   const { sqlite, db } = openDatabase(dbPath);
   try {
     const clock = new FakeClock();

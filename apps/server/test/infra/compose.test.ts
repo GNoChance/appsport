@@ -14,19 +14,19 @@ describe('infra/compose.yaml', () => {
   const compose = parse(read('infra/compose.yaml'));
   const app = compose.services.app;
 
-  it('projet appsport, un seul service app', () => {
-    expect(compose.name).toBe('appsport');
+  it('projet rune, un seul service app', () => {
+    expect(compose.name).toBe('rune');
     expect(Object.keys(compose.services)).toEqual(['app']);
   });
 
   it('image de deploy.env, port sur la boucle locale seulement, volume et secrets', () => {
     expect(app.image).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: interpolation de compose, pas de JavaScript
-      'ghcr.io/gnochance/appsport:${APPSPORT_VERSION:?APPSPORT_VERSION absent de deploy.env}',
+      'ghcr.io/gnochance/rune:${RUNE_VERSION:?RUNE_VERSION absent de deploy.env}',
     );
     expect(app.ports).toEqual(['127.0.0.1:3000:3000']);
-    expect(app.volumes).toEqual(['/srv/appsport/data:/data']);
-    expect(app.env_file).toBe('/srv/appsport/secrets/app.env');
+    expect(app.volumes).toEqual(['/srv/rune/data:/data']);
+    expect(app.env_file).toBe('/srv/rune/secrets/app.env');
   });
 
   it('racine en lecture seule, utilisateur 1000, mémoire bornée, arrêt en 10 s', () => {
@@ -108,7 +108,7 @@ describe('infra/Dockerfile', () => {
     expect(finalStage).toMatch(/^ARG VERSION=dev$/m);
     const env =
       // biome-ignore lint/suspicious/noTemplateCurlyInString: variable de Dockerfile, pas de JavaScript
-      'ENV NODE_ENV=production APP_VERSION=${VERSION} PORT=3000 HOST=0.0.0.0 APPSPORT_DATA_DIR=/data APPSPORT_PUBLIC_DIR=/app/public APPSPORT_CONTENT_DIR=/app/data';
+      'ENV NODE_ENV=production APP_VERSION=${VERSION} PORT=3000 HOST=0.0.0.0 RUNE_DATA_DIR=/data RUNE_PUBLIC_DIR=/app/public RUNE_CONTENT_DIR=/app/data';
     expect(finalLines).toContain(env);
     expect(finalLines.indexOf(env)).toBeGreaterThan(finalLines.indexOf('ARG VERSION=dev'));
     expect(finalStage).toMatch(/^USER 1000$/m);
@@ -150,8 +150,8 @@ describe('job CI image', () => {
     expect(Object.keys(workflow.on)).toContain('pull_request');
     expect(job.steps[0]).toEqual({ uses: 'actions/checkout@v4' });
     expect(job.steps.slice(1)).toEqual([
-      { run: 'docker build -f infra/Dockerfile --build-arg VERSION=v0.0.0-ci -t appsport:ci .' },
-      { run: 'bash infra/test/image-contract.sh appsport:ci v0.0.0-ci' },
+      { run: 'docker build -f infra/Dockerfile --build-arg VERSION=v0.0.0-ci -t rune:ci .' },
+      { run: 'bash infra/test/image-contract.sh rune:ci v0.0.0-ci' },
     ]);
   });
 });

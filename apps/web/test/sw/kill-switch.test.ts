@@ -1,4 +1,4 @@
-import type { HealthResponse } from '@appsport/contracts';
+import type { HealthResponse } from '@rune/contracts';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import { getMeta, setMeta } from '../../src/local-db/meta';
 import { applyKillSwitchIfNeeded, probeHealth } from '../../src/sw/kill-switch';

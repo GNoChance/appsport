@@ -1,4 +1,4 @@
-import { EPOCH_HEADER, type PulledRow, type PushResult, type SyncOp } from '@appsport/contracts';
+import { EPOCH_HEADER, type PulledRow, type PushResult, type SyncOp } from '@rune/contracts';
 import type { SyncTransport } from '../../src/sync/transport';
 
 export interface FakeRequest {

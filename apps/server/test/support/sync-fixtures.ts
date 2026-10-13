@@ -7,7 +7,7 @@ import {
   SYNC_COLUMNS,
   SYNC_PROTOCOL,
   type SyncOp,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { sql } from 'kysely';
 import type { Migration } from '../../src/db/migrations/index';
 import { rotateServerEpoch } from '../../src/sync/epoch';

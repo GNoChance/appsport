@@ -1,6 +1,6 @@
 # Tous les jours à 03:30 (08 §7) ; rattrapé au démarrage s'il a été manqué (volume verrouillé : /fail).
 [Unit]
-Description=Timer de appsport-backup
+Description=Timer de rune-backup
 
 [Timer]
 OnCalendar=*-*-* 03:30:00

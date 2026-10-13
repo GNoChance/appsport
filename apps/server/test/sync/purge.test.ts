@@ -1,4 +1,4 @@
-import { encodeWatermark } from '@appsport/contracts';
+import { encodeWatermark } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getServerMeta } from '../../src/db/server-meta';
 import { DAILY_JOBS } from '../../src/jobs/registry';

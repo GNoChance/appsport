@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# appsport-backup (R-OPS-9, R-OPS-10, R-DEP-7, 08 §7, §9) : timer de 03:30, ou relancé par appsport-unlock.
+# rune-backup (R-OPS-9, R-OPS-10, R-DEP-7, 08 §7, §9) : timer de 03:30, ou relancé par rune-unlock.
 # Instantané daily (élagage de snapshots/ inclus), puis restic local et offsite ; chaque dépôt n'est purgé
 # (forget --keep-daily 30 --prune) qu'après sa propre sauvegarde réussie. Healthchecks backup : début, succès ou
 # /fail avec un motif sans donnée personnelle ; section backup de status.json. Sous le verrou, supprime aussi les
@@ -25,7 +25,7 @@ main() {
   local -a problems=()
   require_cmds "$JQ" "$FLOCK" "$RESTIC" "$CURL"
   hc_ping backup start || log "Avertissement : début non signalé à Healthchecks."
-  volume_ready || fail "volume verrouillé : lancer appsport-unlock"
+  volume_ready || fail "volume verrouillé : lancer rune-unlock"
   take_lock || fail "verrou occupé"
   purge_restore_test_leftovers || problems+=("purge du test de restauration en échec")
   app_cli snapshot --tag daily || fail "instantané daily en échec"

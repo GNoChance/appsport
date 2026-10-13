@@ -1,4 +1,4 @@
-import { type EntityRulesMap, entityRules } from '@appsport/contracts';
+import { type EntityRulesMap, entityRules } from '@rune/contracts';
 import { sql } from 'kysely';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Migration } from '../../src/db/migrations/index';
@@ -65,14 +65,12 @@ describe('GET /api/me/export (R-EXP-1, R-EXP-2, P-DRT-1)', () => {
 
     const res = await ctx.request('/api/me/export', { cookie });
     expect(res.status).toBe(200);
-    expect(res.headers.get('content-disposition')).toBe(
-      'attachment; filename="appsport-export-2026-10-06.json"',
-    );
+    expect(res.headers.get('content-disposition')).toBe('attachment; filename="rune-export-2026-10-06.json"');
     const text = await res.text();
     expect(text).not.toContain('$argon2id');
     const exp = JSON.parse(text);
 
-    expect(exp.format).toBe('appsport-export/1');
+    expect(exp.format).toBe('rune-export/1');
     expect(exp.exportedAt).toBe('2026-10-06T10:00:00.000Z');
     expect(exp.account).toMatchObject({ id: u.id, username: 'lea' });
     expect(exp.account).not.toHaveProperty('passwordHash');

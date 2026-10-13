@@ -282,7 +282,7 @@ export async function startE2EServer(
     `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomBytes(4).toString('hex')}`,
   );
   mkdirSync(dataDir, { recursive: true });
-  writeFileSync(join(dataDir, '.appsport-volume'), '');
+  writeFileSync(join(dataDir, '.rune-volume'), '');
   const publicDir = opts.publicDir ?? DEFAULT_PUBLIC_DIR;
   let env = mergeEnv(
     {
@@ -290,9 +290,9 @@ export async function startE2EServer(
       APP_ORIGIN: url,
       PORT: String(backendPort),
       HOST: '127.0.0.1',
-      APPSPORT_DATA_DIR: dataDir,
-      APPSPORT_PUBLIC_DIR: publicDir,
-      APPSPORT_CONTENT_DIR: join(REPO_ROOT, 'data'),
+      RUNE_DATA_DIR: dataDir,
+      RUNE_PUBLIC_DIR: publicDir,
+      RUNE_CONTENT_DIR: join(REPO_ROOT, 'data'),
       APP_VERSION: 'e2e',
     },
     opts.env,

@@ -6,7 +6,7 @@ import {
   SYNC_PROTOCOL,
   SYNC_PUSH_MAX,
   snakeToCamel,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import Dexie from 'dexie';
 import { z } from 'zod';
 import { stripC2Fields } from '../local-db/c2';

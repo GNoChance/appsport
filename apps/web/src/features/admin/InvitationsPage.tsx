@@ -1,8 +1,4 @@
-import {
-  type CreateInvitationResponse,
-  INVITATION_NOTE_MAX,
-  type InvitationSummary,
-} from '@appsport/contracts';
+import { type CreateInvitationResponse, INVITATION_NOTE_MAX, type InvitationSummary } from '@rune/contracts';
 import { type FormEvent, useCallback, useId, useRef, useState } from 'react';
 import { useRepos } from '../../repos';
 import { Banner, Button, CopyButton, Field, formatDate, formatDateTime, Page, useAction } from '../../ui';

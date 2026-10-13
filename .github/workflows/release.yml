@@ -1,6 +1,6 @@
 name: Release
 
-# Publie l'image privée ghcr.io/gnochance/appsport:vX.Y.Z pour un tag vX.Y.Z d'un commit de main dont ci.yml est vert.
+# Publie l'image privée ghcr.io/gnochance/rune:vX.Y.Z pour un tag vX.Y.Z d'un commit de main dont ci.yml est vert.
 # Rien ne se déploie ici (R-OPS-13) : GitHub n'atteint jamais le serveur, le propriétaire tire l'image lui-même.
 on:
   push:
@@ -59,7 +59,7 @@ jobs:
           file: infra/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/gnochance/appsport:${{ github.ref_name }}
+          tags: ghcr.io/gnochance/rune:${{ github.ref_name }}
           build-args: |
             VERSION=${{ github.ref_name }}
             VITE_OWNER_FIRST_NAME=${{ vars.VITE_OWNER_FIRST_NAME }}

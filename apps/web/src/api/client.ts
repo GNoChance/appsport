@@ -4,7 +4,7 @@ import {
   PROTOCOL_HEADER,
   SYNC_PROTOCOL,
   SYNC_TIMEOUT_MS,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import type { z } from 'zod';
 import { fetchJsonWithTimeout, type JsonReply, OfflineError, type SyncTransport } from '../sync/transport';
 

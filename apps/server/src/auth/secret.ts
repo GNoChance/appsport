@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { encodeCrockford, formatSecretCode } from '@appsport/domain';
+import { encodeCrockford, formatSecretCode } from '@rune/domain';
 import type { IdGen } from '../deps';
 
 /** sha256 hexadécimal (codes secrets et jetons de session). */

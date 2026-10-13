@@ -1,4 +1,4 @@
-import type { MeResponse } from '@appsport/contracts';
+import type { MeResponse } from '@rune/contracts';
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { type GuardResult, resolveGuard } from '../../src/App';

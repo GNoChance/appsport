@@ -1,4 +1,4 @@
-import { PASSWORD_MAX, PASSWORD_MIN_ADMIN, PASSWORD_MIN_MEMBER, type Role } from '@appsport/contracts';
+import { PASSWORD_MAX, PASSWORD_MIN_ADMIN, PASSWORD_MIN_MEMBER, type Role } from '@rune/contracts';
 import { usernameKey } from './username';
 
 export type PasswordRejection =
@@ -6,7 +6,7 @@ export type PasswordRejection =
   | 'too_long'
   | 'common'
   | 'contains_username'
-  | 'contains_appsport'
+  | 'contains_app_name'
   | 'single_char';
 
 /** Longueur en points de code, après NFC. */
@@ -28,6 +28,6 @@ export function validatePassword(
   const key = usernameKey(p);
   const user = usernameKey(ctx.username);
   if (user !== '' && key.includes(user)) return { ok: false, reason: 'contains_username' };
-  if (key.includes('appsport')) return { ok: false, reason: 'contains_appsport' };
+  if (key.includes('rune')) return { ok: false, reason: 'contains_app_name' };
   return { ok: true };
 }

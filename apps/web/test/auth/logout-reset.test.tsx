@@ -331,7 +331,7 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
     click('Suivant');
     expect(await screen.findByText('Code incomplet : il faut 16 caractères.')).toBeTruthy();
     expect(api.calls).toHaveLength(0);
-    fill('Lien ou code de réinitialisation', 'https://appsport.exemple.ts.net/reset#abcd-efgh-jkmn-pqrs');
+    fill('Lien ou code de réinitialisation', 'https://rune.exemple.ts.net/reset#abcd-efgh-jkmn-pqrs');
     click('Suivant');
     await screen.findByLabelText('Nouveau mot de passe pour lea');
     expect(callsTo(api, CHECK)[0]?.body).toEqual({ code: CODE });

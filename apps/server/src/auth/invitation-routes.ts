@@ -3,7 +3,7 @@ import {
   CodeRequest,
   CreateInvitationRequest,
   INVITATION_TTL_DAYS,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env';
 import type { AppDeps } from '../deps';

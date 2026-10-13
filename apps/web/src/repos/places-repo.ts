@@ -7,7 +7,7 @@ import {
   type LoadSettings,
   LoadSettingsSchema,
   type UpdatePlaceRequest,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import type { AppServices } from '../app-services';
 import type { AppDb, MirrorRow } from '../local-db/db';
 import { currentUserId, isLive, ownedRows, parseJsonColumn, sendThenPull, text } from './rows';

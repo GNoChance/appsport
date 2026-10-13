@@ -1,4 +1,4 @@
-import { APPLIED_OP_TTL_MONTHS, TOMBSTONE_TTL_DAYS } from '@appsport/contracts';
+import { APPLIED_OP_TTL_MONTHS, TOMBSTONE_TTL_DAYS } from '@rune/contracts';
 import { sql, type Transaction } from 'kysely';
 import { subtractMonths } from '../auth/purge';
 import type { Database } from '../db/schema';

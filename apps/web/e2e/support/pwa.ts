@@ -1,11 +1,11 @@
-import { SYNC_PROTOCOL, SyncOp } from '@appsport/contracts';
 import { type BrowserContext, expect, type Page, test } from '@playwright/test';
+import { SYNC_PROTOCOL, SyncOp } from '@rune/contracts';
 import type { OutboxOp } from '../../src/local-db/db';
 import type { SwStatus } from '../../src/sw/protocol';
 
 // Outils PWA des E2E : appli installée, service worker, caches et base locale lus depuis la page.
 
-const LOCAL_DB_NAME = 'appsport';
+const LOCAL_DB_NAME = 'rune';
 const SW_SKIP_REASON = 'WebKit sous Windows : la CI Linux fait foi';
 
 /** Appli installée (R-ARR-1) : `display-mode: standalone` et `navigator.standalone`, avant tout script de la page. */

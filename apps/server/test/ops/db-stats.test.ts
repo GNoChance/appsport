@@ -88,29 +88,29 @@ describe('dbStats (R-OPS-11, Interfaces §8)', () => {
   });
 });
 
-describe('CLI db:stats (sans APP_ORIGIN : lancé par appsport-restore-test sans env_file)', () => {
+describe('CLI db:stats (sans APP_ORIGIN : lancé par rune-restore-test sans env_file)', () => {
   let dir: string;
   let dbPath: string;
   let lines: string[];
   let errors: string[];
-  /** Seul APPSPORT_DATA_DIR : ni APP_ORIGIN, ni garde, ni migration. */
+  /** Seul RUNE_DATA_DIR : ni APP_ORIGIN, ni garde, ni migration. */
   const cli = (...argv: string[]) =>
     runCli(
       argv,
-      { APPSPORT_DATA_DIR: dir },
+      { RUNE_DATA_DIR: dir },
       (line) => lines.push(line),
       (line) => errors.push(line),
     );
 
   beforeEach(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'appsport-db-stats-'));
-    dbPath = join(dir, 'appsport.db');
+    dir = mkdtempSync(join(tmpdir(), 'rune-db-stats-'));
+    dbPath = join(dir, 'rune.db');
     lines = [];
     errors = [];
-    writeFileSync(join(dir, '.appsport-volume'), '');
+    writeFileSync(join(dir, '.rune-volume'), '');
     const init = await runCli(
       ['init'],
-      { APP_ORIGIN: 'http://localhost:3999', APPSPORT_DATA_DIR: dir },
+      { APP_ORIGIN: 'http://localhost:3999', RUNE_DATA_DIR: dir },
       () => {},
     );
     expect(init).toBe(0);

@@ -1,4 +1,4 @@
-import { EPOCH_HEADER } from '@appsport/contracts';
+import { EPOCH_HEADER } from '@rune/contracts';
 import type { MiddlewareHandler } from 'hono';
 import type { Kysely } from 'kysely';
 import type { AppEnv } from '../app-env';

@@ -1,4 +1,4 @@
-import { type EntityRule, type EntityRulesMap, entityRules } from '@appsport/contracts';
+import { type EntityRule, type EntityRulesMap, entityRules } from '@rune/contracts';
 import { isC2Value, stripC2Fields } from './c2';
 import { type AppDb, mirrorStoreNames } from './db';
 import { USER_META_KEYS } from './meta';

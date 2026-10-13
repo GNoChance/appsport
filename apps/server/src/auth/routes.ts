@@ -4,8 +4,8 @@ import {
   LoginRequest,
   PASSWORD_MIN_ADMIN,
   ResetPasswordRequest,
-} from '@appsport/contracts';
-import { passwordLength, usernameKey, validatePassword } from '@appsport/domain';
+} from '@rune/contracts';
+import { passwordLength, usernameKey, validatePassword } from '@rune/domain';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env';
 import { writeStamp } from '../db/rev';

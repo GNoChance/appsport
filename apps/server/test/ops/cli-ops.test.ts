@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { parisDate } from '@appsport/domain';
+import { parisDate } from '@rune/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from '../../src/cli';
 import { readOnly, sha256 } from './helpers';
@@ -47,10 +47,10 @@ function agedEntry(name: string, days: number, kind: 'file' | 'dir' = 'file'): v
 }
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'appsport-cli-ops-'));
-  dbPath = join(dir, 'appsport.db');
-  sentinelPath = join(dir, '.appsport-volume');
-  env = { APP_ORIGIN: 'http://localhost:3999', APPSPORT_DATA_DIR: dir, HOST: '127.0.0.1', PORT: '0' };
+  dir = mkdtempSync(join(tmpdir(), 'rune-cli-ops-'));
+  dbPath = join(dir, 'rune.db');
+  sentinelPath = join(dir, '.rune-volume');
+  env = { APP_ORIGIN: 'http://localhost:3999', RUNE_DATA_DIR: dir, HOST: '127.0.0.1', PORT: '0' };
   lines = [];
   errors = [];
   writeFileSync(sentinelPath, '');

@@ -29,14 +29,14 @@ let tmp: string;
 let dist: string;
 
 beforeEach(async () => {
-  tmp = await mkdtemp(join(tmpdir(), 'appsport-precache-'));
+  tmp = await mkdtemp(join(tmpdir(), 'rune-precache-'));
   dist = join(tmp, 'dist');
   await mkdir(join(dist, 'assets'), { recursive: true });
   await mkdir(join(dist, 'icons'));
-  await writeFile(join(dist, 'index.html'), '<!doctype html><title>appsport</title>');
+  await writeFile(join(dist, 'index.html'), '<!doctype html><title>Rune</title>');
   await writeFile(join(dist, 'assets/index-abc123.js'), 'console.log(1);');
   await writeFile(join(dist, 'assets/index-abc123.js.map'), '{"version":3}');
-  await writeFile(join(dist, 'manifest.webmanifest'), '{"name":"appsport"}');
+  await writeFile(join(dist, 'manifest.webmanifest'), '{"name":"Rune"}');
   await writeFile(join(dist, 'icons/icon-192.png'), new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
   await writeFile(join(dist, 'sw.js'), 'ancien service worker');
 });
@@ -55,9 +55,9 @@ describe('generateServiceWorker', () => {
     expect(m.buildHash).toMatch(/^[0-9a-f]{12}$/);
     expect(m.localDbVersion).toBe(1);
     const sw = await readFile(join(dist, 'sw.js'), 'utf8');
-    expect(sw.split('\n')[0]).toBe(`self.__APPSPORT_PRECACHE__ = ${JSON.stringify(m)};`);
+    expect(sw.split('\n')[0]).toBe(`self.__RUNE_PRECACHE__ = ${JSON.stringify(m)};`);
     expect(sw.slice(sw.indexOf('\n') + 1)).toBe(`(()=>{"use strict";${SW_CODE.trimEnd()}\n})();\n`);
-    expect(PRECACHE_GLOBAL).toBe('__APPSPORT_PRECACHE__');
+    expect(PRECACHE_GLOBAL).toBe('__RUNE_PRECACHE__');
   });
 
   it('le code du SW reste en mode strict sous la ligne du manifeste', async () => {
@@ -66,7 +66,7 @@ describe('generateServiceWorker', () => {
     await generateServiceWorker({ distDir: dist, swCode, localDbVersion: 1 });
     const self: Record<string, unknown> = {};
     runInNewContext(await readFile(join(dist, 'sw.js'), 'utf8'), { self });
-    expect(self.__APPSPORT_PRECACHE__).toMatchObject({ files: FILES, localDbVersion: 1 });
+    expect(self.__RUNE_PRECACHE__).toMatchObject({ files: FILES, localDbVersion: 1 });
     expect(self.strict).toBe(true);
   });
 
@@ -89,7 +89,7 @@ describe('listPrecacheFiles', () => {
     const files = await listPrecacheFiles(dist);
     expect(files.map((f) => f.path)).toEqual(FILES);
     const index = files.find((f) => f.path === '/index.html');
-    expect(new TextDecoder().decode(index?.content)).toBe('<!doctype html><title>appsport</title>');
+    expect(new TextDecoder().decode(index?.content)).toBe('<!doctype html><title>Rune</title>');
   });
 });
 
@@ -176,8 +176,8 @@ const handlerOf = (hook: unknown): Hook =>
   (typeof hook === 'function' ? hook : (hook as { handler: Hook }).handler) as Hook;
 
 describe('precachePlugin', () => {
-  it('nommé appsport-precache, appliqué au build seulement', () => {
-    expect(precachePlugin()).toMatchObject({ name: 'appsport-precache', apply: 'build' });
+  it('nommé rune-precache, appliqué au build seulement', () => {
+    expect(precachePlugin()).toMatchObject({ name: 'rune-precache', apply: 'build' });
   });
 
   it('après écriture du bundle : sw.js depuis src/sw/sw.ts et LOCAL_DB_VERSION de src/local-db/db.ts', async () => {
@@ -193,7 +193,7 @@ describe('precachePlugin', () => {
     await handlerOf(plugin.writeBundle).call({}, { dir: dist }, {});
     const sw = await readFile(join(dist, 'sw.js'), 'utf8');
     const [first = '', ...rest] = sw.split('\n');
-    const m = JSON.parse(first.slice('self.__APPSPORT_PRECACHE__ = '.length, -1)) as PrecacheManifest;
+    const m = JSON.parse(first.slice('self.__RUNE_PRECACHE__ = '.length, -1)) as PrecacheManifest;
     expect(m).toMatchObject({ files: FILES, localDbVersion: 3 });
     expect(rest.join('\n')).toContain('MARQUEUR_SW');
   });

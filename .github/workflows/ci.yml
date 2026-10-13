@@ -67,8 +67,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @appsport/web exec playwright install --with-deps chromium webkit
-      - run: pnpm --filter @appsport/web test:e2e
+      - run: pnpm --filter @rune/web exec playwright install --with-deps chromium webkit
+      - run: pnpm --filter @rune/web test:e2e
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -90,7 +90,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: shellcheck -x infra/host/appsport-* infra/host/lib/common.sh infra/host/test/stub.sh infra/test/image-contract.sh
+      - run: shellcheck -x infra/host/rune-* infra/host/lib/common.sh infra/host/test/stub.sh infra/test/image-contract.sh
       # Noms de tests en français : bats exige une locale UTF-8.
       - run: pnpm test:infra
         env:
@@ -102,5 +102,5 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f infra/Dockerfile --build-arg VERSION=v0.0.0-ci -t appsport:ci .
-      - run: bash infra/test/image-contract.sh appsport:ci v0.0.0-ci
+      - run: docker build -f infra/Dockerfile --build-arg VERSION=v0.0.0-ci -t rune:ci .
+      - run: bash infra/test/image-contract.sh rune:ci v0.0.0-ci

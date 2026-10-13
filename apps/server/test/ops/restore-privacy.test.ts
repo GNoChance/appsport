@@ -33,8 +33,8 @@ type Member = Awaited<ReturnType<typeof createUserAndLogin>>;
 // Review Focus 4 ; 03 §8 et §17 n°10 : une suppression ou un retrait survenu après l'instantané ne
 // « revient » pas avec la restauration, sur la vraie chaîne fichier (instantané, restore, reapply).
 it('restauration puis privacy:reapply : ni le compte supprimé ni les données santé retirées ne reviennent', async () => {
-  dir = mkdtempSync(join(tmpdir(), 'appsport-restore-privacy-'));
-  const dbPath = join(dir, 'appsport.db');
+  dir = mkdtempSync(join(tmpdir(), 'rune-restore-privacy-'));
+  const dbPath = join(dir, 'rune.db');
   let c = await createTestContext({ dbPath, now: T0 });
   ctx = c;
   const call = (u: Member, path: string, method = 'GET', json?: unknown) =>

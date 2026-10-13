@@ -1,5 +1,5 @@
-import { GOAL_LABELS, type Goal } from '@appsport/contracts';
-import { availableGoals } from '@appsport/domain';
+import { GOAL_LABELS, type Goal } from '@rune/contracts';
+import { availableGoals } from '@rune/domain';
 import { useContext, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';

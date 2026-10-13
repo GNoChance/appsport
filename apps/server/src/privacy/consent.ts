@@ -4,7 +4,7 @@ import {
   type LimitationInput,
   type LimitationPatch,
   SYNC_COLUMNS,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { type RawBuilder, sql, type Transaction } from 'kysely';
 import { logSecurityEvent } from '../auth/security-log';
 import { writeStamp } from '../db/rev';

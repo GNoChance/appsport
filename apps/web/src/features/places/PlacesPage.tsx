@@ -8,7 +8,7 @@ import {
   PRESETS,
   type PresetId,
   type UpdatePlaceRequest,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useLive, useMe } from '../../app-services';

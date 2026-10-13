@@ -10,7 +10,7 @@ await build({
   target: 'node24',
   outfile: 'dist/server.mjs',
   banner: {
-    js: "import { createRequire as __appsportCreateRequire } from 'node:module'; const require = __appsportCreateRequire(import.meta.url);",
+    js: "import { createRequire as __runeCreateRequire } from 'node:module'; const require = __runeCreateRequire(import.meta.url);",
   },
   legalComments: 'eof',
 });

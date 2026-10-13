@@ -1,4 +1,4 @@
-import type { GymSummary, OpsStatus } from '@appsport/contracts';
+import type { GymSummary, OpsStatus } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { AdminGymsPage } from '../../src/features/admin/AdminGymsPage';
@@ -141,7 +141,7 @@ const OPS: OpsStatus = {
     ok: false,
     disks: [
       { mount: '/', usedPct: 42 },
-      { mount: '/srv/appsport', usedPct: 81 },
+      { mount: '/srv/rune', usedPct: 81 },
       { mount: '/srv/backup', usedPct: 80 },
     ],
     smartOk: true,
@@ -172,7 +172,7 @@ describe('ServerHealthPage (08 §9)', () => {
     const disks = within(screen.getByRole('list', { name: 'Espace disque' }))
       .getAllByRole('listitem')
       .map((li) => li.textContent);
-    expect(disks).toEqual(['/ : 42 %', '/srv/appsport : 81 % (au-delà de 80 %)', '/srv/backup : 80 %']);
+    expect(disks).toEqual(['/ : 42 %', '/srv/rune : 81 % (au-delà de 80 %)', '/srv/backup : 80 %']);
     expect(screen.getByText('SMART : OK')).toBeTruthy();
     expect(screen.getByText('Redémarrage nécessaire')).toBeTruthy();
     expect(screen.queryByText('Sauvegarde en retard (plus de 26 h)')).toBeNull();
@@ -187,14 +187,14 @@ describe('ServerHealthPage (08 §9)', () => {
         ...(OPS.host as NonNullable<OpsStatus['host']>),
         disks: [
           { mount: '/', usedPct: 80.2 },
-          { mount: '/srv/appsport', usedPct: 79.6 },
+          { mount: '/srv/rune', usedPct: 79.6 },
         ],
       },
     });
     const disks = within(screen.getByRole('list', { name: 'Espace disque' }))
       .getAllByRole('listitem')
       .map((li) => li.textContent);
-    expect(disks).toEqual(['/ : 81 % (au-delà de 80 %)', '/srv/appsport : 80 %']);
+    expect(disks).toEqual(['/ : 81 % (au-delà de 80 %)', '/srv/rune : 80 %']);
   });
 
   it('sauvegarde de plus de 26 h → bandeau « Sauvegarde en retard (plus de 26 h) »', async () => {

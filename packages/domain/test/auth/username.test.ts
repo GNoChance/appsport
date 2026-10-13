@@ -1,3 +1,4 @@
+import { RESERVED_USERNAMES } from '@rune/contracts';
 import { describe, expect, it } from 'vitest';
 import { usernameKey, validateUsername } from '../../src/auth/username';
 
@@ -32,7 +33,7 @@ describe('validateUsername', () => {
   });
 
   it('refuse les noms réservés, sans accents', () => {
-    for (const u of ['Admin', 'APPSPORT', 'Système']) {
+    for (const u of ['Admin', 'RUNE', 'Système', ...RESERVED_USERNAMES]) {
       expect(validateUsername(u)).toEqual({ ok: false, reason: 'reserved' });
     }
   });

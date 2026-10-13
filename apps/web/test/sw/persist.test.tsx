@@ -1,4 +1,4 @@
-import type { Role } from '@appsport/contracts';
+import type { Role } from '@rune/contracts';
 import { fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ONBOARDING_COMPLETED_EVENT } from '../../src/app-events';

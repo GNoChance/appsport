@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { OpsStatus } from '@appsport/contracts';
+import { OpsStatus } from '@rune/contracts';
 
 /** Contenu validé de `<dataDir>/ops/status.json` ; null si le fichier est absent, illisible ou invalide. */
 export async function readOpsStatus(dataDir: string): Promise<OpsStatus | null> {

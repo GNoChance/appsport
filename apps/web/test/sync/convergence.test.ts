@@ -1,12 +1,12 @@
 // @vitest-environment node
-import { createMonotonicUuidV7 } from '@appsport/domain';
+import { createMonotonicUuidV7 } from '@rune/domain';
 import {
   createSyncTestContext,
   createUserAndLogin,
   login,
   SYNC_FIXTURE_RULES,
   type TestContext,
-} from '@appsport/server/testing';
+} from '@rune/server/testing';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { AppDb, MirrorRow } from '../../src/local-db/db';

@@ -1,7 +1,7 @@
 // @vitest-environment node
-import type { PulledRow, PushResult, SyncOp } from '@appsport/contracts';
-import { createMonotonicUuidV7 } from '@appsport/domain';
-import { makeOp, SYNC_FIXTURE_RULES } from '@appsport/server/testing';
+import type { PulledRow, PushResult, SyncOp } from '@rune/contracts';
+import { createMonotonicUuidV7 } from '@rune/domain';
+import { makeOp, SYNC_FIXTURE_RULES } from '@rune/server/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppDb, MirrorRow } from '../../src/local-db/db';
 import { getMeta, setMeta } from '../../src/local-db/meta';

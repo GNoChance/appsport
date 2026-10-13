@@ -1,4 +1,4 @@
-import type { AgeBand } from '@appsport/contracts';
+import type { AgeBand } from '@rune/contracts';
 
 /** R-CST-7 : la précaution déclarée ne compte qu'avec le consentement santé actif. */
 export function computeCautious(i: {

@@ -33,7 +33,7 @@ describe('bootApp', () => {
 
   it('moteur réel : synchro au lancement, puis au retour au premier plan (R-SYN-29)', async () => {
     const api = createFakeApi();
-    api.on('GET', '/api/health', { status: 200, body: { ok: true }, headers: { 'X-Appsport-Epoch': 'E1' } });
+    api.on('GET', '/api/health', { status: 200, body: { ok: true }, headers: { 'X-Rune-Epoch': 'E1' } });
     const db = createTestLocalDb();
     await setMeta(db, 'userId', 'u-1');
     const sync = createSyncEngine({ db, transport: api.transport, now: () => DEFAULT_NOW });

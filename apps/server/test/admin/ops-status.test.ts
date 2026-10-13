@@ -20,7 +20,7 @@ const write = (content: string): void => {
 
 describe('readOpsStatus (08 §9)', () => {
   it('renvoie null si le fichier est absent, illisible ou invalide', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'appsport-ops-'));
+    dir = mkdtempSync(join(tmpdir(), 'rune-ops-'));
     expect(await readOpsStatus(dir)).toBeNull();
     write('{pas du json');
     expect(await readOpsStatus(dir)).toBeNull();
@@ -29,7 +29,7 @@ describe('readOpsStatus (08 §9)', () => {
   });
 
   it('renvoie le contenu validé', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'appsport-ops-'));
+    dir = mkdtempSync(join(tmpdir(), 'rune-ops-'));
     const status = {
       backup: { at: '2026-10-06T01:30:00Z', ok: true },
       deploy: { at: '2026-10-05T09:00:00Z', version: 'v1.2.3', previousVersion: null, ok: true },
@@ -41,7 +41,7 @@ describe('readOpsStatus (08 §9)', () => {
 
 describe('GET /api/admin/ops-status', () => {
   it('renvoie la version et un état nul sans fichier ; refuse un membre', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'appsport-ops-'));
+    dir = mkdtempSync(join(tmpdir(), 'rune-ops-'));
     ctx = await createTestContext({ config: { dataDir: dir, version: 'v1.2.3' } });
     const admin = await createUser(ctx, { role: 'admin' });
     const member = await createUser(ctx);

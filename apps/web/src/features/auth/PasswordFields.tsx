@@ -1,4 +1,4 @@
-import type { Role } from '@appsport/contracts';
+import type { Role } from '@rune/contracts';
 import { Field } from '../../ui';
 
 export const PASSWORD_HINT =

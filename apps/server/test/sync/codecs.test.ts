@@ -1,4 +1,4 @@
-import { COLUMN_CODECS, type ColumnCodec, mirroredTables } from '@appsport/contracts';
+import { COLUMN_CODECS, type ColumnCodec, mirroredTables } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTestContext, type TestContext } from '../support';
 

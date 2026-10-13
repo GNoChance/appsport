@@ -22,7 +22,7 @@ describe('createApiClient', () => {
     await expect(client.send('POST', '/api/things', { a: 1 }, Ok)).resolves.toEqual({ ok: true });
     const [call] = api.calls;
     expect(call?.headers.get('Content-Type')).toBe('application/json');
-    expect(call?.headers.get('X-Appsport-Protocol')).toBe('1');
+    expect(call?.headers.get('X-Rune-Protocol')).toBe('1');
     expect(call?.headers.has('Origin')).toBe(false);
     expect(call?.init.credentials).toBe('same-origin');
     expect(call?.body).toEqual({ a: 1 });

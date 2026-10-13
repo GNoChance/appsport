@@ -1,4 +1,4 @@
-# Fiche de traitement appsport
+# Fiche de traitement Rune
 
 Version 1.0 (`PRIVACY_POLICY_VERSION`), 2026-10-12.
 
@@ -71,8 +71,8 @@ Aucun autre sous-traitant : ni statistiques, ni traceur, ni service tiers dans l
 
 - Aucune exposition sur Internet : ni redirection de port ni Funnel ; seule entrée de l'appli : `tailscale serve` (HTTPS) ; administration par Tailscale SSH et, en secours, SSH depuis le réseau local ; pare-feu en refus par défaut, en IPv4 comme en IPv6.
 - L'appli n'écoute que sur `127.0.0.1` ; la base n'est jamais joignable par le réseau.
-- Partage de la seule machine `appsport` avec le compte Tailscale de chaque proche, limité au port 443 ; l'admin, seul membre du tailnet, a une double authentification.
-- Noms publics : le nom de machine `appsport` et le nom du tailnet, aléatoire et sans nom de personne, figurent dans les journaux publics de certificats ; rien de personnel.
+- Partage de la seule machine `rune` avec le compte Tailscale de chaque proche, limité au port 443 ; l'admin, seul membre du tailnet, a une double authentification.
+- Noms publics : le nom de machine `rune` et le nom du tailnet, aléatoire et sans nom de personne, figurent dans les journaux publics de certificats ; rien de personnel.
 - Données chiffrées au repos (volume LUKS déverrouillé à la main) ; sauvegardes chiffrées par restic, une copie hors du domicile, test de restauration chaque mois.
 - Authentification obligatoire dans l'appli : mots de passe Argon2id, limitation des échecs, cookie `__Host-session`, contrôle de l'origine des requêtes ; en-têtes HSTS, CSP `default-src 'self'` sans script en ligne et `frame-ancestors 'none'` (P-AUT-9).
 - Séparation des données : l'admin n'a aucune route vers les données C1 à C3 d'un autre (réponse `404`), sauf un échange signalé (`coach_report`, P-ADM-1).

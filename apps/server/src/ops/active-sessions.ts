@@ -7,7 +7,7 @@ export interface ActiveWorkoutSession {
 
 /**
  * Séances `in_progress`, non supprimées, démarrées depuis moins de `maxAgeHours`, triées par début : affichées
- * par `appsport-update` avant de demander confirmation (R-DEP-3). Le socle n'a pas la table `workout_session`
+ * par `rune-update` avant de demander confirmation (R-DEP-3). Le socle n'a pas la table `workout_session`
  * (brique 2) : liste vide.
  */
 export function listActiveWorkoutSessions(

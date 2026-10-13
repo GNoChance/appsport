@@ -1,4 +1,4 @@
-import { firstIncompleteStep } from '@appsport/domain';
+import { firstIncompleteStep } from '@rune/domain';
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { shownStep } from '../../src/features/onboarding/OnboardingFlow';
@@ -43,8 +43,8 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(location()).toBe('/onboarding');
     expect(screen.queryByRole('navigation', { name: 'Navigation principale' })).toBeNull();
     // La marque ne mène pas hors de l'onboarding (la garde y ramènerait en perdant l'écran).
-    expect(screen.getByText('appsport')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'appsport' })).toBeNull();
+    expect(screen.getByText('Rune')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Rune' })).toBeNull();
   });
 
   it('changement d’écran : le titre, nommé avec « Étape n/8 », reçoit le focus ; pas au premier affichage', async () => {

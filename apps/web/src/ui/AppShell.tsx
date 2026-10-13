@@ -17,7 +17,7 @@ export function AppShell(p: { children: ReactNode }) {
       <UpdateBanner />
       <header className={styles.header}>
         <Link href="/" className={styles.brand}>
-          appsport
+          Rune
         </Link>
         <nav aria-label="Navigation principale" className={styles.nav}>
           <Link href="/">Accueil</Link>
@@ -46,10 +46,10 @@ export function PublicShell(p: { children: ReactNode; homeLink?: boolean }) {
     <div className={styles.shell}>
       <header className={styles.header}>
         {p.homeLink === false ? (
-          <span className={styles.brand}>appsport</span>
+          <span className={styles.brand}>Rune</span>
         ) : (
           <Link href="/" className={styles.brand}>
-            appsport
+            Rune
           </Link>
         )}
       </header>

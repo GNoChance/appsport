@@ -1,4 +1,4 @@
-import type { GymSummary } from '@appsport/contracts';
+import type { GymSummary } from '@rune/contracts';
 import { useEffect, useId, useState } from 'react';
 import { useRepos } from '../../repos';
 import { Banner, Button, ChoiceList, errorMessage, Field, plural, useAction } from '../../ui';

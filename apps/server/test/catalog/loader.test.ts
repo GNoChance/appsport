@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 function contentDir(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'appsport-catalog-'));
+  const dir = mkdtempSync(join(tmpdir(), 'rune-catalog-'));
   dirs.push(dir);
   for (const [name, content] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, name)), { recursive: true });

@@ -1,4 +1,4 @@
-import type { EntityRule } from '@appsport/contracts';
+import type { EntityRule } from '@rune/contracts';
 import { sql } from 'kysely';
 import { writeStamp } from '../db/rev';
 import { getServerMeta } from '../db/server-meta';

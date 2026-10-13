@@ -26,12 +26,12 @@ const e = (line: string): void => {
 const cli = (...argv: string[]) => runCli(argv, env, o, e);
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'appsport-privacy-cli-'));
-  dbPath = join(dir, 'appsport.db');
-  env = { APP_ORIGIN: 'http://localhost:3999', APPSPORT_DATA_DIR: dir, HOST: '127.0.0.1', PORT: '0' };
+  dir = mkdtempSync(join(tmpdir(), 'rune-privacy-cli-'));
+  dbPath = join(dir, 'rune.db');
+  env = { APP_ORIGIN: 'http://localhost:3999', RUNE_DATA_DIR: dir, HOST: '127.0.0.1', PORT: '0' };
   lines = [];
   errors = [];
-  writeFileSync(join(dir, '.appsport-volume'), '');
+  writeFileSync(join(dir, '.rune-volume'), '');
   expect(await cli('init')).toBe(0);
   withDb((sqlite) => {
     const insert = sqlite.prepare(

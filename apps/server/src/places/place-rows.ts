@@ -1,4 +1,4 @@
-import { ageBandOn, parisDate } from '@appsport/domain';
+import { ageBandOn, parisDate } from '@rune/domain';
 import type { SessionUser } from '../app-env';
 import { writeStamp } from '../db/rev';
 import type { DbExecutor } from '../db/schema';

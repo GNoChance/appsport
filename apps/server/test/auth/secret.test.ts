@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { formatSecretCode } from '@appsport/domain';
+import { formatSecretCode } from '@rune/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { createSecretCode, hashSecret } from '../../src/auth/secret';
 import { seqIds } from '../support';

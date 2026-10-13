@@ -8,7 +8,7 @@ import {
   MeResponse,
   ResetCheckResponse,
   type ResetPasswordRequest,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { ApiError, NetworkRequiredError } from '../api/client';
 import { type AppServices, whenSignedOut } from '../app-services';
 import { deleteMeta, getMeta, setMeta } from '../local-db/meta';

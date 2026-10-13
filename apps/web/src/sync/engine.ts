@@ -12,8 +12,8 @@ import {
   SYNC_RETRY_MAX_MS,
   SYNC_RETRY_MIN_MS,
   SYNC_TIMEOUT_MS,
-} from '@appsport/contracts';
-import { createMonotonicUuidV7 } from '@appsport/domain';
+} from '@rune/contracts';
+import { createMonotonicUuidV7 } from '@rune/domain';
 import { localHealthConsentActive } from '../local-db/consent';
 import { type AppDb, mirrorStoreNames, type OutboxOp } from '../local-db/db';
 import { deleteMeta, getMeta, setMeta } from '../local-db/meta';

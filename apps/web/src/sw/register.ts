@@ -1,4 +1,4 @@
-import type { HealthResponse } from '@appsport/contracts';
+import type { HealthResponse } from '@rune/contracts';
 import { type AppDb, LOCAL_DB_VERSION } from '../local-db/db';
 import { getMeta } from '../local-db/meta';
 import type { StatusRepo } from '../repos/status-repo';
@@ -252,7 +252,7 @@ export function registerServiceWorker(opts: {
       // Trace pour le diagnostic sur téléphone (R-TST-4, P8) : le nom de l'erreur seul, jamais son message
       // (il peut porter l'URL).
       (error: unknown) => {
-        console.warn('[appsport] enregistrement du service worker refusé :', errorName(error));
+        console.warn('[rune] enregistrement du service worker refusé :', errorName(error));
         return null;
       },
     );

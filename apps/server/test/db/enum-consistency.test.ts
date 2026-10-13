@@ -25,7 +25,7 @@ import {
   SESSION_REVOKED_REASONS,
   SPORT_OTHER_LABEL_MAX,
   UserStatusSchema,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTestContext, type TestContext } from '../support';
 

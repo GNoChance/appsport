@@ -1,4 +1,4 @@
-import { type EntityRulesMap, entityRules, SYNC_COLUMNS } from '@appsport/contracts';
+import { type EntityRulesMap, entityRules, SYNC_COLUMNS } from '@rune/contracts';
 import { sql } from 'kysely';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Migration } from '../../src/db/migrations/index';

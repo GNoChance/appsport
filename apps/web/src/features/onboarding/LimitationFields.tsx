@@ -10,7 +10,7 @@ import {
   type LimitationPatch,
   type LimitationSeverity,
   type LimitationSide,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { type LimitationView, useRepos } from '../../repos';
 import { Banner, Button, ChoiceList, Field, useAction } from '../../ui';

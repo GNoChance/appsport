@@ -29,7 +29,7 @@ test("426 : file d'envoi gardée, bandeau non fermable, mise à jour vers B puis
     // La panne d'abord : sinon le moteur pousserait l'opération avant elle.
     server.setFault({ kind: 'status', pathPrefix: '/api/sync/', status: 426, body: PROTOCOL_UNSUPPORTED });
     await idbPut(page, 'outbox', op);
-    await server.restart({ APPSPORT_PUBLIC_DIR: b.dir });
+    await server.restart({ RUNE_PUBLIC_DIR: b.dir });
     await triggerForeground(page);
     await expect(connection).toHaveAttribute('data-state', 'protocol_unsupported', { timeout: 15_000 });
     expect(await outboxIds()).toEqual([op.opId]);

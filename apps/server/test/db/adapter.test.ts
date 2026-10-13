@@ -194,7 +194,7 @@ describe('openDatabase', () => {
   };
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'appsport-db-'));
+    dir = mkdtempSync(join(tmpdir(), 'rune-db-'));
   });
 
   afterEach(() => {
@@ -204,7 +204,7 @@ describe('openDatabase', () => {
   });
 
   it('applique les pragmas sur un fichier', () => {
-    ({ sqlite } = openDatabase(join(dir, 'appsport.db')));
+    ({ sqlite } = openDatabase(join(dir, 'rune.db')));
     expect(pragma('journal_mode')).toBe('wal');
     expect(pragma('synchronous')).toBe(2);
     expect(pragma('foreign_keys')).toBe(1);

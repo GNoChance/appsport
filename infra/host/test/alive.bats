@@ -1,12 +1,12 @@
 #!/usr/bin/env bats
-# appsport-alive (08 §9, §13.3) : toutes les 5 min, santé par l'URL *.ts.net (certificat, serve, appli, base).
+# rune-alive (08 §9, §13.3) : toutes les 5 min, santé par l'URL *.ts.net (certificat, serve, appli, base).
 
-PUBLIC_HEALTH=https://appsport.test.ts.net/api/health
+PUBLIC_HEALTH=https://rune.test.ts.net/api/health
 
 setup() {
   source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
-  ALIVE="$HOST_DIR/appsport-alive"
+  ALIVE="$HOST_DIR/rune-alive"
 }
 
 @test "santé OK par l'URL publique : ping alive" {
@@ -19,11 +19,11 @@ setup() {
   refute_call "curl *127.0.0.1*"
 }
 
-@test "volume verrouillé : /fail « volume verrouillé : lancer appsport-unlock »" {
+@test "volume verrouillé : /fail « volume verrouillé : lancer rune-unlock »" {
   rm -f "$STATE/mounted" "$STATE/running"
   run "$ALIVE"
   [ "$status" -eq 1 ]
-  assert_calls_in_order "curl *--data-raw volume verrouillé : lancer appsport-unlock https://hc.test/alive/fail"
+  assert_calls_in_order "curl *--data-raw volume verrouillé : lancer rune-unlock https://hc.test/alive/fail"
   refute_call "curl * https://hc.test/alive"
 }
 

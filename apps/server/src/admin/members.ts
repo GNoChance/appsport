@@ -1,11 +1,5 @@
-import {
-  type MemberSummary,
-  MIN_AGE,
-  type Role,
-  SESSION_IDLE_DAYS,
-  type UserStatus,
-} from '@appsport/contracts';
-import { ageBandOn, ageOn, parisDate } from '@appsport/domain';
+import { type MemberSummary, MIN_AGE, type Role, SESSION_IDLE_DAYS, type UserStatus } from '@rune/contracts';
+import { ageBandOn, ageOn, parisDate } from '@rune/domain';
 import { logSecurityEvent } from '../auth/security-log';
 import { revokeSessions } from '../auth/session';
 import { writeStamp } from '../db/rev';

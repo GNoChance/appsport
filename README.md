@@ -8,7 +8,7 @@
 
 Rune est une application web installable (PWA) de suivi de musculation, auto-hébergée, pour un cercle privé. Elle propose des programmes d'entraînement, un suivi des séances qui marche hors ligne, des fiches d'exercices pour débutants, un coach IA et des conseils nutrition.
 
-> Rune s'appelait **appsport** pendant le cadrage. Le dépôt, les paquets (`@appsport/…`) et les fichiers techniques gardent ce nom de code pour l'instant.
+> Rune portait un autre nom de code pendant le cadrage. Tout s'appelle désormais Rune : le dépôt, les paquets (`@rune/…`) et les fichiers techniques. Seuls `docs/superpowers/` et `docs/research/` gardent l'ancien nom, par historique : y lire « rune » partout où un identifiant porte l'ancien nom.
 
 > **Statut : brique 1 (socle) en finition.** La spécification est versionnée dans [`docs/superpowers/specs/`](docs/superpowers/specs/2026-10-06-appsport-design.md). Le socle est codé et en revue finale avant d'être fusionné dans `main` : comptes sur invitation, onboarding, PWA hors ligne, synchronisation, administration, déploiement, sauvegardes et procédures. La refonte visuelle aux couleurs de Rune est prévue en fin de socle.
 

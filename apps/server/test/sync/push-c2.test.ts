@@ -1,4 +1,4 @@
-import { HEALTH_CONSENT_TEXT } from '@appsport/contracts';
+import { HEALTH_CONSENT_TEXT } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLogger } from '../../src/logger';
 import { grantConsent } from '../../src/privacy/consent';

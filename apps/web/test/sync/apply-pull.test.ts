@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { makeOp } from '@appsport/server/testing';
+import { makeOp } from '@rune/server/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AppDb } from '../../src/local-db/db';
 import { applyPulledRows } from '../../src/sync/apply-pull';

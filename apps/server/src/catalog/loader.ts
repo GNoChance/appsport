@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { type CatalogBundle, IllustrationRef } from '@appsport/contracts';
+import { type CatalogBundle, IllustrationRef } from '@rune/contracts';
 import { z } from 'zod';
 import { getServerMeta } from '../db/server-meta';
 import type { AppDeps } from '../deps';

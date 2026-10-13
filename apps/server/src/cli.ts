@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { CivilDate } from '@appsport/contracts';
-import { usernameKey } from '@appsport/domain';
+import { CivilDate } from '@rune/contracts';
+import { usernameKey } from '@rune/domain';
 import { CamelCasePlugin, Kysely } from 'kysely';
 import { z } from 'zod';
 import { bootstrapAdminInvitation } from './auth/bootstrap';
@@ -120,7 +120,7 @@ async function runAdminBootstrap(args: string[], ctx: CliContext): Promise<numbe
     return 0;
   } catch (error) {
     if (error instanceof HttpError && error.code === 'under_min_age') {
-      ctx.err('appsport est réservé aux 16 ans et plus.');
+      ctx.err('Rune est réservé aux 16 ans et plus.');
       return 1;
     }
     if (error instanceof HttpError && error.code === 'conflict') {
@@ -282,7 +282,7 @@ async function runRestore(args: string[], ctx: CliContext): Promise<number> {
 
 /**
  * Lecture seule, sans garde ni migration (le service tourne) : une ligne `<pseudo>\t<startedAt>` par séance
- * en cours, lue par appsport-update avant de demander confirmation (R-DEP-3).
+ * en cours, lue par rune-update avant de demander confirmation (R-DEP-3).
  */
 async function runSessionsActive(args: string[], ctx: CliContext): Promise<number> {
   const hours = z.coerce
@@ -306,12 +306,12 @@ async function runSessionsActive(args: string[], ctx: CliContext): Promise<numbe
 }
 
 /**
- * Une ligne JSON (DbStats), code 0 même si l'intégrité est KO. Lu par appsport-restore-test sur la copie
+ * Une ligne JSON (DbStats), code 0 même si l'intégrité est KO. Lu par rune-restore-test sur la copie
  * restaurée (docker run sans env_file : ni APP_ORIGIN ni loadConfig) et sur la base réelle (service en marche) :
  * lecture seule, sans garde, withAppDeps ni migration ; une migration cassante inconnue ne gêne pas.
  */
 async function runDbStats(_args: string[], ctx: CliContext): Promise<number> {
-  const dbPath = join(dataDirFrom(ctx.env), 'appsport.db');
+  const dbPath = join(dataDirFrom(ctx.env), 'rune.db');
   if (!existsSync(dbPath)) {
     ctx.err(`Base introuvable : ${dbPath}.`);
     return 1;

@@ -1,4 +1,4 @@
-import { entityRules, snakeToCamel } from '@appsport/contracts';
+import { entityRules, snakeToCamel } from '@rune/contracts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrate } from '../../src/db/migrate';
 import { MIGRATIONS } from '../../src/db/migrations/index';

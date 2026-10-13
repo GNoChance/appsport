@@ -10,8 +10,8 @@ STUBBED_COMMANDS=(docker curl restic cryptsetup systemctl mount mountpoint git d
 setup_host() {
   export T="$BATS_TEST_TMPDIR"
   export CALLS="$T/calls" STATE="$T/state" STUB_DEFAULTS="$BATS_TEST_DIRNAME/defaults.bash"
-  mkdir -p "$T/bin" "$T/rules" "$STATE" "$T/etc" "$T/var/lib/tailscale" "$T/opt/appsport/infra" \
-    "$T/srv/backup/restic" "$T/srv/appsport/data/ops" "$T/srv/appsport/data/snapshots" "$T/srv/appsport/secrets"
+  mkdir -p "$T/bin" "$T/rules" "$STATE" "$T/etc" "$T/var/lib/tailscale" "$T/opt/rune/infra" \
+    "$T/srv/backup/restic" "$T/srv/rune/data/ops" "$T/srv/rune/data/snapshots" "$T/srv/rune/secrets"
   local cmd
   for cmd in "${STUBBED_COMMANDS[@]}"; do
     cp "$BATS_TEST_DIRNAME/stub.sh" "$T/bin/$cmd"
@@ -20,31 +20,31 @@ setup_host() {
   wrap_windows_jq
   export PATH="$T/bin:$PATH"
 
-  export APPSPORT_ROOT="$T/srv/appsport" APPSPORT_REPO="$T/opt/appsport" BACKUP_ROOT="$T/srv/backup"
+  export RUNE_ROOT="$T/srv/rune" RUNE_REPO="$T/opt/rune" BACKUP_ROOT="$T/srv/backup"
   export HC_ENV="$T/etc/healthchecks.env" HEALTH_URL=http://127.0.0.1:3000/api/health
   export DOCKER="$T/bin/docker" CURL="$T/bin/curl" RESTIC="$T/bin/restic" CRYPTSETUP="$T/bin/cryptsetup"
   export SYSTEMCTL="$T/bin/systemctl" MOUNT="$T/bin/mount" MOUNTPOINT="$T/bin/mountpoint" GIT="$T/bin/git"
   export DF="$T/bin/df" SMARTCTL="$T/bin/smartctl" CHOWN="$T/bin/chown" FLOCK="$T/bin/flock"
-  export SLEEP=true LOCK_FILE="$T/appsport.lock" SMART_DEVICES="/dev/sda /dev/sdb" HEALTH_TIMEOUT_S=8
+  export SLEEP=true LOCK_FILE="$T/rune.lock" SMART_DEVICES="/dev/sda /dev/sdb" HEALTH_TIMEOUT_S=8
   export TAILSCALE_STATE="$T/var/lib/tailscale" REBOOT_REQUIRED_FILE="$T/reboot-required"
-  unset APPSPORT_VERSION HEALTH_POLL_S
+  unset RUNE_VERSION HEALTH_POLL_S
 
   cat >"$HC_ENV" <<'EOF'
 HC_ALIVE_URL=https://hc.test/alive
 HC_BACKUP_URL=https://hc.test/backup
 HC_RESTORE_TEST_URL=https://hc.test/restore-test
 HC_HOST_URL=https://hc.test/host
-APPSPORT_URL=https://appsport.test.ts.net
+RUNE_URL=https://rune.test.ts.net
 EOF
-  cat >"$APPSPORT_ROOT/secrets/b2.env" <<'EOF'
-RESTIC_OFFSITE_REPOSITORY=s3:https://s3.test/appsport-backups
+  cat >"$RUNE_ROOT/secrets/b2.env" <<'EOF'
+RESTIC_OFFSITE_REPOSITORY=s3:https://s3.test/rune-backups
 AWS_ACCESS_KEY_ID=b2-key-id
 AWS_SECRET_ACCESS_KEY=b2-secret
 EOF
-  : >"$APPSPORT_ROOT/data/.appsport-volume"
-  : >"$APPSPORT_ROOT/data/appsport.db"
+  : >"$RUNE_ROOT/data/.rune-volume"
+  : >"$RUNE_ROOT/data/rune.db"
   write_deploy_env_for_test v1.2.0
-  echo "2026-09-01T20:00:00Z v1.1.0 v1.2.0 ok" >"$APPSPORT_ROOT/deploy.log"
+  echo "2026-09-01T20:00:00Z v1.1.0 v1.2.0 ok" >"$RUNE_ROOT/deploy.log"
   write_backup_at "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)"
 
   touch "$STATE/luks-open" "$STATE/mounted" "$STATE/running"
@@ -81,10 +81,10 @@ set_healthy_versions() { echo "$*" >"$STATE/healthy"; }
 # Code de sortie imposé au curl de /api/health (0 : simulation normale).
 set_health() { echo "$1" >"$STATE/health-code"; }
 
-write_deploy_env_for_test() { echo "APPSPORT_VERSION=$1" >"$APPSPORT_ROOT/deploy.env"; }
+write_deploy_env_for_test() { echo "RUNE_VERSION=$1" >"$RUNE_ROOT/deploy.env"; }
 
 write_backup_at() {
-  printf '{"backup":{"at":"%s","ok":true}}\n' "$1" >"$APPSPORT_ROOT/data/ops/status.json"
+  printf '{"backup":{"at":"%s","ok":true}}\n' "$1" >"$RUNE_ROOT/data/ops/status.json"
 }
 
 reset_calls() { : >"$CALLS"; }
@@ -144,8 +144,8 @@ refute_call_between() {
 # vérifié par le job infra sous Linux.
 assert_ops_modes() {
   if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]; then return 0; fi
-  [ "$(stat -c %a "$APPSPORT_ROOT/data/ops")" = 750 ] || { echo "data/ops n'est pas en 0750" >&2; return 1; }
-  [ "$(stat -c %a "$APPSPORT_ROOT/data/ops/status.json")" = 640 ] || { echo "status.json n'est pas en 0640" >&2; return 1; }
+  [ "$(stat -c %a "$RUNE_ROOT/data/ops")" = 750 ] || { echo "data/ops n'est pas en 0750" >&2; return 1; }
+  [ "$(stat -c %a "$RUNE_ROOT/data/ops/status.json")" = 640 ] || { echo "status.json n'est pas en 0640" >&2; return 1; }
 }
 
 count_calls() {

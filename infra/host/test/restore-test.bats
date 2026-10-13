@@ -1,23 +1,23 @@
 #!/usr/bin/env bats
-# appsport-restore-test (R-OPS-11, R-DEP-7, 08 §7) : restauration hors site dans tmp/ du volume chiffré,
+# rune-restore-test (R-OPS-11, R-DEP-7, 08 §7) : restauration hors site dans tmp/ du volume chiffré,
 # db:stats sur la copie et sur la base réelle, conteneur jetable sans réseau, restic check des deux dépôts.
 
-OFFSITE=s3:https://s3.test/appsport-backups
-IMAGE=ghcr.io/gnochance/appsport:v1.2.0
+OFFSITE=s3:https://s3.test/rune-backups
+IMAGE=ghcr.io/gnochance/rune:v1.2.0
 STAMP_RE='restore-test-[0-9]{8}T[0-9]{6}Z'
 
 setup() {
   source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
-  RESTORE_TEST="$HOST_DIR/appsport-restore-test"
-  STATUS_FILE="$APPSPORT_ROOT/data/ops/status.json"
+  RESTORE_TEST="$HOST_DIR/rune-restore-test"
+  STATUS_FILE="$RUNE_ROOT/data/ops/status.json"
 }
 
 # tmp/ du volume vidé de toute copie (le dossier lui-même peut rester).
 assert_tmp_empty() {
-  [ ! -d "$APPSPORT_ROOT/tmp" ] || [ -z "$(ls -A "$APPSPORT_ROOT/tmp")" ] || {
+  [ ! -d "$RUNE_ROOT/tmp" ] || [ -z "$(ls -A "$RUNE_ROOT/tmp")" ] || {
     echo "tmp/ non vide :" >&2
-    ls -lA "$APPSPORT_ROOT/tmp" >&2
+    ls -lA "$RUNE_ROOT/tmp" >&2
     return 1
   }
 }
@@ -27,13 +27,13 @@ assert_tmp_empty() {
   [ "$status" -eq 0 ]
   assert_calls_in_order \
     "curl * https://hc.test/restore-test/start" \
-    "restic -r $OFFSITE restore latest --tag daily --target $APPSPORT_ROOT/tmp/restore-test-* --include $APPSPORT_ROOT/data/snapshots" \
-    "chown -R 1000:1000 $APPSPORT_ROOT/tmp/restore-test-*/data" \
+    "restic -r $OFFSITE restore latest --tag daily --target $RUNE_ROOT/tmp/restore-test-* --include $RUNE_ROOT/data/snapshots" \
+    "chown -R 1000:1000 $RUNE_ROOT/tmp/restore-test-*/data" \
     "docker run --rm --network none * node /app/server.mjs db:stats" \
     "docker compose * exec -T app node /app/server.mjs db:stats" \
-    "docker run -d --name appsport-restore-test --network none --read-only --tmpfs /tmp --user 1000 *" \
-    "docker exec appsport-restore-test node -e *" \
-    "docker rm -f appsport-restore-test" \
+    "docker run -d --name rune-restore-test --network none --read-only --tmpfs /tmp --user 1000 *" \
+    "docker exec rune-restore-test node -e *" \
+    "docker rm -f rune-restore-test" \
     "restic -r $BACKUP_ROOT/restic check --read-data-subset=5%" \
     "restic -r $OFFSITE check --read-data-subset=5%" \
     "curl * https://hc.test/restore-test"
@@ -45,27 +45,27 @@ assert_tmp_empty() {
   refute_call "docker run *--env-file*"
   refute_call "docker run *app.env*"
   # Conteneur jetable sur la copie, jamais sur la base réelle : tout -v de docker run vient de la copie horodatée.
-  assert_calls_in_order "docker run -d * -v $APPSPORT_ROOT/tmp/restore-test-*/data:/data *"
-  refute_call "docker run * -v $APPSPORT_ROOT/data:/data *"
+  assert_calls_in_order "docker run -d * -v $RUNE_ROOT/tmp/restore-test-*/data:/data *"
+  refute_call "docker run * -v $RUNE_ROOT/data:/data *"
   [ "$(count_calls "docker run *")" -eq 2 ]
   grep '^docker run ' "$CALLS" >"$T/runs"
   while read -r line; do
     [[ "$line" == *" -v "* ]]
     mount=${line#* -v }
     mount=${mount%% *}
-    [[ "${mount#"$APPSPORT_ROOT/tmp/"}" =~ ^${STAMP_RE}/data:/data$ ]]
+    [[ "${mount#"$RUNE_ROOT/tmp/"}" =~ ^${STAMP_RE}/data:/data$ ]]
   done <"$T/runs"
   # Sonde : 200 exigé sur /api/health du conteneur (port 3000), échec sinon.
   assert_calls_in_order \
-    "docker exec appsport-restore-test node -e fetch('http://127.0.0.1:3000/api/health',*).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
+    "docker exec rune-restore-test node -e fetch('http://127.0.0.1:3000/api/health',*).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
   # Toute cible de restauration sous tmp/ du volume chiffré, au nom horodaté.
   grep -- '--target' "$CALLS" >"$T/targets"
   [ -s "$T/targets" ]
   while read -r line; do
     target=${line#*--target }
     target=${target%% *}
-    [[ "$target" == "$APPSPORT_ROOT/tmp/"* ]]
-    [[ "${target#"$APPSPORT_ROOT/tmp/"}" =~ ^$STAMP_RE$ ]]
+    [[ "$target" == "$RUNE_ROOT/tmp/"* ]]
+    [[ "${target#"$RUNE_ROOT/tmp/"}" =~ ^$STAMP_RE$ ]]
   done <"$T/targets"
   assert_tmp_empty
   jq -e '.restoreTest | .ok == true and .detail == "daily-20261005.db ; écart 18 h" and (.at | test("Z$"))' \
@@ -74,10 +74,10 @@ assert_tmp_empty() {
 }
 
 @test "restes d'un test interrompu (coupure) : conteneur puis copie supprimés avant la restauration" {
-  local left="$APPSPORT_ROOT/tmp/restore-test-20260101T050000Z"
+  local left="$RUNE_ROOT/tmp/restore-test-20260101T050000Z"
   mkdir -p "$left/data"
-  echo daily-20251231 >"$left/data/appsport.db"
-  on docker 'rm -f appsport-restore-test' 0 'if [ -d "$APPSPORT_ROOT/tmp/restore-test-20260101T050000Z" ]; then echo present; else echo absent; fi >>"$STATE/copy-at-rm"'
+  echo daily-20251231 >"$left/data/rune.db"
+  on docker 'rm -f rune-restore-test' 0 'if [ -d "$RUNE_ROOT/tmp/restore-test-20260101T050000Z" ]; then echo present; else echo absent; fi >>"$STATE/copy-at-rm"'
   run "$RESTORE_TEST"
   [ "$status" -eq 0 ]
   [ ! -e "$left" ]
@@ -85,7 +85,7 @@ assert_tmp_empty() {
   [ "$(head -n1 "$STATE/copy-at-rm")" = present ]
   assert_calls_in_order \
     "flock -n 9" \
-    "docker rm -f appsport-restore-test" \
+    "docker rm -f rune-restore-test" \
     "restic -r $OFFSITE restore latest *"
   assert_tmp_empty
 }
@@ -97,13 +97,13 @@ assert_tmp_empty() {
   [ "$status" -eq 1 ]
   assert_calls_in_order \
     "curl * https://hc.test/restore-test/start" \
-    "curl *--data-raw volume verrouillé : lancer appsport-unlock https://hc.test/restore-test/fail"
+    "curl *--data-raw volume verrouillé : lancer rune-unlock https://hc.test/restore-test/fail"
   refute_call "flock *"
   refute_call "restic *"
   refute_call "docker *"
   [ "$(cat "$STATUS_FILE")" = "$before" ]
   # Aucune copie sur le point de montage en clair.
-  [ ! -e "$APPSPORT_ROOT/tmp" ]
+  [ ! -e "$RUNE_ROOT/tmp" ]
 }
 
 @test "verrou occupé : code 1, motif « verrou occupé », ni restic ni docker" {
@@ -113,7 +113,7 @@ assert_tmp_empty() {
   assert_calls_in_order "flock -n 9" "curl *--data-raw verrou occupé https://hc.test/restore-test/fail"
   refute_call "restic *"
   refute_call "docker *"
-  [ ! -e "$APPSPORT_ROOT/tmp" ]
+  [ ! -e "$RUNE_ROOT/tmp" ]
   jq -e '.restoreTest | .ok == false and .detail == "verrou occupé"' "$STATUS_FILE"
 }
 
@@ -169,16 +169,16 @@ assert_tmp_empty() {
 }
 
 @test "conteneur jetable sans 200 : rm -f puis /fail, copie nettoyée" {
-  on docker 'exec appsport-restore-test *' 1
+  on docker 'exec rune-restore-test *' 1
   run "$RESTORE_TEST"
   [ "$status" -eq 1 ]
   assert_calls_in_order \
-    "docker run -d --name appsport-restore-test *" \
-    "docker exec appsport-restore-test node -e *" \
-    "docker rm -f appsport-restore-test" \
+    "docker run -d --name rune-restore-test *" \
+    "docker exec rune-restore-test node -e *" \
+    "docker rm -f rune-restore-test" \
     "curl *--data-raw conteneur jetable : api/health sans 200 https://hc.test/restore-test/fail"
   # Sondé jusqu'au délai de santé (HEALTH_TIMEOUT_S / HEALTH_POLL_S essais), pas une seule fois.
-  [ "$(count_calls "docker exec appsport-restore-test *")" -eq 4 ]
+  [ "$(count_calls "docker exec rune-restore-test *")" -eq 4 ]
   assert_tmp_empty
   jq -e '.restoreTest.ok == false' "$STATUS_FILE"
 }
@@ -198,12 +198,12 @@ assert_tmp_empty() {
 @test "TERM pendant le test : conteneur supprimé, copie nettoyée, /fail « interrompu » et restoreTest KO" {
   # Le stub est un enfant direct du script : TERM au script, traité au retour de docker run -d.
   # shellcheck disable=SC2016 # extrait évalué par le stub
-  on docker 'run -d --name appsport-restore-test *' 0 'kill -TERM "$PPID"'
+  on docker 'run -d --name rune-restore-test *' 0 'kill -TERM "$PPID"'
   run "$RESTORE_TEST"
   [ "$status" -eq 1 ]
   assert_calls_in_order \
-    "docker run -d --name appsport-restore-test *" \
-    "docker rm -f appsport-restore-test" \
+    "docker run -d --name rune-restore-test *" \
+    "docker rm -f rune-restore-test" \
     "curl *--data-raw test de restauration interrompu https://hc.test/restore-test/fail"
   [ "$(count_calls "curl * https://hc.test/restore-test/fail")" -eq 1 ]
   refute_call "curl * https://hc.test/restore-test"
@@ -215,13 +215,13 @@ assert_tmp_empty() {
 @test "SIGTERM pendant la sonde : conteneur supprimé et copie effacée par les traps, aucun succès" {
   # Arrêt du service ou extinction de l'hôte en plein test : le stub envoie TERM au script, qui sort en 1 (pas 143).
   # shellcheck disable=SC2016 # extrait évalué par le stub
-  on docker 'exec appsport-restore-test *' 0 'kill -TERM $PPID'
+  on docker 'exec rune-restore-test *' 0 'kill -TERM $PPID'
   run "$RESTORE_TEST"
   [ "$status" -eq 1 ]
   assert_calls_in_order \
-    "docker run -d --name appsport-restore-test *" \
-    "docker exec appsport-restore-test node -e *" \
-    "docker rm -f appsport-restore-test" \
+    "docker run -d --name rune-restore-test *" \
+    "docker exec rune-restore-test node -e *" \
+    "docker rm -f rune-restore-test" \
     "curl *--data-raw test de restauration interrompu https://hc.test/restore-test/fail"
   [ "$(count_calls "curl * https://hc.test/restore-test/fail")" -eq 1 ]
   refute_call "restic * check *"
@@ -230,15 +230,15 @@ assert_tmp_empty() {
 }
 
 @test "abandon par set -e après le démarrage du conteneur : trap EXIT, conteneur supprimé et copie effacée" {
-  on docker 'exec appsport-restore-test *' 1
+  on docker 'exec rune-restore-test *' 1
   export SLEEP=false
   run "$RESTORE_TEST"
   [ "$status" -eq 1 ]
   assert_calls_in_order \
-    "docker run -d --name appsport-restore-test *" \
-    "docker exec appsport-restore-test node -e *" \
-    "docker rm -f appsport-restore-test"
-  [ "$(count_calls "docker exec appsport-restore-test *")" -eq 1 ]
+    "docker run -d --name rune-restore-test *" \
+    "docker exec rune-restore-test node -e *" \
+    "docker rm -f rune-restore-test"
+  [ "$(count_calls "docker exec rune-restore-test *")" -eq 1 ]
   refute_call "curl * https://hc.test/restore-test"
   assert_tmp_empty
 }

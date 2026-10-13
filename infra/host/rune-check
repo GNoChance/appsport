@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# appsport-check (08 §9) : timer de 04:00. Disques /, $APPSPORT_ROOT et $BACKUP_ROOT au-delà de 80 %, SMART de
+# rune-check (08 §9) : timer de 04:00. Disques /, $RUNE_ROOT et $BACKUP_ROOT au-delà de 80 %, SMART de
 # chaque disque, redémarrage requis par une mise à jour ; section host de status.json (volume monté seulement),
 # puis Healthchecks host : ping, ou /fail avec les problèmes joints par « ; ». Ne prend pas le verrou.
 # Codes : 0 OK, 1 problème signalé.
@@ -30,7 +30,7 @@ has_cmd() { command -v "$1" >/dev/null 2>&1; }
 # shellcheck disable=SC2016 # variables des filtres jq, pas du shell
 main() {
   local mount pct dev type json detail="" disks='[]' smart=true restart=false ok=true
-  local -a problems=() devices=() mounts=(/ "$APPSPORT_ROOT" "$BACKUP_ROOT")
+  local -a problems=() devices=() mounts=(/ "$RUNE_ROOT" "$BACKUP_ROOT")
   require_cmds "$JQ" "$CURL"
   # df ou smartctl absent : un seul problème qui le nomme, pas une fausse alarme par disque.
   if ! has_cmd "$DF"; then

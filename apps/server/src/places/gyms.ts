@@ -10,8 +10,8 @@ import {
   type GymSummary,
   type LoadSettings,
   type UpdateGymRequest,
-} from '@appsport/contracts';
-import { normalize } from '@appsport/domain';
+} from '@rune/contracts';
+import { normalize } from '@rune/domain';
 import { sql } from 'kysely';
 import type { SessionUser } from '../app-env';
 import { logSecurityEvent } from '../auth/security-log';

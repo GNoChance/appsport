@@ -1,4 +1,4 @@
-import { defaultLoadSettings, EQUIPMENT, type GymDetail, LoadSettingsSchema } from '@appsport/contracts';
+import { defaultLoadSettings, EQUIPMENT, type GymDetail, LoadSettingsSchema } from '@rune/contracts';
 import { describe, expect, it } from 'vitest';
 import { ApiError, NetworkRequiredError } from '../../src/api/client';
 import type { MirrorRow } from '../../src/local-db/db';

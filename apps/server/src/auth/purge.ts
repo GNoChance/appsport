@@ -2,7 +2,7 @@ import {
   CLOSED_AUTH_RECORD_RETENTION_DAYS,
   SECURITY_EVENT_RETENTION_MONTHS,
   SESSION_IDLE_DAYS,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import type { DailyJob } from '../jobs/scheduler';
 
 const DAY_MS = 86_400_000;

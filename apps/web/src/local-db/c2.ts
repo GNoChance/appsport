@@ -1,4 +1,4 @@
-import { camelToSnake, type EntityRule } from '@appsport/contracts';
+import { camelToSnake, type EntityRule } from '@rune/contracts';
 
 /** Valeur de santé dans une table non C2 : colonne `c2Columns`, ou valeur `c2Values` (clé camelCase). */
 export function isC2Value(rule: EntityRule, key: string, value: unknown): boolean {

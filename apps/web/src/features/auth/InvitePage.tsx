@@ -1,5 +1,5 @@
-import type { Role } from '@appsport/contracts';
-import { formatSecretCode } from '@appsport/domain';
+import type { Role } from '@rune/contracts';
+import { formatSecretCode } from '@rune/domain';
 import { useState } from 'react';
 import { useRepos } from '../../repos';
 import { Banner, Button, CopyButton, Page } from '../../ui';
@@ -21,7 +21,7 @@ interface CheckedInvitation {
 function Welcome() {
   return (
     <p>
-      appsport est un outil de suivi entre proches, hébergé chez {OWNER_FIRST_NAME}. Ce n'est pas un service
+      Rune est un outil de suivi entre proches, hébergé chez {OWNER_FIRST_NAME}. Ce n'est pas un service
       médical.
     </p>
   );
@@ -88,7 +88,7 @@ export function InvitePage() {
   }
 
   return (
-    <Page title="Bienvenue sur appsport">
+    <Page title="Bienvenue sur Rune">
       <Welcome />
       {/* Nouvel onglet : l'adresse n'a plus le code, revenir en arrière le ferait perdre. */}
       <a href="/privacy" target="_blank" rel="noopener noreferrer">

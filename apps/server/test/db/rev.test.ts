@@ -1,4 +1,4 @@
-import { isUuidV7 } from '@appsport/domain';
+import { isUuidV7 } from '@rune/domain';
 import type { Kysely } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrate } from '../../src/db/migrate';

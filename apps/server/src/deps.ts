@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { entityRules as defaultEntityRules, type EntityRulesMap } from '@appsport/contracts';
-import { createMonotonicUuidV7 } from '@appsport/domain';
+import { entityRules as defaultEntityRules, type EntityRulesMap } from '@rune/contracts';
+import { createMonotonicUuidV7 } from '@rune/domain';
 import type { Kysely } from 'kysely';
 import type { AppConfig } from './config';
 import type { Database } from './db/schema';

@@ -7,7 +7,7 @@ import {
   GymSummary,
   LoadSettingsSchema,
   type UpdateGymRequest,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { z } from 'zod';
 import { NetworkRequiredError } from '../api/client';
 import type { AppServices } from '../app-services';

@@ -1,4 +1,4 @@
-import { RESERVED_USERNAMES, USERNAME_MAX, USERNAME_MIN } from '@appsport/contracts';
+import { RESERVED_USERNAMES, USERNAME_MAX, USERNAME_MIN } from '@rune/contracts';
 
 /** Clé de comparaison : NFKC puis minuscules. */
 export function usernameKey(username: string): string {

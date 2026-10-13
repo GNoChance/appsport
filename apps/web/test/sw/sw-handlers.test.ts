@@ -28,7 +28,7 @@ import {
 } from '../support/fake-sw-scope';
 import { createTestLocalDb } from '../support/local-db';
 
-const ORIGIN = 'https://appsport.test';
+const ORIGIN = 'https://rune.test';
 const A: PrecacheManifest = {
   buildHash: 'aaaaaaaaaaaa',
   files: ['/assets/app-1.js', '/index.html'],
@@ -120,7 +120,7 @@ async function getStatus(h: SwHandlers): Promise<unknown> {
 
 let db: AppDb | null = null;
 
-/** Base locale réelle 'appsport' (fake-indexeddb) : le SW ne doit jamais y toucher. */
+/** Base locale réelle 'rune' (fake-indexeddb) : le SW ne doit jamais y toucher. */
 async function seedLocalDb(): Promise<AppDb> {
   db = createTestLocalDb(LOCAL_DB_NAME);
   await setMeta(db, 'userId', 'u1');
@@ -214,7 +214,7 @@ describe('install', () => {
 });
 
 describe('activate', () => {
-  it('purge les anciens shell-*, ouvre illustrations-v1, clients.claim ; base appsport intacte (R-PWA-4)', async () => {
+  it('purge les anciens shell-*, ouvre illustrations-v1, clients.claim ; base rune intacte (R-PWA-4)', async () => {
     const local = await seedLocalDb();
     const s = createFakeSwScope();
     s.setNetwork(staticNetwork(A_FILES));
@@ -222,7 +222,7 @@ describe('activate', () => {
     const h = createSwHandlers(s, A);
     await h.install();
     await h.activate();
-    expect(await cacheNames(s)).toEqual([LOCAL_DB_MARKER_CACHE, ILLUSTRATIONS_CACHE, SHELL_A]);
+    expect(await cacheNames(s)).toEqual([ILLUSTRATIONS_CACHE, LOCAL_DB_MARKER_CACHE, SHELL_A]);
     expect(s.claimCalls).toBe(1);
     expect(s.skipWaitingCalls).toBe(0);
     expect(await getMeta(local, 'userId')).toBe('u1');
@@ -341,8 +341,8 @@ describe('handleFetch', () => {
       expect(sA.fetchLog).toEqual([]);
     }
     expect((await caches.keys()).sort()).toEqual([
-      LOCAL_DB_MARKER_CACHE,
       ILLUSTRATIONS_CACHE,
+      LOCAL_DB_MARKER_CACHE,
       SHELL_A,
       'shell-bbbbbbbbbbbb',
     ]);
@@ -367,8 +367,8 @@ describe('handleFetch', () => {
     expect(await bodyOf(hB.handleFetch(get('/assets/app-2.js')))).toBe('B-app');
     expect(sB.fetchLog).toEqual([]);
     expect((await caches.keys()).sort()).toEqual([
-      LOCAL_DB_MARKER_CACHE,
       ILLUSTRATIONS_CACHE,
+      LOCAL_DB_MARKER_CACHE,
       'shell-bbbbbbbbbbbb',
     ]);
   });
@@ -746,7 +746,7 @@ describe('checkKillSwitch (R-PWA-6, étapes 1 à 3 côté SW)', () => {
     expect(await h.checkKillSwitch()).toBe(true);
     expect(s.unregistered).toBe(true);
     // Le marqueur de base locale reste, comme la base qu'il décrit (ADR 0001 décision 5).
-    expect(await cacheNames(s)).toEqual([LOCAL_DB_MARKER_CACHE, 'autre']);
+    expect(await cacheNames(s)).toEqual(['autre', LOCAL_DB_MARKER_CACHE]);
     expect(s.navigations).toEqual([`${ORIGIN}/profile`]);
     // R-PWA-6 dans l'ordre : désenregistré, caches vidés, puis seulement rechargé (depuis le réseau).
     const doomed = ['illustrations-v0', ILLUSTRATIONS_CACHE, SHELL_A, 'shell-bbbbbbbbbbbb'];

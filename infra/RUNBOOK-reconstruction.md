@@ -21,10 +21,10 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 2. **Préparer un dossier privé.**
 
    ```
-   mkdir -m 700 ~/appsport-exercice && cd ~/appsport-exercice
+   mkdir -m 700 ~/rune-exercice && cd ~/rune-exercice
    ```
 
-   Résultat attendu : `ls -ld ~/appsport-exercice` affiche `drwx------`.
+   Résultat attendu : `ls -ld ~/rune-exercice` affiche `drwx------`.
 
    Sinon : choisir un autre emplacement sur un disque chiffré ; jamais un dossier partagé ou synchronisé.
 
@@ -49,7 +49,7 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
    Contenu de `b2.env` :
 
    ```
-   RESTIC_OFFSITE_REPOSITORY=s3:https://<endpoint S3 du bucket>/appsport-backups
+   RESTIC_OFFSITE_REPOSITORY=s3:https://<endpoint S3 du bucket>/rune-backups
    AWS_ACCESS_KEY_ID=<keyID de la clé B2>
    AWS_SECRET_ACCESS_KEY=<applicationKey de la clé B2>
    ```
@@ -72,20 +72,20 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 
    ```
    ( set -a; . ./b2.env; set +a; restic -r "$RESTIC_OFFSITE_REPOSITORY" --password-file restic.pass --no-cache restore latest --target restaure )
-   ls restaure/srv/appsport/data/snapshots restaure/var/lib/tailscale
-   ls restaure/srv/appsport/secrets
-   cat restaure/srv/appsport/deploy.env
+   ls restaure/srv/rune/data/snapshots restaure/var/lib/tailscale
+   ls restaure/srv/rune/secrets
+   cat restaure/srv/rune/deploy.env
    ```
 
-   Résultat attendu : des `daily-AAAAMMJJ.db`, le fichier `tailscaled.state`, les secrets `app.env`, `b2.env`, `deploy_key`, `deploy_key.pub`, `docker` et `restic.pass`, et `APPSPORT_VERSION=vX.Y.Z`.
+   Résultat attendu : des `daily-AAAAMMJJ.db`, le fichier `tailscaled.state`, les secrets `app.env`, `b2.env`, `deploy_key`, `deploy_key.pub`, `docker` et `restic.pass`, et `RUNE_VERSION=vX.Y.Z`.
 
-   Sinon : un élément manque dans la sauvegarde : écart grave, à corriger dans `appsport-backup` avant toute invitation.
+   Sinon : un élément manque dans la sauvegarde : écart grave, à corriger dans `rune-backup` avant toute invitation.
 
 7. **Récupérer l'image de la même version.** Jeton GHCR du gestionnaire (portée `read:packages`), collé quand `docker login` demande le mot de passe.
 
    ```
    docker login ghcr.io -u <compte GitHub>
-   IMAGE=ghcr.io/gnochance/appsport:vX.Y.Z
+   IMAGE=ghcr.io/gnochance/rune:vX.Y.Z
    docker pull "$IMAGE"
    ```
 
@@ -93,16 +93,16 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 
    Sinon : `unauthorized` : jeton expiré (P5) ; `manifest unknown` : vérifier la version de `deploy.env`.
 
-8. **Préparer le volume de l'exercice.** Comme `/srv/appsport/data` : instantanés avec leur date (`cp -p` : l'instant de collecte se lit dessus), sentinelle, propriétaire 1000.
+8. **Préparer le volume de l'exercice.** Comme `/srv/rune/data` : instantanés avec leur date (`cp -p` : l'instant de collecte se lit dessus), sentinelle, propriétaire 1000.
 
    ```
    mkdir -p data/snapshots data/ops
-   cp -p restaure/srv/appsport/data/snapshots/*.db data/snapshots/
-   touch data/.appsport-volume
+   cp -p restaure/srv/rune/data/snapshots/*.db data/snapshots/
+   touch data/.rune-volume
    sudo chown -R 1000:1000 data
    ```
 
-   Résultat attendu : `ls -la data` montre `.appsport-volume`, `snapshots/` et `ops/` à `1000`.
+   Résultat attendu : `ls -la data` montre `.rune-volume`, `snapshots/` et `ops/` à `1000`.
 
    Sinon : reprendre l'étape 6.
 
@@ -110,7 +110,7 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 
    ```
    date -u -d "@$(( $(stat -c %Y data/snapshots/daily-AAAAMMJJ.db) - 300 ))" +%Y-%m-%dT%H:%M:%SZ
-   RUN="docker run --rm --network none --read-only --tmpfs /tmp --user 1000 -v $PWD/data:/data -e APP_ORIGIN=https://appsport.<tailnet>.ts.net $IMAGE"
+   RUN="docker run --rm --network none --read-only --tmpfs /tmp --user 1000 -v $PWD/data:/data -e APP_ORIGIN=https://rune.<tailnet>.ts.net $IMAGE"
    $RUN node /app/server.mjs privacy:collect --since <date ISO> --source /data/snapshots/daily-AAAAMMJJ.db --out /data/ops/privacy-exercice.json
    $RUN node /app/server.mjs restore /data/snapshots/daily-AAAAMMJJ.db
    $RUN node /app/server.mjs privacy:reapply /data/ops/privacy-exercice.json
@@ -123,14 +123,14 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 10. **Démarrer l'appli et la vérifier.** Sans réseau : la santé se lit depuis le conteneur. L'appli met quelques secondes à répondre (migrations au démarrage) : la boucle réessaie pendant 2 minutes au plus, comme les scripts hôte.
 
     ```
-    docker run -d --name appsport-exercice --network none --read-only --tmpfs /tmp --user 1000 -v "$PWD/data:/data" -e APP_ORIGIN=https://appsport.<tailnet>.ts.net "$IMAGE"
-    for i in $(seq 60); do docker exec appsport-exercice node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>r.ok?r.text():Promise.reject(r.status)).then(console.log)" 2>/dev/null && break; sleep 2; done
-    docker exec appsport-exercice node /app/server.mjs db:stats
+    docker run -d --name rune-exercice --network none --read-only --tmpfs /tmp --user 1000 -v "$PWD/data:/data" -e APP_ORIGIN=https://rune.<tailnet>.ts.net "$IMAGE"
+    for i in $(seq 60); do docker exec rune-exercice node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>r.ok?r.text():Promise.reject(r.status)).then(console.log)" 2>/dev/null && break; sleep 2; done
+    docker exec rune-exercice node /app/server.mjs db:stats
     ```
 
     Résultat attendu : en 2 minutes au plus, une ligne avec `"status":"ok"` et `"version":"vX.Y.Z"` ; `db:stats` donne `"integrity":"ok"`, au moins 1 utilisateur, et une dernière écriture de moins de 24 h avant la sauvegarde.
 
-    Sinon : aucune ligne de santé au bout de 2 minutes : `docker logs appsport-exercice` ; noter l'erreur comme écart.
+    Sinon : aucune ligne de santé au bout de 2 minutes : `docker logs rune-exercice` ; noter l'erreur comme écart.
 
 11. **Vérifier l'identité Tailscale (premier exercice seulement).** La restauration de l'identité est déduite, pas vérifiée (08, Risques). Avant la première invitation, sur une machine Linux de test où Tailscale est installé mais jamais connecté : arrêter d'abord tailscaled sur le serveur (par SSH du réseau local : Tailscale SSH va couper), puis :
 
@@ -142,9 +142,9 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
     tailscale status
     ```
 
-    Résultat attendu : la machine de test apparaît comme `appsport`, avec l'adresse `100.x.y.z` du serveur, sans nouvelle connexion. Passer aussitôt à l'étape 12 : deux machines ne gardent jamais la même identité.
+    Résultat attendu : la machine de test apparaît comme `rune`, avec l'adresse `100.x.y.z` du serveur, sans nouvelle connexion. Passer aussitôt à l'étape 12 : deux machines ne gardent jamais la même identité.
 
-    Sinon : noter l'écart (P4 « Nouvelle machine » prévoit alors une nouvelle machine `appsport` et un nouveau lien de partage pour chaque proche), puis l'étape 12 quand même.
+    Sinon : noter l'écart (P4 « Nouvelle machine » prévoit alors une nouvelle machine `rune` et un nouveau lien de partage pour chaque proche), puis l'étape 12 quand même.
 
 12. **Remettre l'identité Tailscale d'origine (premier exercice seulement).** Sur la machine de test ; sans objet si l'étape 11 n'a pas été faite. Puis, sur le serveur, par SSH du réseau local : `sudo systemctl start tailscaled`.
 
@@ -156,7 +156,7 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
     tailscale status
     ```
 
-    Résultat attendu : sur la machine de test, `tailscale status` ne montre plus `appsport` comme machine locale : elle a retrouvé son propre état (son propre nom, ou « Logged out. » si elle n'avait jamais été connectée) ; dans la console Tailscale, `appsport` est de nouveau en ligne, avec son adresse habituelle.
+    Résultat attendu : sur la machine de test, `tailscale status` ne montre plus `rune` comme machine locale : elle a retrouvé son propre état (son propre nom, ou « Logged out. » si elle n'avait jamais été connectée) ; dans la console Tailscale, `rune` est de nouveau en ligne, avec son adresse habituelle.
 
     Sinon : `/var/lib/tailscale.avant-exercice` introuvable : sur la machine de test, `sudo systemctl stop tailscaled && sudo rm -rf /var/lib/tailscale` (elle repartira comme une machine neuve) ; ne jamais laisser l'identité du serveur sur une autre machine.
 
@@ -173,14 +173,14 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 14. **Détruire la copie.** Base en clair, secrets et identité Tailscale ne restent pas sur cette machine.
 
     ```
-    docker rm -f appsport-exercice
+    docker rm -f rune-exercice
     docker image rm "$IMAGE"
     docker logout ghcr.io
-    cd ~ && sudo rm -rf ~/appsport-exercice
+    cd ~ && sudo rm -rf ~/rune-exercice
     sudo test -e /var/lib/tailscale.avant-exercice && echo "Identité du serveur encore en place : étape 12."
     ```
 
-    Résultat attendu : `ls ~/appsport-exercice` répond `No such file or directory`, et la dernière commande n'affiche rien.
+    Résultat attendu : `ls ~/rune-exercice` répond `No such file or directory`, et la dernière commande n'affiche rien.
 
     Sinon : « Identité du serveur encore en place » : faire l'étape 12 ; pour le reste, supprimer à la main ce qui reste ; ne jamais garder la copie « pour plus tard ».
 

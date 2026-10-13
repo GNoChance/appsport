@@ -1,4 +1,4 @@
-import { type HealthResponse, MIN_PROTOCOL, SYNC_PROTOCOL } from '@appsport/contracts';
+import { type HealthResponse, MIN_PROTOCOL, SYNC_PROTOCOL } from '@rune/contracts';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env';
 import { getServerMeta } from '../db/server-meta';

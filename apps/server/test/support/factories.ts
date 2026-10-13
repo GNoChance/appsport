@@ -1,4 +1,4 @@
-import { camelToSnake, entityRules, rowToCamel, snakeToCamel } from '@appsport/contracts';
+import { camelToSnake, entityRules, rowToCamel, snakeToCamel } from '@rune/contracts';
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import type { Database } from '../../src/db/schema';

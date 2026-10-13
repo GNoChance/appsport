@@ -178,7 +178,7 @@ describe('ui', () => {
 
   it("HealthWarning affiche l'avertissement santé", () => {
     expect(HEALTH_WARNING_TEXT).toBe(
-      'appsport ne remplace pas un avis médical. Consultez un médecin avant de reprendre une activité si vous avez un problème de santé, et arrêtez en cas de douleur.',
+      'Rune ne remplace pas un avis médical. Consultez un médecin avant de reprendre une activité si vous avez un problème de santé, et arrêtez en cas de douleur.',
     );
     render(<HealthWarning />);
     expect(screen.getByText(HEALTH_WARNING_TEXT)).toBeTruthy();

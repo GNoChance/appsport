@@ -514,7 +514,7 @@ export function installServiceWorker(g: SwGlobalLike, manifest: PrecacheManifest
 }
 
 // Amorçage sans effet de bord hors d'un service worker (page, tests) : dans sw.js, la ligne du manifeste
-// a posé `self.__APPSPORT_PRECACHE__` avant ce code.
+// a posé `self.__RUNE_PRECACHE__` avant ce code.
 const g = globalThis as unknown as Partial<SwGlobalLike>;
 const precache = g[PRECACHE_GLOBAL];
 if (typeof g.skipWaiting === 'function' && 'registration' in g && precache) {

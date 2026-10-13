@@ -13,7 +13,7 @@ if (!input) {
 
 const header = [
   '# Source: SecLists, Passwords/Common-Credentials/10k-most-common.txt (https://github.com/danielmiessler/SecLists)',
-  '# Licence : MIT, Copyright (c) Daniel Miessler. Converti en minuscules et dédoublonné pour appsport.',
+  '# Licence : MIT, Copyright (c) Daniel Miessler. Converti en minuscules et dédoublonné pour Rune.',
 ];
 const entries = new Set();
 for (const line of readFileSync(input, 'utf8').split(/\r?\n/)) {

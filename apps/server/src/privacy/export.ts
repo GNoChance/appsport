@@ -1,4 +1,4 @@
-import { type EntityRule, EXPORT_FORMAT, type ExportV1, rowToCamel } from '@appsport/contracts';
+import { type EntityRule, EXPORT_FORMAT, type ExportV1, rowToCamel } from '@rune/contracts';
 import { type RawBuilder, sql } from 'kysely';
 import type { DbExecutor } from '../db/schema';
 import type { AppDeps } from '../deps';
@@ -23,7 +23,7 @@ async function select(
 }
 
 /**
- * Export `appsport-export/1` (R-EXP-1) : le compte, puis chaque table `exported` du registre dont la
+ * Export `rune-export/1` (R-EXP-1) : le compte, puis chaque table `exported` du registre dont la
  * colonne propriétaire est `owner_id` ou `user_id`, sans colonne secrète ; les sessions n'en font
  * pas partie (R-EXP-2). Les salles sont celles d'un lieu de l'utilisateur (supprimé compris), créées
  * par lui ou dont il a écrit l'historique.

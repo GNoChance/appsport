@@ -1,4 +1,4 @@
-import { BOOTSTRAP_INVITATION_TTL_HOURS } from '@appsport/contracts';
+import { BOOTSTRAP_INVITATION_TTL_HOURS } from '@rune/contracts';
 import type { AppDeps } from '../deps';
 import { httpError } from '../http/errors';
 import { createInvitation } from './invitations';

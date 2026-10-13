@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { SYNC_FIXTURE_RULES } from '@appsport/server/testing';
+import { SYNC_FIXTURE_RULES } from '@rune/server/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppDb } from '../../src/local-db/db';
 import { getMeta, setMeta } from '../../src/local-db/meta';

@@ -1,4 +1,4 @@
-import type { PlaceKind } from '@appsport/contracts';
+import type { PlaceKind } from '@rune/contracts';
 import { ChoiceList } from '../../ui';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
 import { StepTitle } from './StepTitle';

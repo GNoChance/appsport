@@ -8,7 +8,7 @@ import {
   PRESET_IDS,
   PRESETS,
   type PresetId,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { type ReactNode, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useRepos } from '../../repos';

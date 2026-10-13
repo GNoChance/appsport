@@ -1,4 +1,4 @@
-import { createMonotonicUuidV7 } from '@appsport/domain';
+import { createMonotonicUuidV7 } from '@rune/domain';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Router } from 'wouter';

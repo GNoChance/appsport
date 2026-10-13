@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# appsport-restore-test (R-OPS-11, R-DEP-7, 08 §7) : timer du 1er dimanche du mois à 05:00.
-# 1. restaure le dernier daily hors site dans $APPSPORT_ROOT/tmp/restore-test-<AAAAMMJJTHHMMSSZ>/ (volume chiffré,
+# rune-restore-test (R-OPS-11, R-DEP-7, 08 §7) : timer du 1er dimanche du mois à 05:00.
+# 1. restaure le dernier daily hors site dans $RUNE_ROOT/tmp/restore-test-<AAAAMMJJTHHMMSSZ>/ (volume chiffré,
 #    jamais le disque en clair) ; 2. db:stats sur une copie du plus récent (intégrité, au moins un utilisateur) dans
 #    un conteneur sans réseau ; 3. base réelle intègre, retard de la copie sur elle de 48 h au plus ; 4. conteneur
 #    jetable de la même image, sans réseau ni secret, qui doit répondre 200 sur /api/health ; 5. restic check
@@ -10,7 +10,7 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib/common.sh
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
-CONTAINER=appsport-restore-test
+CONTAINER=rune-restore-test
 MAX_LAG_S=172800
 # Base réelle en deçà de la copie : impossible sans restauration (horodatages de l'horloge du serveur), sauf horloge
 # recalée de quelques minutes.
@@ -114,30 +114,30 @@ main() {
   local -a problems=()
   require_cmds "$JQ" "$FLOCK" "$RESTIC" "$CURL"
   hc_ping restore-test start || log "Avertissement : début non signalé à Healthchecks."
-  volume_ready || fail "volume verrouillé : lancer appsport-unlock"
+  volume_ready || fail "volume verrouillé : lancer rune-unlock"
   take_lock || fail "verrou occupé"
   trap cleanup EXIT
   trap 'fail "test de restauration interrompu"' INT TERM HUP
   if ! version=$(current_version) || ! valid_version "$version"; then
     fail "version en place illisible dans deploy.env"
   fi
-  image="ghcr.io/gnochance/appsport:$version"
+  image="ghcr.io/gnochance/rune:$version"
 
-  # Conteneur et copies d'un test interrompu (coupure) : supprimés avant tout (appsport-backup le fait aussi
+  # Conteneur et copies d'un test interrompu (coupure) : supprimés avant tout (rune-backup le fait aussi
   # chaque nuit).
-  if ! (umask 077 && mkdir -p "$APPSPORT_ROOT/tmp") || ! purge_restore_test_leftovers; then
+  if ! (umask 077 && mkdir -p "$RUNE_ROOT/tmp") || ! purge_restore_test_leftovers; then
     fail "dossier tmp du volume inutilisable"
   fi
-  RT_DIR="$APPSPORT_ROOT/tmp/restore-test-$(date -u +%Y%m%dT%H%M%SZ)"
+  RT_DIR="$RUNE_ROOT/tmp/restore-test-$(date -u +%Y%m%dT%H%M%SZ)"
   (umask 077 && mkdir "$RT_DIR") || fail "copie de test impossible à créer"
 
-  restic_on offsite restore latest --tag daily --target "$RT_DIR" --include "$APPSPORT_ROOT/data/snapshots" >&2 ||
+  restic_on offsite restore latest --tag daily --target "$RT_DIR" --include "$RUNE_ROOT/data/snapshots" >&2 ||
     fail "restauration offsite impossible"
-  daily=$(latest_daily "$RT_DIR$APPSPORT_ROOT/data/snapshots") ||
+  daily=$(latest_daily "$RT_DIR$RUNE_ROOT/data/snapshots") ||
     fail "aucun instantané daily dans la sauvegarde offsite"
-  # Copie en data/appsport.db avec sentinelle, au conteneur (utilisateur 1000) : WAL et migrations y écrivent.
-  if ! (umask 077 && mkdir "$RT_DIR/data") || ! cp -- "$daily" "$RT_DIR/data/appsport.db" ||
-    ! : >"$RT_DIR/data/.appsport-volume" || ! "$CHOWN" -R 1000:1000 "$RT_DIR/data"; then
+  # Copie en data/rune.db avec sentinelle, au conteneur (utilisateur 1000) : WAL et migrations y écrivent.
+  if ! (umask 077 && mkdir "$RT_DIR/data") || ! cp -- "$daily" "$RT_DIR/data/rune.db" ||
+    ! : >"$RT_DIR/data/.rune-volume" || ! "$CHOWN" -R 1000:1000 "$RT_DIR/data"; then
     fail "copie de test impossible à préparer"
   fi
 

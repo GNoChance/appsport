@@ -5,7 +5,7 @@ import {
   type EquipmentCode,
   HOME_PLACE_DEFAULT_NAME,
   type UpdatePlaceRequest,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import type { SessionUser } from '../app-env';
 import { writeStamp } from '../db/rev';
 import type { DbExecutor } from '../db/schema';

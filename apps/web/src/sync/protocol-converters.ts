@@ -1,4 +1,4 @@
-import { SYNC_PROTOCOL } from '@appsport/contracts';
+import { SYNC_PROTOCOL } from '@rune/contracts';
 import type { OutboxOp } from '../local-db/db';
 
 /** Maillon p → p + 1 d'une op restée dans l'outbox (R-VER-4) ; aucun en v1. */

@@ -6,7 +6,7 @@ import {
   type InvitationSummary,
   MIN_AGE,
   PRIVACY_POLICY_VERSION,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import {
   ageOn,
   parisDate,
@@ -14,7 +14,7 @@ import {
   usernameKey,
   validatePassword,
   validateUsername,
-} from '@appsport/domain';
+} from '@rune/domain';
 import { writeStamp } from '../db/rev';
 import type { DbExecutor } from '../db/schema';
 import type { AppDeps } from '../deps';

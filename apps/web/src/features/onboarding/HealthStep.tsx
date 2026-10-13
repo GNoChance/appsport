@@ -5,7 +5,7 @@ import {
   type LimitationSeverity,
   type LimitationSide,
   type TrainingProfilePatch,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';

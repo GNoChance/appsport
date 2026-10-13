@@ -1,4 +1,4 @@
-import { formatSecretCode, parseSecretCode } from '@appsport/domain';
+import { formatSecretCode, parseSecretCode } from '@rune/domain';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Banner, Button, Field } from '../../ui';
 import styles from './auth.module.css';

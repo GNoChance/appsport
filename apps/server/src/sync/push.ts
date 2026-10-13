@@ -8,8 +8,8 @@ import {
   SYNC_PROTOCOL,
   SyncOp,
   snakeToCamel,
-} from '@appsport/contracts';
-import { isUuidV7 } from '@appsport/domain';
+} from '@rune/contracts';
+import { isUuidV7 } from '@rune/domain';
 import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { SessionUser } from '../app-env';

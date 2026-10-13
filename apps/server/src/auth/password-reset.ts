@@ -3,8 +3,8 @@ import {
   type ResetCheckResponse,
   type ResetLinkResponse,
   type ResetPasswordRequest,
-} from '@appsport/contracts';
-import { parseSecretCode, validatePassword } from '@appsport/domain';
+} from '@rune/contracts';
+import { parseSecretCode, validatePassword } from '@rune/domain';
 import type { DbExecutor } from '../db/schema';
 import type { AppDeps } from '../deps';
 import { httpError } from '../http/errors';

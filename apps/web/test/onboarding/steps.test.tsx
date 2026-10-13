@@ -1,4 +1,4 @@
-import { EQUIPMENT, EQUIPMENT_LABELS, PRESETS, SPORTS } from '@appsport/contracts';
+import { EQUIPMENT, EQUIPMENT_LABELS, PRESETS, SPORTS } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { type ReactElement, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';

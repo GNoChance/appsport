@@ -1,4 +1,4 @@
-import { entityRules, HEALTH_CONSENT_TEXT, mirroredTables, snakeToCamel } from '@appsport/contracts';
+import { entityRules, HEALTH_CONSENT_TEXT, mirroredTables, snakeToCamel } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { grantConsent } from '../../src/privacy/consent';
 import { deleteAccount } from '../../src/privacy/delete-account';

@@ -1,7 +1,7 @@
 # shellcheck shell=bash
-# Comportements par défaut des stubs (stub.sh) : un hôte appsport simulé dans $STATE. T44 l'étend.
+# Comportements par défaut des stubs (stub.sh) : un hôte Rune simulé dans $STATE. T44 l'étend.
 #   luks-open, mounted, running : volume ouvert, monté, service app en marche ;
-#   image : version de l'image en marche (APPSPORT_VERSION du shell, sinon deploy.env, lue par `compose up`) ;
+#   image : version de l'image en marche (RUNE_VERSION du shell, sinon deploy.env, lue par `compose up`) ;
 #   healthy : versions saines (« v » ; « v@restored » : saine tant qu'aucune autre version n'a démarré, schéma
 #   non migré, puis seulement après `restore`) ; started : versions démarrées par `compose up` ;
 #   health-code : code de sortie imposé au curl de santé (set_health) ;
@@ -15,7 +15,7 @@ DB_STATS_LIVE='{"integrity":"ok","users":2,"syncCounter":52,"lastWriteAt":"2026-
 DB_STATS_COPY='{"integrity":"ok","users":2,"syncCounter":40,"lastWriteAt":"2026-10-05T01:30:00.000Z"}'
 
 # Chemin sur l'hôte d'un chemin /data/… du conteneur.
-host_data_path() { printf '%s\n' "$APPSPORT_ROOT/data${1#/data}"; }
+host_data_path() { printf '%s\n' "$RUNE_ROOT/data${1#/data}"; }
 
 # Commande CLI de server.mjs dans le conteneur (exec -T ou run --rm --no-deps).
 default_server_cli() {
@@ -27,8 +27,8 @@ default_server_cli() {
       ;;
     snapshot)
       # snapshot --tag pre-vX.Y.Z
-      mkdir -p "$APPSPORT_ROOT/data/snapshots"
-      : >"$APPSPORT_ROOT/data/snapshots/$2.db"
+      mkdir -p "$RUNE_ROOT/data/snapshots"
+      : >"$RUNE_ROOT/data/snapshots/$2.db"
       ;;
     restore)
       [ -f "$(host_data_path "$1")" ] || return 1
@@ -53,7 +53,7 @@ default_server_cli() {
   esac
 }
 
-# docker run hors compose (appsport-restore-test) : -d → conteneur jetable démarré (identifiant affiché) ;
+# docker run hors compose (rune-restore-test) : -d → conteneur jetable démarré (identifiant affiché) ;
 # sinon db:stats sur le dossier monté en /data, qui doit contenir la copie et la sentinelle.
 default_docker_run() {
   local arg prev="" src=""
@@ -66,8 +66,8 @@ default_docker_run() {
     prev=$arg
   done
   [ "${*: -1}" = db:stats ] || return 0
-  [ -n "$src" ] && [ -f "$src/appsport.db" ] && [ -f "$src/.appsport-volume" ] || return 1
-  cat "$src/appsport.db" >"$STATE/db-stats-source"
+  [ -n "$src" ] && [ -f "$src/rune.db" ] && [ -f "$src/.rune-volume" ] || return 1
+  cat "$src/rune.db" >"$STATE/db-stats-source"
   if [ -f "$STATE/db-stats-copy" ]; then cat "$STATE/db-stats-copy"; else echo "$DB_STATS_COPY"; fi
 }
 
@@ -95,8 +95,8 @@ default_docker() {
       ;;
     up)
       # Comme compose : une variable du shell l'emporte sur --env-file (une fuite démarre une autre image).
-      printf '%s\n' "${APPSPORT_VERSION-unset}" >>"$STATE/up-env"
-      printf '%s\n' "${APPSPORT_VERSION:-$(sed -n 's/^APPSPORT_VERSION=//p' "$APPSPORT_ROOT/deploy.env")}" \
+      printf '%s\n' "${RUNE_VERSION-unset}" >>"$STATE/up-env"
+      printf '%s\n' "${RUNE_VERSION:-$(sed -n 's/^RUNE_VERSION=//p' "$RUNE_ROOT/deploy.env")}" \
         >"$STATE/image"
       cat "$STATE/image" >>"$STATE/started"
       touch "$STATE/running"
@@ -105,7 +105,7 @@ default_docker() {
       rm -f "$STATE/running"
       ;;
     pull)
-      printf '%s\n' "${APPSPORT_VERSION-unset}" >"$STATE/pulled"
+      printf '%s\n' "${RUNE_VERSION-unset}" >"$STATE/pulled"
       ;;
     exec | run)
       while [ $# -gt 0 ] && [ "$1" != /app/server.mjs ]; do shift; done
@@ -134,7 +134,7 @@ health_ok() {
   return 1
 }
 
-# Santé locale (HEALTH_URL) ou par l'URL *.ts.net (appsport-alive) : même simulation.
+# Santé locale (HEALTH_URL) ou par l'URL *.ts.net (rune-alive) : même simulation.
 default_curl() {
   local last=${*: -1}
   [ "$last" = "$HEALTH_URL" ] || [[ "$last" == https://*/api/health ]] || return 0
@@ -208,7 +208,7 @@ default_flock() {
   local fd=${*: -1} want
   case $fd in
     9) want=$LOCK_FILE ;;
-    8) want=$APPSPORT_ROOT/.ops-tmp/status.lock ;;
+    8) want=$RUNE_ROOT/.ops-tmp/status.lock ;;
     *)
       echo "flock: $fd: descripteur inattendu" >&2
       return 1

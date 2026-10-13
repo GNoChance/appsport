@@ -1,4 +1,4 @@
-import { HELP_RESOURCES } from '@appsport/contracts';
+import { HELP_RESOURCES } from '@rune/contracts';
 import { formatDate, Page } from '../../ui';
 import styles from './public.module.css';
 

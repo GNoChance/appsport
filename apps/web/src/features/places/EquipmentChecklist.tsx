@@ -5,7 +5,7 @@ import {
   EQUIPMENT_LABELS,
   type EquipmentCategory,
   type EquipmentCode,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import styles from './places.module.css';
 
 const CATEGORIES = Object.keys(EQUIPMENT_CATEGORIES) as EquipmentCategory[];

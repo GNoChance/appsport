@@ -14,7 +14,7 @@ import {
   type LimitationSide,
   MeResponse,
   majorOf,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import type { AppServices } from '../app-services';
 import { getMeta, setMeta } from '../local-db/meta';
 import { purgeHealthData } from '../local-db/wipe';

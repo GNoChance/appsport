@@ -1,4 +1,4 @@
-import { SYNC_INTERVAL_MS } from '@appsport/contracts';
+import { SYNC_INTERVAL_MS } from '@rune/contracts';
 import type { SyncEngine } from './engine';
 
 /**

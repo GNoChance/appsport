@@ -99,8 +99,8 @@ describe('proxy E2E : relais', () => {
  * `process.exit(0)` dès qu'il lit une ligne (sortie sans `close()`), ou meurt tué net.
  */
 function startWorker(): Promise<{ worker: ChildProcess; pids: number[]; dataDir: string }> {
-  const publicDir = mkdtempSync(join(tmpdir(), 'appsport-e2e-public-'));
-  writeFileSync(join(publicDir, 'index.html'), '<!doctype html><title>appsport</title>');
+  const publicDir = mkdtempSync(join(tmpdir(), 'rune-e2e-public-'));
+  writeFileSync(join(publicDir, 'index.html'), '<!doctype html><title>Rune</title>');
   cleanups.push(() => rmSync(publicDir, { recursive: true, force: true }));
   const code = [
     `import { livePids, startE2EServer } from ${JSON.stringify(pathToFileURL(SERVER_TS).href)};`,

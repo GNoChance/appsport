@@ -28,7 +28,7 @@ const PHRASE = 'cheval agrafe batterie correcte';
 const ASK = "Demande un nouveau code à l'administrateur.";
 const CHECK = '/api/invitations/check';
 const ACCEPT = '/api/invitations/accept';
-const WELCOME = `appsport est un outil de suivi entre proches, hébergé chez ${OWNER_FIRST_NAME}. Ce n'est pas un service médical.`;
+const WELCOME = `Rune est un outil de suivi entre proches, hébergé chez ${OWNER_FIRST_NAME}. Ce n'est pas un service médical.`;
 const INCOMPLETE = 'Code incomplet : il faut 16 caractères.';
 
 const reply = (body: unknown, status = 200) => ({ status, body });
@@ -291,7 +291,7 @@ describe('saisie du code (R-INV-5, 02 §15 n°3)', () => {
 
   it('lien complet collé', async () => {
     const { api } = await renderInvite();
-    fill("Lien ou code d'invitation", 'https://appsport.exemple.ts.net/invite#abcd-efgh-jkmn-pqrs');
+    fill("Lien ou code d'invitation", 'https://rune.exemple.ts.net/invite#abcd-efgh-jkmn-pqrs');
     click('Suivant');
     await screen.findByLabelText('Date de naissance');
     expect(callsTo(api, CHECK)[0]?.body).toEqual({ code: OTHER_CODE });

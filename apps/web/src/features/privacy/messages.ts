@@ -1,4 +1,4 @@
-import type { ApiErrorCode } from '@appsport/contracts';
+import type { ApiErrorCode } from '@rune/contracts';
 import { ApiError } from '../../api/client';
 import { errorMessage } from '../../ui';
 import { loginErrorMessage } from '../auth/messages';
@@ -13,9 +13,9 @@ export const WITHDRAWN_TEXT = 'Accord retiré. Tes données de santé ont été 
 export const DELETE_LIST_TEXT =
   "Ton compte, ton profil, tes lieux, tes données de santé et l'historique de tes accords seront supprimés. Les salles restent : tu y apparaîtras comme « ancien membre ». Le journal de sécurité est gardé 12 mois et les sauvegardes 30 jours au plus.";
 
-/** P-DRT-6 : appsport ne peut pas déclencher l'effacement chez Anthropic. */
+/** P-DRT-6 : Rune ne peut pas déclencher l'effacement chez Anthropic. */
 export const ANTHROPIC_RETENTION_TEXT =
-  "Si tu as utilisé le coach, appsport ne peut pas faire effacer tes échanges chez Anthropic : ils y sont effacés sous 30 jours, ou gardés jusqu'à 2 ans si ses filtres de sécurité en ont signalé un.";
+  "Si tu as utilisé le coach, Rune ne peut pas faire effacer tes échanges chez Anthropic : ils y sont effacés sous 30 jours, ou gardés jusqu'à 2 ans si ses filtres de sécurité en ont signalé un.";
 
 const PASSWORD_ERRORS: Partial<Record<ApiErrorCode, string>> = {
   invalid_credentials: 'Mot de passe incorrect.',

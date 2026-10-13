@@ -1,23 +1,23 @@
 #!/usr/bin/env bats
-# appsport-unlock (R-OPS-6, R-DEP-6, 08 §3) : toutes les commandes de l'hôte sont des stubs (helpers.bash).
+# rune-unlock (R-OPS-6, R-DEP-6, 08 §3) : toutes les commandes de l'hôte sont des stubs (helpers.bash).
 
-LUKS_DEVICE=/dev/disk/by-partlabel/appsport-data
+LUKS_DEVICE=/dev/disk/by-partlabel/rune-data
 HEALTH=http://127.0.0.1:3000/api/health
 
 setup() {
   source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
-  UNLOCK="$HOST_DIR/appsport-unlock"
+  UNLOCK="$HOST_DIR/rune-unlock"
 }
 
 @test "volume verrouillé : ouverture, montage, Docker, compose, santé, OK puis ping alive" {
   rm -f "$STATE/luks-open" "$STATE/mounted" "$STATE/running"
   run "$UNLOCK"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"OK : appsport répond (version v1.2.0)."* ]]
+  [[ "$output" == *"OK : Rune répond (version v1.2.0)."* ]]
   assert_calls_in_order \
-    "cryptsetup open $LUKS_DEVICE appsport" \
-    "mount $APPSPORT_ROOT" \
+    "cryptsetup open $LUKS_DEVICE rune" \
+    "mount $RUNE_ROOT" \
     "systemctl start docker" \
     "docker compose * up -d" \
     "curl *$HEALTH" \
@@ -27,19 +27,19 @@ setup() {
 @test "volume déjà ouvert et monté : ni cryptsetup open ni mount (idempotent)" {
   run "$UNLOCK"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"OK : appsport répond (version v1.2.0)."* ]]
+  [[ "$output" == *"OK : Rune répond (version v1.2.0)."* ]]
   refute_call "cryptsetup open *"
   refute_call "mount *"
   assert_calls_in_order "systemctl start docker" "docker compose * up -d" "curl * https://hc.test/alive"
 }
 
 @test "sentinelle absente : KO, pas de up -d, ping alive/fail avec le motif" {
-  rm -f "$APPSPORT_ROOT/data/.appsport-volume"
+  rm -f "$RUNE_ROOT/data/.rune-volume"
   # R-OPS-6 étape 5 : KO affiché d'abord, ping ensuite (Healthchecks injoignable : curl peut bloquer 40 s).
   on curl '* https://hc.test/alive/fail' 0 'echo PING-ALIVE-FAIL >&2'
   run "$UNLOCK"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"KO : sentinelle absente, ce n'est pas le volume appsport."*PING-ALIVE-FAIL* ]]
+  [[ "$output" == *"KO : sentinelle absente, ce n'est pas le volume rune."*PING-ALIVE-FAIL* ]]
   refute_call "docker compose * up -d"
   assert_calls_in_order "curl *sentinelle* https://hc.test/alive/fail"
   refute_call "curl * https://hc.test/alive"
@@ -80,19 +80,19 @@ setup() {
 }
 
 @test "sauvegarde de la nuit manquée (absente ou de plus de 24 h) : relancée après OK, jamais sinon" {
-  local status_file="$APPSPORT_ROOT/data/ops/status.json"
+  local status_file="$RUNE_ROOT/data/ops/status.json"
 
   echo '{}' >"$status_file"
   run "$UNLOCK"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"OK : appsport répond"* ]]
-  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-backup.service"
+  [[ "$output" == *"OK : Rune répond"* ]]
+  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block rune-backup.service"
 
   reset_calls
   write_backup_at "$(date -u -d '-25 hours' +%Y-%m-%dT%H:%M:%SZ)"
   run "$UNLOCK"
   [ "$status" -eq 0 ]
-  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-backup.service"
+  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block rune-backup.service"
 
   reset_calls
   write_status_at "$(date -u -d '-23 hours' +%Y-%m-%dT%H:%M:%SZ)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -103,17 +103,17 @@ setup() {
 
 @test "sauvegarde de la nuit en échec (ok false, at récent) : relancée après OK" {
   printf '{"backup":{"at":"%s","ok":false,"detail":"sauvegarde offsite en échec"}}\n' \
-    "$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%SZ)" >"$APPSPORT_ROOT/data/ops/status.json"
+    "$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%SZ)" >"$RUNE_ROOT/data/ops/status.json"
   run "$UNLOCK"
   [ "$status" -eq 0 ]
-  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-backup.service"
+  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block rune-backup.service"
 }
 
 # write_status_at <backup.at> <restoreTest.at|""> : status.json, sans section restoreTest si la date est vide.
 write_status_at() {
   jq -cn --arg b "$1" --arg r "$2" \
     '{backup: {at: $b, ok: true}} + (if $r == "" then {} else {restoreTest: {at: $r, ok: true}} end)' \
-    >"$APPSPORT_ROOT/data/ops/status.json"
+    >"$RUNE_ROOT/data/ops/status.json"
 }
 
 # fake_now <date GNU> : date sans -d répond à cette heure (UTC) ; date -d reste la vraie commande.
@@ -142,8 +142,8 @@ EOF
   write_status_at 2026-10-04T05:00:00Z 2026-09-06T05:40:00Z
   run "$UNLOCK"
   [ "$status" -eq 0 ]
-  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-restore-test.service"
-  refute_call "systemctl start --no-block appsport-backup.service"
+  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block rune-restore-test.service"
+  refute_call "systemctl start --no-block rune-backup.service"
 
   # Test du mois fait après le créneau : rien à relancer.
   reset_calls
@@ -161,13 +161,13 @@ EOF
   refute_call "systemctl start --no-block *"
 
   # Jamais fait (première installation) avec la sauvegarde manquée : sauvegarde d'abord, test ensuite
-  # (After=appsport-backup.service les ordonne, le verrou exclusif ne les met pas en conflit).
+  # (After=rune-backup.service les ordonne, le verrou exclusif ne les met pas en conflit).
   reset_calls
-  echo '{}' >"$APPSPORT_ROOT/data/ops/status.json"
+  echo '{}' >"$RUNE_ROOT/data/ops/status.json"
   run "$UNLOCK"
   [ "$status" -eq 0 ]
-  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block appsport-backup.service" \
-    "systemctl start --no-block appsport-restore-test.service"
+  assert_calls_in_order "curl * https://hc.test/alive" "systemctl start --no-block rune-backup.service" \
+    "systemctl start --no-block rune-restore-test.service"
 }
 
 @test "lancé par un lien symbolique (/usr/local/sbin) : common.sh trouvé, OK" {
@@ -175,8 +175,8 @@ EOF
     skip "liens symboliques non fiables sous Windows : vérifié par le job infra"
   fi
   mkdir -p "$T/sbin"
-  ln -s "$UNLOCK" "$T/sbin/appsport-unlock"
-  run "$T/sbin/appsport-unlock"
+  ln -s "$UNLOCK" "$T/sbin/rune-unlock"
+  run "$T/sbin/rune-unlock"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"OK : appsport répond (version v1.2.0)."* ]]
+  [[ "$output" == *"OK : Rune répond (version v1.2.0)."* ]]
 }

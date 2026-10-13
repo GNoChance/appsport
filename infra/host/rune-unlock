@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# appsport-unlock (R-OPS-6, R-DEP-6) : après un redémarrage, via Tailscale SSH : sudo appsport-unlock.
-# Idempotent : ouvre le volume LUKS si besoin, le monte, démarre Docker et appsport, attend /api/health
+# rune-unlock (R-OPS-6, R-DEP-6) : après un redémarrage, via Tailscale SSH : sudo rune-unlock.
+# Idempotent : ouvre le volume LUKS si besoin, le monte, démarre Docker et Rune, attend /api/health
 # (2 min au plus), affiche OK ou KO, pingue alive et relance la sauvegarde de la nuit, puis le test de restauration
 # du mois, s'ils ont été manqués.
 # Codes : 0 OK, 1 KO.
@@ -22,14 +22,14 @@ ko() {
 # ou sauvegarde en échec : son at récent ne compte pas).
 backup_missed() {
   local at at_s
-  at=$("$JQ" -r '(.backup | select(.ok == true) | .at) // ""' "$APPSPORT_ROOT/data/ops/status.json" 2>/dev/null) ||
+  at=$("$JQ" -r '(.backup | select(.ok == true) | .at) // ""' "$RUNE_ROOT/data/ops/status.json" 2>/dev/null) ||
     return 0
   [ -n "$at" ] || return 0
   at_s=$(date -u -d "$at" +%s 2>/dev/null) || return 0
   [ $(($(date -u +%s) - at_s)) -gt 86400 ]
 }
 
-# Dernier créneau passé du timer appsport-restore-test (Sun *-*-01..07 05:00:00, heure locale), en secondes.
+# Dernier créneau passé du timer rune-restore-test (Sun *-*-01..07 05:00:00, heure locale), en secondes.
 last_restore_test_slot() {
   local now i month dow slot
   now=$(date +%s)
@@ -50,7 +50,7 @@ last_restore_test_slot() {
 restore_test_missed() {
   local slot at at_s
   slot=$(last_restore_test_slot) || return 1
-  at=$("$JQ" -r '.restoreTest.at // ""' "$APPSPORT_ROOT/data/ops/status.json" 2>/dev/null) || return 0
+  at=$("$JQ" -r '.restoreTest.at // ""' "$RUNE_ROOT/data/ops/status.json" 2>/dev/null) || return 0
   [ -n "$at" ] || return 0
   at_s=$(date -u -d "$at" +%s 2>/dev/null) || return 0
   [ "$at_s" -lt "$slot" ]
@@ -62,9 +62,9 @@ main() {
     "$CRYPTSETUP" open "$LUKS_DEVICE" "$LUKS_NAME" || die "Phrase refusée."
   fi
   if ! volume_mounted; then
-    "$MOUNT" "$APPSPORT_ROOT" || ko "montage de $APPSPORT_ROOT impossible." "montage impossible"
+    "$MOUNT" "$RUNE_ROOT" || ko "montage de $RUNE_ROOT impossible." "montage impossible"
   fi
-  sentinel_present || ko "sentinelle absente, ce n'est pas le volume appsport." "sentinelle absente"
+  sentinel_present || ko "sentinelle absente, ce n'est pas le volume rune." "sentinelle absente"
   "$SYSTEMCTL" start docker || ko "Docker ne démarre pas (voir P8)." "docker ne demarre pas"
   # Base restaurée sans privacy:reapply : ne pas la servir (03 §8) ; Docker reste démarré pour P4.
   if reapply_pending; then
@@ -73,17 +73,17 @@ main() {
   compose up -d || ko "docker compose up -d a échoué (voir P8)." "compose up en echec"
   # shellcheck disable=SC2119 # sans version : toute version saine convient
   wait_health || ko "/api/health ne répond pas 200 après 2 min (voir P8)." "api/health ne repond pas 200"
-  log "OK : appsport répond (version $HEALTH_VERSION)."
+  log "OK : Rune répond (version $HEALTH_VERSION)."
   hc_ping alive || log "Avertissement : ping alive non reçu par Healthchecks."
   if backup_missed; then
-    log "Sauvegarde de la nuit manquée : relance de appsport-backup."
-    "$SYSTEMCTL" start --no-block appsport-backup.service || log "Avertissement : relance de appsport-backup impossible."
+    log "Sauvegarde de la nuit manquée : relance de rune-backup."
+    "$SYSTEMCTL" start --no-block rune-backup.service || log "Avertissement : relance de rune-backup impossible."
   fi
-  # Après la sauvegarde éventuelle : After=appsport-backup.service attend sa fin (verrou exclusif).
+  # Après la sauvegarde éventuelle : After=rune-backup.service attend sa fin (verrou exclusif).
   if restore_test_missed; then
-    log "Test de restauration du mois manqué : relance de appsport-restore-test."
-    "$SYSTEMCTL" start --no-block appsport-restore-test.service ||
-      log "Avertissement : relance de appsport-restore-test impossible."
+    log "Test de restauration du mois manqué : relance de rune-restore-test."
+    "$SYSTEMCTL" start --no-block rune-restore-test.service ||
+      log "Avertissement : relance de rune-restore-test impossible."
   fi
   return 0
 }

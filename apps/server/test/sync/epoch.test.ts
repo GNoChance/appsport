@@ -1,5 +1,5 @@
-import { EPOCH_HEADER, encodeWatermark } from '@appsport/contracts';
-import { isUuidV7 } from '@appsport/domain';
+import { EPOCH_HEADER, encodeWatermark } from '@rune/contracts';
+import { isUuidV7 } from '@rune/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
 import { getServerMeta } from '../../src/db/server-meta';

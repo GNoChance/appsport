@@ -1,6 +1,6 @@
 # Toutes les 5 min (08 §9) ; un passage manqué pendant un arrêt n'est pas rattrapé.
 [Unit]
-Description=Timer de appsport-alive
+Description=Timer de rune-alive
 
 [Timer]
 OnCalendar=*:0/5

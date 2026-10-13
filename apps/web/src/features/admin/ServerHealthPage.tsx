@@ -1,4 +1,4 @@
-import type { OpsStatus, OpsStatusResponse } from '@appsport/contracts';
+import type { OpsStatus, OpsStatusResponse } from '@rune/contracts';
 import { useCallback, useId } from 'react';
 import { useServices } from '../../app-services';
 import { useRepos } from '../../repos';

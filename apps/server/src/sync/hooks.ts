@@ -1,4 +1,4 @@
-import type { SyncOp } from '@appsport/contracts';
+import type { SyncOp } from '@rune/contracts';
 import type { Transaction } from 'kysely';
 import type { Database } from '../db/schema';
 import type { AppDeps } from '../deps';

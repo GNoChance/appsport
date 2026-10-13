@@ -1,4 +1,4 @@
-import { defaultLoadSettings, EQUIPMENT_LABELS, type GymDetail } from '@appsport/contracts';
+import { defaultLoadSettings, EQUIPMENT_LABELS, type GymDetail } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { GymPage, historyLine } from '../../src/features/places/GymPage';

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Image de production (01 §2, R-DEP-2, 08 §4), construite depuis la racine du dépôt :
-#   docker build -f infra/Dockerfile --build-arg VERSION=vX.Y.Z [--build-arg VITE_OWNER_FIRST_NAME=…] -t appsport:vX.Y.Z .
+#   docker build -f infra/Dockerfile --build-arg VERSION=vX.Y.Z [--build-arg VITE_OWNER_FIRST_NAME=…] -t rune:vX.Y.Z .
 # Contrat vérifié en CI par infra/test/image-contract.sh.
 
 FROM node:24 AS build
@@ -16,7 +16,7 @@ RUN pnpm build
 # Étape finale : server.mjs, la PWA et le contenu, sans node_modules.
 FROM node:24-slim
 ARG VERSION=dev
-ENV NODE_ENV=production APP_VERSION=${VERSION} PORT=3000 HOST=0.0.0.0 APPSPORT_DATA_DIR=/data APPSPORT_PUBLIC_DIR=/app/public APPSPORT_CONTENT_DIR=/app/data
+ENV NODE_ENV=production APP_VERSION=${VERSION} PORT=3000 HOST=0.0.0.0 RUNE_DATA_DIR=/data RUNE_PUBLIC_DIR=/app/public RUNE_CONTENT_DIR=/app/data
 WORKDIR /app
 COPY --from=build /src/apps/server/dist/server.mjs /app/server.mjs
 COPY --from=build /src/apps/web/dist /app/public

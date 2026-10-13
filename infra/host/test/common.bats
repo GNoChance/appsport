@@ -7,7 +7,7 @@ setup() {
   source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
   COMMON="$HOST_DIR/lib/common.sh"
-  STATUS_FILE="$APPSPORT_ROOT/data/ops/status.json"
+  STATUS_FILE="$RUNE_ROOT/data/ops/status.json"
 }
 
 # status_merge <section> <json> dans un shell qui source common.sh.
@@ -22,11 +22,11 @@ skip_without_symlinks() {
 }
 
 @test "verrou impossible à ouvrir (sans sudo) : message distinct du verrou occupé, ni flock ni git" {
-  export LOCK_FILE="$T/absent/appsport.lock"
-  run "$HOST_DIR/appsport-update" v1.3.0 --yes
+  export LOCK_FILE="$T/absent/rune.lock"
+  run "$HOST_DIR/rune-update" v1.3.0 --yes
   [ "$status" -eq 1 ]
   [[ "$output" == *"Impossible d'ouvrir $LOCK_FILE : lancez avec sudo."* ]]
-  [[ "$output" != *"Une autre opération appsport est en cours"* ]]
+  [[ "$output" != *"Une autre opération Rune est en cours"* ]]
   refute_call "flock *"
   refute_call "git *"
 }
@@ -34,12 +34,12 @@ skip_without_symlinks() {
 @test "status_merge : verrou propre (fd 8, pas LOCK_FILE), temporaire hors de data/ops, chmod et chown avant mv" {
   run_status_merge deploy '{"version":"v1.3.0","ok":true}'
   [ "$status" -eq 0 ]
-  assert_calls_in_order "flock -w 30 8" "chown 1000:1000 $APPSPORT_ROOT/.ops-tmp/status.*"
+  assert_calls_in_order "flock -w 30 8" "chown 1000:1000 $RUNE_ROOT/.ops-tmp/status.*"
   refute_call "flock * 9"
-  refute_call "chown * $APPSPORT_ROOT/data/ops/.status.*"
+  refute_call "chown * $RUNE_ROOT/data/ops/.status.*"
   jq -e '.deploy.version == "v1.3.0" and .backup.ok == true' "$STATUS_FILE"
-  [ -z "$(compgen -G "$APPSPORT_ROOT/data/ops/.status.*" || true)" ]
-  [ -z "$(compgen -G "$APPSPORT_ROOT/.ops-tmp/status.??????" || true)" ]
+  [ -z "$(compgen -G "$RUNE_ROOT/data/ops/.status.*" || true)" ]
+  [ -z "$(compgen -G "$RUNE_ROOT/.ops-tmp/status.??????" || true)" ]
 }
 
 @test "status_merge : verrou de status.json tenu par un autre écrivain → échec, status.json inchangé" {
@@ -49,15 +49,15 @@ skip_without_symlinks() {
   run_status_merge deploy '{"ok":true}'
   [ "$status" -ne 0 ]
   [ "$(cat "$STATUS_FILE")" = "$before" ]
-  refute_call "chown 1000:1000 $APPSPORT_ROOT/.ops-tmp/status.*"
+  refute_call "chown 1000:1000 $RUNE_ROOT/.ops-tmp/status.*"
 }
 
 @test "status_merge : data/ops remplacé par un lien symbolique → échec, rien hors du volume n'est touché" {
   skip_without_symlinks
   mkdir -p "$T/host-dir"
   chmod 0755 "$T/host-dir"
-  rm -rf "$APPSPORT_ROOT/data/ops"
-  ln -s "$T/host-dir" "$APPSPORT_ROOT/data/ops"
+  rm -rf "$RUNE_ROOT/data/ops"
+  ln -s "$T/host-dir" "$RUNE_ROOT/data/ops"
   run_status_merge deploy '{"ok":true}'
   [ "$status" -ne 0 ]
   refute_call "chown *"
@@ -81,9 +81,9 @@ skip_without_symlinks() {
   [ "$output" = 0 ]
 }
 
-@test "jq absent de l'hôte : appsport-update refuse avant le verrou, aucun git" {
+@test "jq absent de l'hôte : rune-update refuse avant le verrou, aucun git" {
   export JQ="$T/absent/jq"
-  run "$HOST_DIR/appsport-update" v1.3.0 --yes
+  run "$HOST_DIR/rune-update" v1.3.0 --yes
   [ "$status" -eq 1 ]
   [[ "$output" == *"Commande jq absente de l'hôte. Rien n'a été changé."* ]]
   refute_call "flock *"
@@ -91,10 +91,10 @@ skip_without_symlinks() {
   refute_call "docker *"
 }
 
-@test "jq absent de l'hôte : appsport-unlock refuse avant cryptsetup" {
+@test "jq absent de l'hôte : rune-unlock refuse avant cryptsetup" {
   export JQ="$T/absent/jq"
   rm -f "$STATE/luks-open" "$STATE/mounted" "$STATE/running"
-  run "$HOST_DIR/appsport-unlock"
+  run "$HOST_DIR/rune-unlock"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Commande jq absente de l'hôte. Rien n'a été changé."* ]]
   refute_call "cryptsetup *"

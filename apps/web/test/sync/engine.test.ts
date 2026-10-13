@@ -1,7 +1,7 @@
 // @vitest-environment node
-import { PROTOCOL_HEADER, type PushResult, type SyncOp } from '@appsport/contracts';
-import { createMonotonicUuidV7 } from '@appsport/domain';
-import { makeOp, SYNC_FIXTURE_RULES } from '@appsport/server/testing';
+import { PROTOCOL_HEADER, type PushResult, type SyncOp } from '@rune/contracts';
+import { createMonotonicUuidV7 } from '@rune/domain';
+import { makeOp, SYNC_FIXTURE_RULES } from '@rune/server/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type AppDb, mirrorStoreNames } from '../../src/local-db/db';
 import { getMeta, setMeta } from '../../src/local-db/meta';
@@ -704,7 +704,7 @@ const turns = async (n: number) => {
 const stalledBody = () =>
   new Response(new ReadableStream<Uint8Array>({ start() {} }), {
     status: 200,
-    headers: { 'X-Appsport-Epoch': server.epoch },
+    headers: { 'X-Rune-Epoch': server.epoch },
   });
 
 describe('reprises et file (revue)', () => {

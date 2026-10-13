@@ -1,4 +1,4 @@
-import { usernameKey } from '@appsport/domain';
+import { usernameKey } from '@rune/domain';
 import { type FormEvent, useState } from 'react';
 import { Link, useSearch } from 'wouter';
 import { useSyncState } from '../../app-services';

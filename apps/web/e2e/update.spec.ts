@@ -56,7 +56,7 @@ test('mise à jour : B attend pendant la séance, puis remplace A au clic sans t
   });
 
   await test.step('B déployé : il attend, la coquille A reste servie, pas de bandeau en séance', async () => {
-    await server.restart({ APPSPORT_PUBLIC_DIR: b.dir });
+    await server.restart({ RUNE_PUBLIC_DIR: b.dir });
     await reload();
     await waitForWaitingWorker(page);
     expect(await label()).toBe('A');
@@ -119,7 +119,7 @@ test('mise à jour : B attend pendant la séance, puis remplace A au clic sans t
     expect((await idbGetAll<{ opId: string }>(page, 'outbox')).map((o) => o.opId)).toEqual([op.opId]);
     expect(await idbVersion(page)).toBe(LOCAL_DB_VERSION * 10);
     expect(await metaValue(page, 'userId')).toBe(userId);
-    // Seuls les shell-* : illustrations-v1 et le marqueur appsport-meta (ADR 0001 décision 5) restent.
+    // Seuls les shell-* : illustrations-v1 et le marqueur rune-meta (ADR 0001 décision 5) restent.
     await expect
       .poll(async () => (await cacheNames(page)).filter((n) => n.startsWith(SHELL_CACHE_PREFIX)))
       .toEqual([`${SHELL_CACHE_PREFIX}${b.buildHash}`]);

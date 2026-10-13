@@ -39,7 +39,7 @@ function runGuard(output: string, status = 0) {
     env: {
       PATH: process.env.PATH,
       GH_STUB_OUTPUT: output,
-      GITHUB_REPOSITORY: 'gnochance/appsport',
+      GITHUB_REPOSITORY: 'gnochance/rune',
       GITHUB_SHA: SHA,
     },
   });

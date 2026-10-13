@@ -5,7 +5,7 @@ import {
   type Goal,
   ONBOARDING_STEPS,
   type OnboardingStep,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 
 /** E1 : pas d'objectif de perte de gras pour un mineur. */
 export function availableGoals(ageBand: AgeBand): Goal[] {

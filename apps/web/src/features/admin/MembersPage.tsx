@@ -4,8 +4,8 @@ import {
   PASSWORD_MIN_ADMIN,
   RESET_TTL_HOURS,
   type ResetLinkResponse,
-} from '@appsport/contracts';
-import { usernameKey } from '@appsport/domain';
+} from '@rune/contracts';
+import { usernameKey } from '@rune/domain';
 import { type RefObject, useCallback, useId, useRef, useState } from 'react';
 import { useMe } from '../../app-services';
 import { useRepos } from '../../repos';

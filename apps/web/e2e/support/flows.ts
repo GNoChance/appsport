@@ -1,5 +1,5 @@
-import { EXPERIENCE_LABELS, GOAL_LABELS, PRESETS } from '@appsport/contracts';
 import { type BrowserContext, expect, type Page } from '@playwright/test';
+import { EXPERIENCE_LABELS, GOAL_LABELS, PRESETS } from '@rune/contracts';
 import { emulateStandalone, requireServiceWorker, waitForController } from './pwa';
 import { bootstrapAdmin, type E2EServer } from './server';
 

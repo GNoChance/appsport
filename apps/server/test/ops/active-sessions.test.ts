@@ -84,11 +84,11 @@ describe('listActiveWorkoutSessions (R-DEP-3, 08 §8)', () => {
 
 describe('CLI sessions:active', () => {
   it('base du socle → 0 sans ligne ; --hours N filtre, une ligne <pseudo>\\t<startedAt> ; --hours 0 → 1', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'appsport-sessions-'));
+    const dir = mkdtempSync(join(tmpdir(), 'rune-sessions-'));
     try {
       const env = {
         APP_ORIGIN: 'http://localhost:3999',
-        APPSPORT_DATA_DIR: dir,
+        RUNE_DATA_DIR: dir,
         HOST: '127.0.0.1',
         PORT: '0',
       };
@@ -101,7 +101,7 @@ describe('CLI sessions:active', () => {
           (line) => lines.push(line),
           (line) => errors.push(line),
         );
-      writeFileSync(join(dir, '.appsport-volume'), '');
+      writeFileSync(join(dir, '.rune-volume'), '');
       expect(await cli('init')).toBe(0);
       lines.length = 0;
 
@@ -117,7 +117,7 @@ describe('CLI sessions:active', () => {
           createWorkoutSessionTable(ctx.deps.sqlite);
           insertSession(ctx.deps.sqlite, 's-alice', alice.id, startedAt);
         },
-        join(dir, 'appsport.db'),
+        join(dir, 'rune.db'),
       );
 
       expect(await cli('sessions:active', '--hours', '3')).toBe(0);

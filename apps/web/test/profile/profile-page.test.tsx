@@ -1,4 +1,4 @@
-import type { MeResponse } from '@appsport/contracts';
+import type { MeResponse } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { pendingWarning } from '../../src/features/auth/messages';

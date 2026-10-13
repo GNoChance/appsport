@@ -1,4 +1,4 @@
-import type { PushResult } from '@appsport/contracts';
+import type { PushResult } from '@rune/contracts';
 import type { AppDb, DeadletterEntry, OutboxOp } from '../local-db/db';
 import { deleteMeta } from '../local-db/meta';
 

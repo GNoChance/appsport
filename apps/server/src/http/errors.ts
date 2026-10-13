@@ -1,4 +1,4 @@
-import { type ApiErrorCode, ERROR_STATUS } from '@appsport/contracts';
+import { type ApiErrorCode, ERROR_STATUS } from '@rune/contracts';
 import type { ErrorHandler } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AppEnv } from '../app-env';

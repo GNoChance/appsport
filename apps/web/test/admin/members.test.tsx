@@ -1,4 +1,4 @@
-import type { MemberSummary } from '@appsport/contracts';
+import type { MemberSummary } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MembersPage } from '../../src/features/admin/MembersPage';
@@ -10,7 +10,7 @@ import { until } from '../support/wait';
 const ADMIN = makeMe({ id: 'u-1', username: 'bastien', role: 'admin' });
 const PASSWORD = 'mon mot de passe admin';
 const CODE = 'ABCD-EFGH-JKMN-PQRS';
-const LINK = `https://appsport.example/reset#${CODE}`;
+const LINK = `https://rune.example/reset#${CODE}`;
 
 const BASTIEN: MemberSummary = {
   id: 'u-1',
@@ -559,7 +559,7 @@ describe('MembersPage : date de naissance (R-AGE-4)', () => {
     expect(sent(api, 'POST', '/api/admin/members/u-2/birth-date')).toEqual([{ birthDate: '2009-02-01' }]);
   });
 
-  it('400 under_min_age → « appsport est réservé aux 16 ans et plus »', async () => {
+  it('400 under_min_age → « Rune est réservé aux 16 ans et plus »', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/birth-date', {
       status: 400,
       body: { error: 'under_min_age' },
@@ -568,7 +568,7 @@ describe('MembersPage : date de naissance (R-AGE-4)', () => {
     open('lea', 'Corriger la date de naissance');
     fill('Date de naissance', '2015-02-01');
     fireEvent.click(confirmButton('Enregistrer'));
-    expect(await dialog().findByText('appsport est réservé aux 16 ans et plus')).toBeTruthy();
+    expect(await dialog().findByText('Rune est réservé aux 16 ans et plus')).toBeTruthy();
   });
 });
 

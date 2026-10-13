@@ -1,4 +1,4 @@
-import { makeOp, SYNC_FIXTURE_RULES } from '@appsport/server/testing';
+import { makeOp, SYNC_FIXTURE_RULES } from '@rune/server/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { localHealthConsentActive } from '../../src/local-db/consent';
 import { type AppDb, type DeadletterEntry, mirrorStoreNames } from '../../src/local-db/db';

@@ -1,4 +1,4 @@
-import type { EquipmentCode } from '@appsport/contracts';
+import type { EquipmentCode } from '@rune/contracts';
 import { useEffect, useId, useState } from 'react';
 import { Link } from 'wouter';
 import { useLive } from '../../app-services';

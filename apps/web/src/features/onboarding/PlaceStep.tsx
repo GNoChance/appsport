@@ -7,7 +7,7 @@ import {
   PRESET_IDS,
   PRESETS,
   type PresetId,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';

@@ -1,4 +1,4 @@
-import { EXPERIENCES, type Experience, GOALS, type Goal } from '@appsport/contracts';
+import { EXPERIENCES, type Experience, GOALS, type Goal } from '@rune/contracts';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {

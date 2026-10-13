@@ -1,4 +1,4 @@
-import { defaultLoadSettings } from '@appsport/contracts';
+import { defaultLoadSettings } from '@rune/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { insertGymPlace } from '../../src/places/place-rows';
 import { deleteAccount } from '../../src/privacy/delete-account';

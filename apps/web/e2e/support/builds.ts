@@ -16,7 +16,7 @@ const BUILDS_DIR = join(E2E_DATA_DIR, 'builds');
 const BUILDS_FILE = join(BUILDS_DIR, 'builds.json');
 const BUILD_HASH_RE = /^[0-9a-f]{12}$/;
 /** Ligne du manifeste de précache, en tête de sw.js (`precachePlugin`). */
-const MANIFEST_LINE_RE = /^self\.__APPSPORT_PRECACHE__ = (\{.*\});$/;
+const MANIFEST_LINE_RE = /^self\.__RUNE_PRECACHE__ = (\{.*\});$/;
 
 /** `<REPO_ROOT>/.e2e-data/builds/{A,B}`. */
 export const BUILD_DIRS: { A: string; B: string } = {
@@ -42,7 +42,7 @@ export async function buildWeb(extra: InlineConfig = {}): Promise<void> {
 /** Seule différence entre A et B : `<meta name="e2e-build" content="<L>">` dans index.html. */
 function e2eBuildLabel(label: E2EBuild['label']): Plugin {
   return {
-    name: 'appsport-e2e-build-label',
+    name: 'rune-e2e-build-label',
     transformIndexHtml: () => [
       { tag: 'meta', attrs: { name: 'e2e-build', content: label }, injectTo: 'head' },
     ],

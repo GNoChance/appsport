@@ -1,5 +1,5 @@
-import { type MeResponse, PRIVACY_POLICY_VERSION, type Role } from '@appsport/contracts';
-import { validateUsername } from '@appsport/domain';
+import { type MeResponse, PRIVACY_POLICY_VERSION, type Role } from '@rune/contracts';
+import { validateUsername } from '@rune/domain';
 import { type FormEvent, useState } from 'react';
 import { useRepos } from '../../repos';
 import { Banner, Button, Field, formatDate } from '../../ui';

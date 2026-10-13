@@ -8,8 +8,8 @@ import { SECURITY_HEADERS } from '../../src/http/security-headers';
 import { cacheControlFor, ILLUSTRATION_CSP, IMMUTABLE_CACHE, resolveUnder } from '../../src/static';
 import { createTestContext, type TestContext, type TestRequestInit } from '../support';
 
-const INDEX = '<!doctype html><html lang="fr"><head><title>appsport</title></head></html>';
-const SW = 'self.__APPSPORT_PRECACHE__ = {};\n';
+const INDEX = '<!doctype html><html lang="fr"><head><title>Rune</title></head></html>';
+const SW = 'self.__RUNE_PRECACHE__ = {};\n';
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg">${'<rect x="1" y="1" width="2" height="2"/>'.repeat(40)}</svg>`;
 const HASH8 = createHash('sha256').update(SVG).digest('hex').slice(0, 8);
 const ILLUSTRATION = `/illustrations/squat-start.${HASH8}.svg`;
@@ -21,7 +21,7 @@ let contentDir: string;
 let ctx: TestContext | undefined;
 
 beforeAll(() => {
-  root = mkdtempSync(join(tmpdir(), 'appsport-static-'));
+  root = mkdtempSync(join(tmpdir(), 'rune-static-'));
   publicDir = join(root, 'web', 'public');
   contentDir = join(root, 'web', 'content');
   mkdirSync(join(publicDir, 'assets'), { recursive: true });
@@ -29,7 +29,7 @@ beforeAll(() => {
   mkdirSync(join(root, 'empty'));
   writeFileSync(join(publicDir, 'index.html'), INDEX);
   writeFileSync(join(publicDir, 'sw.js'), SW);
-  writeFileSync(join(publicDir, 'manifest.webmanifest'), '{"name":"appsport"}');
+  writeFileSync(join(publicDir, 'manifest.webmanifest'), '{"name":"Rune"}');
   writeFileSync(join(publicDir, 'assets', 'index-abc123.js'), 'console.log(1);');
   writeFileSync(join(contentDir, 'illustrations', 'files', 'squat-start.svg'), SVG);
   // Cibles des tentatives de traversée : servies si le chemin sortait de publicDir ou du dossier des fichiers.

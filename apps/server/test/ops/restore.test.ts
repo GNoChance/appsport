@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { isUuidV7 } from '@appsport/domain';
+import { isUuidV7 } from '@rune/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../../src/db/open';
 import { nextRev } from '../../src/db/rev';
@@ -90,8 +90,8 @@ describe('restoreSnapshot', () => {
     expect(result.baseRev).toBe(3);
     const replacedDir = join(ops.dir, 'snapshots', 'replaced-20261007T200000Z');
     expect(result.replacedDir).toBe(replacedDir);
-    expect(readdirSync(replacedDir)).toEqual(['appsport.db']);
-    expect(sha256(join(replacedDir, 'appsport.db'))).toBe(oldHash);
+    expect(readdirSync(replacedDir)).toEqual(['rune.db']);
+    expect(sha256(join(replacedDir, 'rune.db'))).toBe(oldHash);
     expect(readdirSync(ops.dir).filter((name) => name.includes('.restoring'))).toEqual([]);
     // Étape 4 : la copie restaurée repasse en journal DELETE, sans -wal ni -shm à côté.
     expect(readOnly(ops.dbPath, (s) => s.prepare('PRAGMA journal_mode').get())).toEqual({
@@ -169,7 +169,7 @@ describe('restoreSnapshot', () => {
     const { replacedDir } = await restore();
     const currentHash = sha256(o.dbPath);
     await expect(restore()).rejects.toThrow(/existe déjà/);
-    expect(sha256(join(replacedDir as string, 'appsport.db'))).toBe(firstHash);
+    expect(sha256(join(replacedDir as string, 'rune.db'))).toBe(firstHash);
     expect(sha256(o.dbPath)).toBe(currentHash);
     expect(readdirSync(o.dir).filter((name) => name.includes('.restoring'))).toEqual([]);
   });
@@ -222,9 +222,9 @@ describe('restoreSnapshot', () => {
     expect(existsSync(`${ops.dbPath}-wal`)).toBe(false);
     expect(existsSync(`${ops.dbPath}-shm`)).toBe(false);
     expect(readdirSync(result.replacedDir as string).sort()).toEqual([
-      'appsport.db',
-      'appsport.db-shm',
-      'appsport.db-wal',
+      'rune.db',
+      'rune.db-shm',
+      'rune.db-wal',
     ]);
     const markers = readOnly(ops.dbPath, (s) =>
       s.prepare("SELECT count(*) AS c FROM marker WHERE label = 'apres-instantane'").get(),
@@ -233,7 +233,7 @@ describe('restoreSnapshot', () => {
     expect(integrity(ops.dbPath)).toEqual([{ integrity_check: 'ok' }]);
   });
 
-  it('réparation R-OPS-16 : restaurer replaced-*/appsport.db reprend les transactions de son -wal', async () => {
+  it('réparation R-OPS-16 : restaurer replaced-*/rune.db reprend les transactions de son -wal', async () => {
     ops = await createOpsDataDir();
     const snapshot = await takeSnapshot(
       { sqlite: ops.sqlite, dataDir: ops.dir, clock: new FakeClock('2026-10-07T01:30:00.000Z') },
@@ -258,7 +258,7 @@ describe('restoreSnapshot', () => {
       ids: seqIds(40),
       clock: new FakeClock(RESTORED_AT),
     });
-    const source = join(wrong.replacedDir as string, 'appsport.db');
+    const source = join(wrong.replacedDir as string, 'rune.db');
     const sourceHashes = [sha256(source), sha256(`${source}-wal`)];
     await restoreSnapshot({
       dataDir: ops.dir,

@@ -21,7 +21,7 @@ const SERVER_DIR = fileURLToPath(new URL('../..', import.meta.url));
 const DIST_DIR = join(SERVER_DIR, 'dist');
 const REPO_DATA_DIR = fileURLToPath(new URL('../../../../data', import.meta.url));
 const VERSION = 'v9.9.9-test';
-const INDEX_HTML = '<!doctype html><title>appsport</title>';
+const INDEX_HTML = '<!doctype html><title>Rune</title>';
 
 /**
  * spawnSync bloque la boucle d'événements du worker : le délai de Vitest ne peut pas l'interrompre. Chaque
@@ -208,14 +208,14 @@ async function startHealthy(
 
 it('server.mjs seul, hors du dépôt et sans node_modules : init, db:check puis /api/health', async () => {
   expectSuccess(build);
-  const dir = mkdtempSync(join(tmpdir(), 'appsport-bundle-'));
+  const dir = mkdtempSync(join(tmpdir(), 'rune-bundle-'));
   const launched: Running[] = [];
   try {
     expect(ancestors(dir).filter((d) => existsSync(join(d, 'node_modules')))).toEqual([]);
     const serverPath = join(dir, 'server.mjs');
     cpSync(join(DIST_DIR, 'server.mjs'), serverPath);
     mkdirSync(join(dir, 'data'));
-    writeFileSync(join(dir, 'data', '.appsport-volume'), '');
+    writeFileSync(join(dir, 'data', '.rune-volume'), '');
     mkdirSync(join(dir, 'public'));
     writeFileSync(join(dir, 'public', 'index.html'), INDEX_HTML);
     cpSync(REPO_DATA_DIR, join(dir, 'content'), { recursive: true });
@@ -223,9 +223,9 @@ it('server.mjs seul, hors du dépôt et sans node_modules : init, db:check puis 
       NODE_ENV: 'production',
       APP_VERSION: VERSION,
       HOST: '127.0.0.1',
-      APPSPORT_DATA_DIR: join(dir, 'data'),
-      APPSPORT_PUBLIC_DIR: join(dir, 'public'),
-      APPSPORT_CONTENT_DIR: join(dir, 'content'),
+      RUNE_DATA_DIR: join(dir, 'data'),
+      RUNE_PUBLIC_DIR: join(dir, 'public'),
+      RUNE_CONTENT_DIR: join(dir, 'content'),
     };
     // Les commandes n'écoutent pas : leur origine n'a pas besoin du port du serveur.
     const cliEnv = childEnv({ ...own, APP_ORIGIN: 'http://127.0.0.1' });
@@ -248,7 +248,7 @@ it('server.mjs seul, hors du dépôt et sans node_modules : init, db:check puis 
       });
 
     expectSuccess(cli('init'));
-    expect(existsSync(join(dir, 'data', 'appsport.db'))).toBe(true);
+    expect(existsSync(join(dir, 'data', 'rune.db'))).toBe(true);
     expectSuccess(cli('db:check'));
 
     const { running, health } = await startHealthy(serverPath, dir, serverEnv, launched);

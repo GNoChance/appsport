@@ -6,7 +6,7 @@ import type { Clock, IdGen } from '../deps';
 import { rotateServerEpoch } from '../sync/epoch';
 import { snapshotsDir } from './snapshot';
 
-const DB_FILE = 'appsport.db';
+const DB_FILE = 'rune.db';
 /** La base et ses fichiers annexes : un -wal laissé à côté serait rejoué sur la base restaurée. */
 const DB_SUFFIXES = ['', '-wal', '-shm'] as const;
 
@@ -64,7 +64,7 @@ function compactUtc(at: Date): string {
 }
 
 /**
- * Restaure `snapshotPath` à la place de `<dataDir>/appsport.db`, service arrêté (08 §12 P4, R-SYN-25,
+ * Restaure `snapshotPath` à la place de `<dataDir>/rune.db`, service arrêté (08 §12 P4, R-SYN-25,
  * R-OPS-16). Ordre imposé (Review Focus 4) : instantané présent et intègre ; copie en `.restoring` où
  * l'époque est tournée (base = compteur de l'instantané) et le journal repassé en DELETE ; alors seulement,
  * la base courante et ses -wal et -shm partent dans `snapshots/replaced-<AAAAMMJJTHHMMSSZ>/`, puis la copie

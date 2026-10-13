@@ -1,5 +1,5 @@
-import { SYNC_PROTOCOL } from '@appsport/contracts';
-import { makeOp } from '@appsport/server/testing';
+import { SYNC_PROTOCOL } from '@rune/contracts';
+import { makeOp } from '@rune/server/testing';
 import { describe, expect, it } from 'vitest';
 import { convertOutboxOp, OUTBOX_CONVERTERS } from '../../src/sync/protocol-converters';
 

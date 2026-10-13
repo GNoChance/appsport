@@ -1,4 +1,4 @@
-import { SYNC_FIXTURE_RULES, seqIds } from '@appsport/server/testing';
+import { SYNC_FIXTURE_RULES, seqIds } from '@rune/server/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AppDb, OutboxOp } from '../../src/local-db/db';
 import { HealthConsentRequiredError, pendingCount, writeLocal } from '../../src/sync/outbox';

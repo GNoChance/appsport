@@ -1,4 +1,4 @@
-import { HealthResponse } from '@appsport/contracts';
+import { HealthResponse } from '@rune/contracts';
 import { fetchJsonWithTimeout, type SyncTransport } from '../sync/transport';
 import { ILLUSTRATIONS_CACHE_PREFIX, SHELL_CACHE_PREFIX } from './precache-manifest';
 import type { SwContainerLike } from './register';
@@ -58,7 +58,7 @@ async function anyDone(tasks: readonly (() => Promise<boolean>)[]): Promise<bool
 
 /**
  * Interrupteur d'urgence côté page (R-PWA-6), au démarrage : si `swKill`, désenregistre tout SW, vide les
- * caches `shell-*` et `illustrations-*` (ni le marqueur `appsport-meta`, ni un cache inconnu, ni jamais
+ * caches `shell-*` et `illustrations-*` (ni le marqueur `rune-meta`, ni un cache inconnu, ni jamais
  * IndexedDB), puis recharge la page depuis le réseau. Recharge une seule fois et seulement si quelque chose
  * a été retiré : le SW a pu faire le ménage avant (T36), et la page rechargée ne trouve plus rien, ce qui
  * évite la boucle. Rend `true` si la page est rechargée.
@@ -81,7 +81,7 @@ export async function applyKillSwitchIfNeeded(
 
   if (!unregistered && !deleted) return false;
   // Trace pour le diagnostic sur téléphone (R-TST-4, P8) : sinon ce rechargement unique passe inaperçu.
-  console.info("[appsport] interrupteur d'urgence : service worker et caches retirés, rechargement");
+  console.info("[rune] interrupteur d'urgence : service worker et caches retirés, rechargement");
   reload();
   return true;
 }

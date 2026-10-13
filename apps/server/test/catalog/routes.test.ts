@@ -52,7 +52,7 @@ describe('GET /api/catalog', () => {
   });
 
   it('catalogue invalide jamais chargé : 500 internal', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'appsport-catalog-'));
+    const dir = mkdtempSync(join(tmpdir(), 'rune-catalog-'));
     try {
       mkdirSync(join(dir, 'illustrations'));
       writeFileSync(join(dir, 'illustrations/manifest.json'), '[');

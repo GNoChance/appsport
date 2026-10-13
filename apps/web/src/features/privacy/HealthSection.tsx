@@ -1,4 +1,4 @@
-import type { MeResponse } from '@appsport/contracts';
+import type { MeResponse } from '@rune/contracts';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useLive, useMe } from '../../app-services';

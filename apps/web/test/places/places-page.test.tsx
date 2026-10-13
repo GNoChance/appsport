@@ -1,4 +1,4 @@
-import { defaultLoadSettings, EQUIPMENT_LABELS, type MeResponse } from '@appsport/contracts';
+import { defaultLoadSettings, EQUIPMENT_LABELS, type MeResponse } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PlaceDetail } from '../../src/features/places/PlaceDetail';

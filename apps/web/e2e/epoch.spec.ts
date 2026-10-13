@@ -1,6 +1,6 @@
 import { join } from 'node:path';
-import { PRIVACY_POLICY_VERSION } from '@appsport/contracts';
 import type { Page } from '@playwright/test';
+import { PRIVACY_POLICY_VERSION } from '@rune/contracts';
 import { expect, test } from './support/fixtures';
 import { E2E_PASSWORD, loginViaUi } from './support/flows';
 import { idbGetAll, metaValue, triggerForeground } from './support/pwa';

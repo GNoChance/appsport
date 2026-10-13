@@ -1,4 +1,4 @@
-import { type Experience, type Goal, snakeToCamel } from '@appsport/contracts';
+import { type Experience, type Goal, snakeToCamel } from '@rune/contracts';
 import type { Generated, Kysely, Transaction } from 'kysely';
 
 /** Gabarit +SYNC des tables à propriétaire (09 §0). */

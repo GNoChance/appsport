@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isUuidV7 } from '@appsport/domain';
+import { isUuidV7 } from '@rune/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseFlags, runCli, runInit } from '../../src/cli';
 import { loadConfig } from '../../src/config';
@@ -21,8 +21,8 @@ const e = (line: string): void => {
 };
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'appsport-cli-'));
-  env = { APP_ORIGIN: 'http://localhost:3999', APPSPORT_DATA_DIR: dir, HOST: '127.0.0.1', PORT: '0' };
+  dir = mkdtempSync(join(tmpdir(), 'rune-cli-'));
+  env = { APP_ORIGIN: 'http://localhost:3999', RUNE_DATA_DIR: dir, HOST: '127.0.0.1', PORT: '0' };
   out = [];
   err = [];
 });
@@ -32,7 +32,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true });
 });
 
-const sentinel = (): void => writeFileSync(join(dir, '.appsport-volume'), '');
+const sentinel = (): void => writeFileSync(join(dir, '.rune-volume'), '');
 
 describe('init', () => {
   it('exige la sentinelle', async () => {
@@ -44,12 +44,12 @@ describe('init', () => {
   it("crée la base, migre, initialise l'époque ; un second init est refusé", async () => {
     sentinel();
     expect(await runCli(['init'], env, o, e)).toBe(0);
-    const { sqlite, db } = openDatabase(join(dir, 'appsport.db'));
+    const { sqlite, db } = openDatabase(join(dir, 'rune.db'));
     const meta = await getServerMeta(db);
     await db.destroy();
     sqlite.close();
     expect(isUuidV7(meta.serverEpoch)).toBe(true);
-    expect(out).toContain(`Base initialisée : ${join(dir, 'appsport.db')}`);
+    expect(out).toContain(`Base initialisée : ${join(dir, 'rune.db')}`);
     expect(out).toContain(`Époque du serveur : ${meta.serverEpoch}`);
     expect(await runCli(['init'], env, o, e)).toBe(1);
     expect(err.join('\n')).toMatch(/existe déjà/);
@@ -67,7 +67,7 @@ it('un init en échec ne laisse aucun fichier et un second init réussit', async
   };
   const ctx = { env, out: o, err: e };
   await expect(runInit(loadConfig(env), ctx, [...MIGRATIONS, failing])).rejects.toThrow();
-  expect(readdirSync(dir)).toEqual(['.appsport-volume']);
+  expect(readdirSync(dir)).toEqual(['.rune-volume']);
   expect(await runCli(['init'], env, o, e)).toBe(0);
 });
 
@@ -83,7 +83,7 @@ describe('db:check', () => {
   it('sur une base corrompue → 1', async () => {
     sentinel();
     await runCli(['init'], env, o, e);
-    const { sqlite, db } = openDatabase(join(dir, 'appsport.db'));
+    const { sqlite, db } = openDatabase(join(dir, 'rune.db'));
     sqlite.exec('PRAGMA foreign_keys = OFF');
     sqlite
       .prepare(
@@ -99,7 +99,7 @@ describe('db:check', () => {
   it('sans base → 1, aucun fichier créé', async () => {
     sentinel();
     expect(await runCli(['db:check'], env, o, e)).toBe(1);
-    expect(readdirSync(dir)).toEqual(['.appsport-volume']);
+    expect(readdirSync(dir)).toEqual(['.rune-volume']);
   });
 });
 

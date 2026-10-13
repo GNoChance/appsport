@@ -1,4 +1,4 @@
-import { EXPERIENCE_LABELS, EXPERIENCES, type Experience } from '@appsport/contracts';
+import { EXPERIENCE_LABELS, EXPERIENCES, type Experience } from '@rune/contracts';
 import { useState } from 'react';
 import { useLive } from '../../app-services';
 import { useRepos } from '../../repos';

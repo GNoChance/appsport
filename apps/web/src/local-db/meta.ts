@@ -1,4 +1,4 @@
-import type { AgeBand, MeResponse } from '@appsport/contracts';
+import type { AgeBand, MeResponse } from '@rune/contracts';
 import type { AppDb } from './db';
 
 export interface MetaValues {

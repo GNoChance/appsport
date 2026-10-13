@@ -8,14 +8,14 @@ describe('loadConfig', () => {
   });
 
   it('refuse une origine avec chemin, ou http hors localhost', () => {
-    expect(() => loadConfig({ APP_ORIGIN: 'https://appsport.x.ts.net/chemin' })).toThrow(ConfigError);
-    expect(() => loadConfig({ APP_ORIGIN: 'http://appsport.x.ts.net' })).toThrow(ConfigError);
+    expect(() => loadConfig({ APP_ORIGIN: 'https://rune.x.ts.net/chemin' })).toThrow(ConfigError);
+    expect(() => loadConfig({ APP_ORIGIN: 'http://rune.x.ts.net' })).toThrow(ConfigError);
   });
 
   it('applique les valeurs par défaut en production', () => {
-    const cfg = loadConfig({ APP_ORIGIN: 'https://appsport.x.ts.net' });
+    const cfg = loadConfig({ APP_ORIGIN: 'https://rune.x.ts.net' });
     expect(cfg).toMatchObject({
-      appOrigin: 'https://appsport.x.ts.net',
+      appOrigin: 'https://rune.x.ts.net',
       version: 'dev',
       port: 3000,
       host: '0.0.0.0',
@@ -29,8 +29,8 @@ describe('loadConfig', () => {
       sessionCookieName: '__Host-session',
       secureCookie: true,
     });
-    expect(cfg.dbPath).toBe(join('/data', 'appsport.db'));
-    expect(cfg.sentinelPath).toBe(join('/data', '.appsport-volume'));
+    expect(cfg.dbPath).toBe(join('/data', 'rune.db'));
+    expect(cfg.sentinelPath).toBe(join('/data', '.rune-volume'));
   });
 
   it('autorise http sur localhost et 127.0.0.1 avec le cookie de développement', () => {

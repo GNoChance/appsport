@@ -1,4 +1,4 @@
-import type { MeResponse } from '@appsport/contracts';
+import type { MeResponse } from '@rune/contracts';
 import { liveQuery } from 'dexie';
 import { createContext, type ReactNode, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import type { ApiClient } from './api/client';

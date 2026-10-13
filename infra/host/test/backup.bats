@@ -1,15 +1,15 @@
 #!/usr/bin/env bats
-# appsport-backup (R-OPS-9, R-OPS-10, R-DEP-7, 08 §7, §9) : instantané daily, restic local puis offsite.
+# rune-backup (R-OPS-9, R-OPS-10, R-DEP-7, 08 §7, §9) : instantané daily, restic local puis offsite.
 
-OFFSITE=s3:https://s3.test/appsport-backups
+OFFSITE=s3:https://s3.test/rune-backups
 
 setup() {
   source "$BATS_TEST_DIRNAME/helpers.bash"
   setup_host
-  BACKUP="$HOST_DIR/appsport-backup"
-  STATUS_FILE="$APPSPORT_ROOT/data/ops/status.json"
-  PATHS="--exclude $APPSPORT_ROOT/data/appsport.db* $APPSPORT_ROOT/data/snapshots $APPSPORT_ROOT/secrets $APPSPORT_ROOT/deploy.env $APPSPORT_ROOT/deploy.log $TAILSCALE_STATE"
-  # Motif glob des mêmes arguments : l'étoile de appsport.db* est littérale (exclusion exacte, -wal et -shm compris).
+  BACKUP="$HOST_DIR/rune-backup"
+  STATUS_FILE="$RUNE_ROOT/data/ops/status.json"
+  PATHS="--exclude $RUNE_ROOT/data/rune.db* $RUNE_ROOT/data/snapshots $RUNE_ROOT/secrets $RUNE_ROOT/deploy.env $RUNE_ROOT/deploy.log $TAILSCALE_STATE"
+  # Motif glob des mêmes arguments : l'étoile de rune.db* est littérale (exclusion exacte, -wal et -shm compris).
   PATHS_PAT=${PATHS//\*/\\\*}
 }
 
@@ -34,7 +34,7 @@ setup() {
   # Clés B2 seulement pour offsite (sous-shell de restic_on) ; mot de passe restic du volume chiffré partout.
   [ "$(cat "$STATE/restic-env")" = "$(printf '%s none\n%s none\n%s b2-key-id\n%s b2-key-id' \
     "$BACKUP_ROOT/restic" "$BACKUP_ROOT/restic" "$OFFSITE" "$OFFSITE")" ]
-  [ "$(sort -u "$STATE/restic-pass")" = "$APPSPORT_ROOT/secrets/restic.pass" ]
+  [ "$(sort -u "$STATE/restic-pass")" = "$RUNE_ROOT/secrets/restic.pass" ]
 }
 
 @test "volume verrouillé : code 1, motif « volume verrouillé », ni verrou ni restic, status.json intact" {
@@ -44,7 +44,7 @@ setup() {
   [ "$status" -eq 1 ]
   assert_calls_in_order \
     "curl * https://hc.test/backup/start" \
-    "curl *--data-raw volume verrouillé : lancer appsport-unlock https://hc.test/backup/fail"
+    "curl *--data-raw volume verrouillé : lancer rune-unlock https://hc.test/backup/fail"
   refute_call "flock -n 9"
   refute_call "restic *"
   refute_call "docker *"
@@ -53,30 +53,30 @@ setup() {
 
 @test "verrou occupé : code 1, motif « verrou occupé », ni instantané ni restic" {
   # Un test de restauration en cours tient le verrou : sa copie n'est pas touchée.
-  mkdir -p "$APPSPORT_ROOT/tmp/restore-test-20261004T050000Z"
+  mkdir -p "$RUNE_ROOT/tmp/restore-test-20261004T050000Z"
   on flock '-n 9' 1
   run "$BACKUP"
   [ "$status" -eq 1 ]
   assert_calls_in_order "flock -n 9" "curl *--data-raw verrou occupé https://hc.test/backup/fail"
   refute_call "docker *"
   refute_call "restic *"
-  [ -d "$APPSPORT_ROOT/tmp/restore-test-20261004T050000Z" ]
+  [ -d "$RUNE_ROOT/tmp/restore-test-20261004T050000Z" ]
   jq -e '.backup | .ok == false and .detail == "verrou occupé"' "$STATUS_FILE"
 }
 
 @test "restes d'un test de restauration interrompu (coupure) : conteneur puis copie supprimés, après le verrou" {
-  local left="$APPSPORT_ROOT/tmp/restore-test-20260101T050000Z"
+  local left="$RUNE_ROOT/tmp/restore-test-20260101T050000Z"
   mkdir -p "$left/data"
-  echo daily-20251231 >"$left/data/appsport.db"
+  echo daily-20251231 >"$left/data/rune.db"
   # Copie encore là quand le conteneur est supprimé : le conteneur part d'abord.
-  on docker 'rm -f appsport-restore-test' 0 'if [ -d "$APPSPORT_ROOT/tmp/restore-test-20260101T050000Z" ]; then echo present; else echo absent; fi >>"$STATE/copy-at-rm"'
+  on docker 'rm -f rune-restore-test' 0 'if [ -d "$RUNE_ROOT/tmp/restore-test-20260101T050000Z" ]; then echo present; else echo absent; fi >>"$STATE/copy-at-rm"'
   run "$BACKUP"
   [ "$status" -eq 0 ]
   [ ! -e "$left" ]
   [ "$(cat "$STATE/copy-at-rm")" = present ]
   assert_calls_in_order \
     "flock -n 9" \
-    "docker rm -f appsport-restore-test" \
+    "docker rm -f rune-restore-test" \
     "docker compose * exec -T app node /app/server.mjs snapshot --tag daily" \
     "curl * https://hc.test/backup"
   jq -e '.backup.ok == true' "$STATUS_FILE"

@@ -1,4 +1,4 @@
-import type { ConsentState, ConsentStatus, ConsentType } from '@appsport/contracts';
+import type { ConsentState, ConsentStatus, ConsentType } from '@rune/contracts';
 import type { DbExecutor } from '../db/schema';
 
 const INACTIVE: ConsentStatus = { active: false, textVersion: null, at: null };

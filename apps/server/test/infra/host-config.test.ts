@@ -35,32 +35,32 @@ function filesUnder(dir: string): string[] {
 
 /** Timers de 08 §15 (le 1er dimanche du mois : un dimanche entre le 1er et le 7). */
 const timers = {
-  'appsport-alive': '*:0/5',
-  'appsport-backup': '*-*-* 03:30:00',
-  'appsport-check': '*-*-* 04:00:00',
-  'appsport-restore-test': 'Sun *-*-01..07 05:00:00',
+  'rune-alive': '*:0/5',
+  'rune-backup': '*-*-* 03:30:00',
+  'rune-check': '*-*-* 04:00:00',
+  'rune-restore-test': 'Sun *-*-01..07 05:00:00',
 };
 
 /**
  * Durée maximale de chaque service : Type=oneshot n'en a pas par défaut, et un restic bloqué sur une connexion B2
- * morte garderait le verrou exclusif (/run/appsport.lock) jusqu'à une intervention manuelle.
+ * morte garderait le verrou exclusif (/run/rune.lock) jusqu'à une intervention manuelle.
  */
 const startTimeouts: Record<keyof typeof timers, string> = {
-  'appsport-alive': '2min',
-  'appsport-backup': '4h',
-  'appsport-check': '10min',
-  'appsport-restore-test': '6h',
+  'rune-alive': '2min',
+  'rune-backup': '4h',
+  'rune-check': '10min',
+  'rune-restore-test': '6h',
 };
 
 describe('infra/systemd : timers et services (08 §9, §15)', () => {
   for (const [name, calendar] of Object.entries(timers)) {
     const timeout = startTimeouts[name as keyof typeof timers];
-    it(`${name}.timer : ${calendar}, timers.target${name === 'appsport-alive' ? '' : ', Persistent=true'}`, () => {
+    it(`${name}.timer : ${calendar}, timers.target${name === 'rune-alive' ? '' : ', Persistent=true'}`, () => {
       const text = read(`infra/systemd/${name}.timer`);
       const timer = unitSection(text, 'Timer');
       expect(timer.OnCalendar).toEqual([calendar]);
       // alive : un ping manqué pendant l'arrêt n'a pas à être rattrapé au démarrage.
-      expect(timer.Persistent).toEqual(name === 'appsport-alive' ? undefined : ['true']);
+      expect(timer.Persistent).toEqual(name === 'rune-alive' ? undefined : ['true']);
       expect(unitSection(text, 'Install').WantedBy).toEqual(['timers.target']);
     });
 
@@ -72,22 +72,22 @@ describe('infra/systemd : timers et services (08 §9, §15)', () => {
     });
   }
 
-  it('appsport-restore-test.service attend la fin de appsport-backup (rattrapage par appsport-unlock)', () => {
+  it('rune-restore-test.service attend la fin de rune-backup (rattrapage par rune-unlock)', () => {
     // Les deux, relancés ensemble après un déverrouillage, se disputeraient sinon le verrou exclusif.
-    const unit = unitSection(read('infra/systemd/appsport-restore-test.service'), 'Unit');
-    expect(unit.After?.join(' ').split(/\s+/)).toContain('appsport-backup.service');
+    const unit = unitSection(read('infra/systemd/rune-restore-test.service'), 'Unit');
+    expect(unit.After?.join(' ').split(/\s+/)).toContain('rune-backup.service');
   });
 
-  it('docker.service.d/appsport.conf : Docker exige le volume monté (R-OPS-2, R-DEP-5)', () => {
-    const unit = unitSection(read('infra/systemd/docker.service.d/appsport.conf'), 'Unit');
-    expect(unit.RequiresMountsFor).toEqual(['/srv/appsport']);
+  it('docker.service.d/rune.conf : Docker exige le volume monté (R-OPS-2, R-DEP-5)', () => {
+    const unit = unitSection(read('infra/systemd/docker.service.d/rune.conf'), 'Unit');
+    expect(unit.RequiresMountsFor).toEqual(['/srv/rune']);
   });
 });
 
 describe('infra/docker/daemon.json (08 §4)', () => {
   it('data-root sur le volume chiffré, journaux locaux bornés, live-restore', () => {
     expect(JSON.parse(read('infra/docker/daemon.json'))).toEqual({
-      'data-root': '/srv/appsport/docker',
+      'data-root': '/srv/rune/docker',
       'log-driver': 'local',
       'log-opts': { 'max-size': '10m', 'max-file': '5' },
       'live-restore': true,
@@ -97,15 +97,13 @@ describe('infra/docker/daemon.json (08 §4)', () => {
 
 describe('aucun redémarrage automatique (08 §2, §13.11)', () => {
   it('unattended-upgrades sans redémarrage automatique', () => {
-    expect(read('infra/apt/52appsport-unattended')).toMatch(
-      /^Unattended-Upgrade::Automatic-Reboot "false";$/m,
-    );
+    expect(read('infra/apt/52rune-unattended')).toMatch(/^Unattended-Upgrade::Automatic-Reboot "false";$/m);
   });
 
   it('aucun fichier de infra/systemd ni infra/host ne redémarre ni n’arrête la machine', () => {
     const files = [...filesUnder('infra/systemd'), ...filesUnder('infra/host')];
-    expect(files).toContain('infra/systemd/appsport-backup.service');
-    expect(files).toContain('infra/host/appsport-backup');
+    expect(files).toContain('infra/systemd/rune-backup.service');
+    expect(files).toContain('infra/host/rune-backup');
     const offenders = files.filter((file) =>
       /systemctl\s+(reboot|poweroff|kexec)|shutdown\s+-[rh]|^\s*(reboot|poweroff|halt)\b/m.test(read(file)),
     );

@@ -1,6 +1,6 @@
 # Le 1er dimanche du mois à 05:00 (R-OPS-11) : le dimanche qui tombe du 1er au 7 ; rattrapé au démarrage.
 [Unit]
-Description=Timer de appsport-restore-test
+Description=Timer de rune-restore-test
 
 [Timer]
 OnCalendar=Sun *-*-01..07 05:00:00

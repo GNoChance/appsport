@@ -5,7 +5,7 @@ import {
   GYM_NAME_MIN,
   type GymSummary,
   type UpdateGymRequest,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { type RefObject, useCallback, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useRepos } from '../../repos';

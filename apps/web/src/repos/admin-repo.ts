@@ -8,7 +8,7 @@ import {
   ResetLinkResponse,
   type Role,
   type UserStatus,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { z } from 'zod';
 import type { AppServices } from '../app-services';
 import { sendThenPull } from './rows';

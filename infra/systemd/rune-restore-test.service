@@ -1,0 +1,11 @@
+# Rune : test de restauration mensuel depuis la sauvegarde hors site (08 §9, §15) ; /usr/local/sbin/rune-restore-test est un lien vers infra/host/.
+[Unit]
+Description=Rune : test de restauration mensuel depuis la sauvegarde hors site
+After=network-online.target rune-backup.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rune-restore-test
+# Oneshot : aucun délai par défaut ; au-delà, SIGTERM. Un lancement bloqué (restic sur B2) empêcherait les suivants.
+TimeoutStartSec=6h

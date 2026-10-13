@@ -28,7 +28,7 @@ describe('amorçage de sw.ts compilé', () => {
       skipWaiting: () => Promise.resolve(),
       registration: {},
       clients: {},
-      location: { origin: 'https://appsport.test' },
+      location: { origin: 'https://rune.test' },
       [PRECACHE_GLOBAL]: MANIFEST,
     });
     expect(listened.sort()).toEqual(['activate', 'fetch', 'install', 'message']);

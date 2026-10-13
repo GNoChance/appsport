@@ -1,5 +1,5 @@
-import { EXPERIENCE_LABELS, GOAL_LABELS, type MeResponse, type Role, SPORTS } from '@appsport/contracts';
-import { validateUsername } from '@appsport/domain';
+import { EXPERIENCE_LABELS, GOAL_LABELS, type MeResponse, type Role, SPORTS } from '@rune/contracts';
+import { validateUsername } from '@rune/domain';
 import {
   type FormEvent,
   type ReactNode,

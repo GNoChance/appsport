@@ -1,4 +1,4 @@
-import type { Experience, Goal } from '@appsport/contracts';
+import type { Experience, Goal } from '@rune/contracts';
 
 export type TemplateContext = 'gym' | 'home' | 'sport';
 export type TrainingLevel = 'beginner' | 'intermediate';

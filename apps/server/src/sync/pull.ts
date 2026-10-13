@@ -7,7 +7,7 @@ import {
   type PulledRow,
   type PullResponse,
   snakeToCamel,
-} from '@appsport/contracts';
+} from '@rune/contracts';
 import { type RawBuilder, sql, type Transaction } from 'kysely';
 import type { SessionUser } from '../app-env';
 import type { Database } from '../db/schema';

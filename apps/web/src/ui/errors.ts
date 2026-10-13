@@ -1,4 +1,4 @@
-import type { ApiErrorCode } from '@appsport/contracts';
+import type { ApiErrorCode } from '@rune/contracts';
 import { ApiError, NetworkRequiredError } from '../api/client';
 
 /** Message affiché pour chaque code d'erreur de l'API ; un écran peut en préciser certains. */
@@ -25,7 +25,7 @@ export const ERROR_MESSAGES: Record<ApiErrorCode, string> = {
   onboarding_incomplete: "Termine d'abord ta prise en main.",
   password_rejected: 'Ce mot de passe ne convient pas.',
   username_invalid: "Ce pseudo n'est pas valide.",
-  under_min_age: 'appsport est réservé aux 16 ans et plus',
+  under_min_age: 'Rune est réservé aux 16 ans et plus',
   invitation_expired: 'Cette invitation a expiré.',
   invitation_used: 'Cette invitation a déjà servi.',
   invitation_revoked: 'Cette invitation a été révoquée.',

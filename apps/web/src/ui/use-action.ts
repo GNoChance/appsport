@@ -1,4 +1,4 @@
-import type { ApiErrorCode } from '@appsport/contracts';
+import type { ApiErrorCode } from '@rune/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, NetworkRequiredError } from '../api/client';
 import { errorMessage } from './errors';

@@ -1,4 +1,4 @@
-import type { TestContext } from '@appsport/server/testing';
+import type { TestContext } from '@rune/server/testing';
 import type { SyncTransport } from '../../src/sync/transport';
 
 export interface InProcessLogEntry {

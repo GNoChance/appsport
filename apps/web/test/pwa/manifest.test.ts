@@ -47,8 +47,8 @@ describe('manifeste PWA', () => {
 
   it('identité, affichage, portée et couleurs', () => {
     expect(m).toMatchObject({
-      name: 'appsport',
-      short_name: 'appsport',
+      name: 'Rune',
+      short_name: 'Rune',
       display: 'standalone',
       start_url: '/',
       scope: '/',

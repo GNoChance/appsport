@@ -4,8 +4,8 @@ import {
   ONBOARDING_STEPS,
   SPORT_OTHER_LABEL_MAX,
   TrainingProfilePatch,
-} from '@appsport/contracts';
-import { ageBandOn, availableGoals, firstIncompleteStep, parisDate } from '@appsport/domain';
+} from '@rune/contracts';
+import { ageBandOn, availableGoals, firstIncompleteStep, parisDate } from '@rune/domain';
 import { Hono } from 'hono';
 import type { AppEnv, SessionUser } from '../app-env';
 import { buildMe } from '../auth/me';
