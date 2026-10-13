@@ -1538,9 +1538,9 @@ describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', 
   });
 
   it('fiche : la copie scellée est dite là où les clés sont nommées, mot de passe Unix compris (R-OPS-14)', () => {
-    // Contenu de l'enveloppe selon 08 §11 R-OPS-14 : phrase LUKS, mot de passe Unix, mot de passe restic, clé B2.
+    // Contenu de l'enveloppe selon 08 §11 R-OPS-14 : phrase LUKS, compte Unix (sudo), mot de passe restic, clé B2.
     expect(section(fiche, 'Destinataires')).toMatch(
-      /^- Personne de confiance[^\n]*\(phrase du volume chiffré, mot de passe du compte Unix du serveur, mot de passe des sauvegardes, clé B2\)/m,
+      /^- Personne de confiance[^\n]*\(phrase du volume chiffré ; nom et mot de passe du compte Unix du serveur, qui a les droits sudo ; mot de passe des sauvegardes ; clé B2\)/m,
     );
     expect(section(fiche, 'Transferts hors UE')).toMatch(
       /^- Backblaze[^\n]*les clés restent chez le porteur \(copie scellée chez la personne de confiance, voir Destinataires\)/m,
@@ -1558,11 +1558,33 @@ describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', 
     expect(header).not.toMatch(/reste \d+\.\d+ tant que|version antérieure/);
   });
 
+  it("fiche : l'enveloppe ouvre aussi le compte du serveur (sudo), même engagement que l'admin (T14-F3, R-OPS-14, P-ADM-3)", () => {
+    const trusted = section(fiche, 'Destinataires')
+      .split(/\r?\n/)
+      .find((line) => line.startsWith('- Personne de confiance'));
+    expect(trusted, 'ligne Personne de confiance').toBeDefined();
+    // Contenu de l'enveloppe selon R-OPS-14 et P9 étape 1 : phrase LUKS, compte Unix (sudo), restic, B2.
+    for (const needle of [
+      'phrase du volume chiffré',
+      'nom et mot de passe du compte Unix du serveur, qui a les droits sudo',
+      'mot de passe des sauvegardes',
+      'clé B2',
+      "le même accès technique que l'admin au serveur et à la base",
+      "aucune requête manuelle sur les données d'une personne sans son accord (P-ADM-3)",
+    ]) {
+      expect(trusted, needle).toContain(needle);
+    }
+  });
+
   it('page Confidentialité : la copie scellée est dite, comme dans la fiche (T45-F32)', () => {
     const page = read('apps/web/src/features/public/privacy-content.ts');
     expect(page).toContain('copie scellée');
     expect(page).toContain('personne de confiance majeure');
     expect(page).toMatch(/; au quotidien, seul \$\{owner\} en détient les clés\.`/);
+    // T14-F3 : l'enveloppe ouvre le serveur, pas seulement les sauvegardes ; la personne s'engage à ne rien consulter.
+    expect(page).toContain('Une copie scellée des clés du serveur et des sauvegardes');
+    expect(page).toContain('sans consulter tes données');
+    expect(page).not.toContain('copie scellée de ces clés');
   });
 
   it("P9 : export de chaque proche confirmé, timers arrêtés, sauvegardes B2 et locales effacées, puis l'arrêt (T45-F42)", () => {

@@ -21,12 +21,13 @@ describe('responsable des données (03 §1, §10.8)', () => {
     },
   );
 
-  it('enveloppe de secours : copie scellée des clés, ouverte seulement pour exporter puis effacer (T45-F32)', () => {
+  it('enveloppe de secours : clés du serveur et des sauvegardes, ouverte seulement pour exporter puis effacer (T45-F32, T14-F3)', () => {
     const text = privacyText('Bastien');
     expect(text).toContain('au quotidien, seul Bastien en détient les clés.');
     expect(text).toContain(
-      "Une copie scellée de ces clés (l'enveloppe de secours) est confiée à une personne de confiance majeure. Elle n'est ouverte que si Bastien est indisponible longtemps : tu peux alors exporter tes données, puis les sauvegardes sont effacées et le service arrêté.",
+      "Une copie scellée des clés du serveur et des sauvegardes (l'enveloppe de secours) est confiée à une personne de confiance majeure. Elle n'est ouverte que si Bastien est indisponible longtemps : cette personne remet alors le serveur en marche, sans consulter tes données, pour que tu puisses les exporter, puis les sauvegardes sont effacées et le service arrêté.",
     );
+    expect(text).not.toContain('copie scellée de ces clés');
   });
 
   it('avec prénom : le porteur est nommé partout', () => {
@@ -65,7 +66,8 @@ describe('pages publiques', () => {
       'serveur à domicile en France',
       'États-Unis',
       'sauvegardes chiffrées hors du domicile',
-      'copie scellée',
+      'copie scellée des clés du serveur et des sauvegardes',
+      'sans consulter tes données',
     ]) {
       expect(text, expected).toContain(expected);
     }
