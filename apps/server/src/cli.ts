@@ -2,11 +2,10 @@ import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'nod
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { CivilDate } from '@rune/contracts';
-import { usernameKey } from '@rune/domain';
 import { CamelCasePlugin, Kysely } from 'kysely';
 import { z } from 'zod';
+import { adminReset } from './auth/admin-reset';
 import { bootstrapAdminInvitation } from './auth/bootstrap';
-import { createPasswordReset } from './auth/password-reset';
 import { type AppConfig, DB_FILE, dataDirFrom, loadConfig } from './config';
 import { migrate } from './db/migrate';
 import { MIGRATIONS, type Migration } from './db/migrations/index';
@@ -137,22 +136,12 @@ async function runAdminReset(args: string[], ctx: CliContext): Promise<number> {
     ctx.err('Pseudo manquant : utilise admin:reset <pseudo>.');
     return 1;
   }
-  const created = await withAppDeps(ctx, async (deps) => {
-    const user = await deps.db
-      .selectFrom('user')
-      .select(['id', 'username'])
-      .where('usernameKey', '=', usernameKey(username))
-      .executeTakeFirst();
-    if (!user) return null;
-    const link = await deps.db
-      .transaction()
-      .execute((trx) => createPasswordReset(trx, deps, user.id, { actorId: null, ip: null }));
-    return { ...link, username: user.username };
-  });
+  const created = await withAppDeps(ctx, (deps) => adminReset(deps, username));
   if (!created) {
     ctx.err(`Pseudo inconnu : ${username}`);
     return 1;
   }
+  if (created.reactivated) ctx.out(`Compte administrateur ${created.username} réactivé.`);
   ctx.out(`Lien de réinitialisation pour ${created.username} (valable 24 h)`);
   ctx.out(`Lien : ${created.link}`);
   ctx.out(`Code : ${created.code}`);
@@ -332,7 +321,8 @@ export const COMMANDS: Record<string, CliCommand> = {
     run: runAdminBootstrap,
   },
   'admin:reset': {
-    usage: 'admin:reset <pseudo> : crée un lien de réinitialisation du mot de passe (valable 24 h)',
+    usage:
+      'admin:reset <pseudo> : crée un lien de réinitialisation du mot de passe (valable 24 h) ; réactive un administrateur désactivé',
     run: runAdminReset,
   },
   'privacy:collect': {

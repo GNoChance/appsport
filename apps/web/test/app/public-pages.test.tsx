@@ -17,8 +17,17 @@ describe('responsable des données (03 §1, §10.8)', () => {
       expect(text).toContain('Le responsable des données est le porteur du projet');
       expect(text).toContain('seul le porteur du projet en détient les clés');
       expect(text).toContain('adresse-toi directement au porteur du projet');
+      expect(text).toContain('si le porteur du projet est indisponible longtemps');
     },
   );
+
+  it('enveloppe de secours : copie scellée des clés, ouverte seulement pour exporter puis effacer (T45-F32)', () => {
+    const text = privacyText('Bastien');
+    expect(text).toContain('au quotidien, seul Bastien en détient les clés.');
+    expect(text).toContain(
+      "Une copie scellée de ces clés (l'enveloppe de secours) est confiée à une personne de confiance majeure. Elle n'est ouverte que si Bastien est indisponible longtemps : tu peux alors exporter tes données, puis les sauvegardes sont effacées et le service arrêté.",
+    );
+  });
 
   it('avec prénom : le porteur est nommé partout', () => {
     const text = privacyText(' Bastien ');
@@ -56,6 +65,7 @@ describe('pages publiques', () => {
       'serveur à domicile en France',
       'États-Unis',
       'sauvegardes chiffrées hors du domicile',
+      'copie scellée',
     ]) {
       expect(text, expected).toContain(expected);
     }
