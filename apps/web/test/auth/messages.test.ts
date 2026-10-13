@@ -77,6 +77,7 @@ describe('mots de passe (R-MDP-1, R-MDP-3)', () => {
       'too_short',
     ]);
     for (const text of Object.values(PASSWORD_MESSAGES)) expect(text).not.toBe('');
+    expect(PASSWORD_MESSAGES.contains_app_name).toBe('Le mot de passe ne doit pas contenir « rune ».');
   });
 
   const base = {
