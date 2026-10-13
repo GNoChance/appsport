@@ -469,6 +469,28 @@ describe('P1 Installation initiale', () => {
     expect(stepWith('Docker', 'systemctl disable docker.service').body).toContain('phrase LUKS');
   });
 
+  it('Dépôts restic : nom rune-backups déjà pris chez Backblaze, nom suffixé noté et repris par P5 et le runbook', () => {
+    const bucket = steps(section(p1, 'Dépôts restic')).find(
+      (s) => s.head === 'Créer le bucket Backblaze B2.',
+    );
+    const sinon = /^\s*Sinon :.*$/m.exec(bucket?.body ?? '')?.[0] ?? '';
+    for (const needle of [
+      '`rune-backups` parce qu',
+      'déjà pris',
+      '`rune-backups-<suffixe>`',
+      'gestionnaire',
+      'feuille des secrets',
+      'P5',
+      'runbook de reconstruction',
+    ]) {
+      expect(sinon, needle).toContain(needle);
+    }
+    expect(section(p[5] as string, 'Clé B2')).toMatch(/`rune-backups`[^\n]*nom noté dans le gestionnaire/);
+    expect(runbook).toMatch(
+      /\*\*Écrire les accès B2 depuis le gestionnaire\.\*\*[^\n]*`rune-backups`[^\n]*nom noté dans le gestionnaire/,
+    );
+  });
+
   it('Tailscale SSH : ssh rune ouvre le compte <compte>, quel que soit le nom de session du PC', () => {
     expect(stepWith('Tailscale', 'ssh rune').body).toContain('User <compte>');
   });

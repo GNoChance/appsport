@@ -39,7 +39,7 @@ La copie restaurée contient des données personnelles en clair : elle reste dan
 
    Sinon : installer `restic` (`sudo apt install restic`) ou Docker ; noter le temps perdu dans les écarts.
 
-4. **Écrire les accès B2 depuis le gestionnaire.** Mêmes valeurs que `b2.env` et `restic.pass` sur le serveur (P1, « Dépôts restic »).
+4. **Écrire les accès B2 depuis le gestionnaire.** Mêmes valeurs que `b2.env` et `restic.pass` sur le serveur (P1, « Dépôts restic »). Le bucket s'appelle `rune-backups`, sauf si ce nom était déjà pris à l'installation : prendre alors le nom noté dans le gestionnaire.
 
    ```
    install -m 600 /dev/null b2.env && nano b2.env
