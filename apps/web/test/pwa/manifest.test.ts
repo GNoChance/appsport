@@ -7,6 +7,13 @@ const WEB = resolve(import.meta.dirname, '../..');
 const PUBLIC = join(WEB, 'public');
 /** Fond nuit du logo (--bg du thème sombre), opaque. */
 const NIGHT = [0x07, 0x0a, 0x12, 0xff];
+/** Fond du badge de rune-icon.svg dans ses coins : dernier arrêt de son dégradé radial (#04060B), opaque. */
+const BADGE_CORNER = [0x04, 0x06, 0x0b, 0xff];
+/**
+ * Écart toléré, canal par canal, autour de la nuit : le fond du badge près de son bord s'y fond (au plus 7, en bleu,
+ * pour #04060B) ; le liseré cyan à 14 % s'en écarte d'une trentaine.
+ */
+const NEAR_NIGHT = 8;
 const TRANSPARENT = 0;
 
 interface Png {
@@ -77,6 +84,19 @@ function* pixels(png: Png): Generator<[number, number, number[]]> {
   for (let y = 0; y < png.height; y++) {
     for (let x = 0; x < png.width; x++) yield [x, y, png.pixel(x, y)];
   }
+}
+
+/**
+ * Pixels retenus par `keep` qui ne se fondent pas dans la nuit (un canal à plus de NEAR_NIGHT) : leur nombre et
+ * les trois premiers, « (x, y) R,V,B,A ».
+ */
+function offNight(png: Png, keep: (x: number, y: number) => boolean): { count: number; first: string[] } {
+  const off: string[] = [];
+  for (const [x, y, p] of pixels(png)) {
+    if (keep(x, y) && p.some((v, i) => Math.abs(v - (NIGHT[i] ?? 0)) > NEAR_NIGHT))
+      off.push(`(${x}, ${y}) ${p}`);
+  }
+  return { count: off.length, first: off.slice(0, 3) };
 }
 
 /** Rune glacée de rune-icon.svg au centre de l'icône : bleu glacé opaque (dégradé #F2FDFF → #5ED8FF). */
@@ -157,13 +177,48 @@ describe('manifeste PWA', () => {
     expectIceRuneAtCenter(png, 'icon-maskable-512.png');
   });
 
-  it('Apple : opaque (iOS noircit la transparence), coins sur #070A12, rune glacée au centre', () => {
+  it('maskable : sur le cercle sûr (rayon 40 %) et au-delà, rien que la nuit ; badge sans liseré, à coins carrés', () => {
+    const png = readPng('icon-maskable-512.png');
+    const c = png.width / 2;
+    const safe = 0.4 * png.width;
+    // Le système coupe sur ce cercle (masque rond) ou plus loin : le liseré cyan du badge y tracerait des arcs.
+    expect(offNight(png, (x, y) => Math.hypot(x + 0.5 - c, y + 0.5 - c) >= safe - 0.5)).toEqual({
+      count: 0,
+      first: [],
+    });
+    // Au ras de chaque coin du badge (carré de 80 %, de 51,2 à 460,8 px) : son fond, pas la nuit de la marge.
+    // Des coins arrondis y dessineraient une tuile dans la tuile sous un masque arrondi.
+    const [near, far] = [Math.ceil(0.1 * png.width), png.width - 1 - Math.ceil(0.1 * png.width)];
+    for (const [x, y] of [
+      [near, near],
+      [far, near],
+      [near, far],
+      [far, far],
+    ] as const) {
+      expect(png.pixel(x, y), `(${x}, ${y})`).toEqual(BADGE_CORNER);
+    }
+  });
+
+  it('Apple : opaque (iOS noircit la transparence), badge plein cadre sans liseré, coins carrés, rune glacée au centre', () => {
     const png = readPng('apple-touch-icon-180.png');
     let notOpaque = 0;
     for (const [, , p] of pixels(png)) if (p[3] !== 0xff) notOpaque++;
     expect(notOpaque).toBe(0);
-    expect(png.pixel(0, 0)).toEqual(NIGHT);
-    expect(png.pixel(png.width - 1, png.height - 1)).toEqual(NIGHT);
+    // iOS arrondit lui-même les coins : le long du bord (5 %), le liseré cyan du badge dessinerait un cadre.
+    const band = Math.ceil(0.05 * png.width);
+    const inBand = (x: number, y: number) =>
+      x < band || y < band || x >= png.width - band || y >= png.height - band;
+    expect(offNight(png, inBand)).toEqual({ count: 0, first: [] });
+    // Coins carrés : le fond du badge va jusqu'au coin, la forme finale est celle du masque d'iOS.
+    const last = png.width - 1;
+    for (const [x, y] of [
+      [0, 0],
+      [last, 0],
+      [0, last],
+      [last, last],
+    ] as const) {
+      expect(png.pixel(x, y), `(${x}, ${y})`).toEqual(BADGE_CORNER);
+    }
     expectIceRuneAtCenter(png, 'apple-touch-icon-180.png');
   });
 
