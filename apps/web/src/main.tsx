@@ -1,3 +1,5 @@
+import './ui/theme/tokens.css';
+import './ui/theme/fonts.css';
 import { createMonotonicUuidV7 } from '@rune/domain';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -15,6 +17,10 @@ import { bootServiceWorker } from './sw/register';
 import { getSwStatus } from './sw/sw-client';
 import { createSyncEngine } from './sync/engine';
 import { browserTransport } from './sync/transport';
+import { applyTheme, readThemeChoice } from './ui/theme/theme';
+
+// Thème gardé sur l'appareil, posé avant tout rendu (spec refonte §4) ; Auto suit la media query CSS.
+applyTheme(readThemeChoice());
 
 const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const go = (to: string) => navigate(to, { replace: true });

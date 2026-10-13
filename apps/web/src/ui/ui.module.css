@@ -1,42 +1,4 @@
-/* Jetons et composants de base. Polices système uniquement : aucune ressource tierce (P-LOG-4). */
-:global(:root) {
-  --color-bg: #f7f7f5;
-  --color-surface: #ffffff;
-  --color-text: #1c1c1a;
-  --color-muted: #5b5b57;
-  --color-border: #d6d6d1;
-  --color-primary: #1f5f4a;
-  --color-primary-text: #ffffff;
-  --color-danger: #a12a2a;
-  --color-info-bg: #e8f0fb;
-  --color-warning-bg: #fdf3dc;
-  --color-error-bg: #fbe6e6;
-  --radius: 10px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
-  --content-width: 40rem;
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :global(:root) {
-    --color-bg: #151614;
-    --color-surface: #1f201e;
-    --color-text: #ecece8;
-    --color-muted: #a8a8a2;
-    --color-border: #3a3b37;
-    --color-primary: #5fbf9a;
-    --color-primary-text: #0c1f18;
-    --color-danger: #f08a8a;
-    --color-info-bg: #1d2a3a;
-    --color-warning-bg: #3a3018;
-    --color-error-bg: #3e1f1f;
-  }
-}
-
+/* Base et composants. Jetons (couleurs, rayons, polices) : theme/tokens.css, seule source. */
 :global(*),
 :global(*::before),
 :global(*::after) {
@@ -45,15 +7,26 @@
 
 :global(body) {
   margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
   font-size: 1rem;
   line-height: 1.5;
 }
 
+:global(h1),
+:global(h2),
+:global(h3) {
+  font-family: var(--font-title);
+}
+
 :global(a) {
-  color: var(--color-primary);
+  color: var(--accent);
+}
+
+:global(:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .shell {
@@ -68,14 +41,14 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 
 .brand {
   font-weight: 700;
   text-decoration: none;
-  color: var(--color-text);
+  color: var(--text);
   margin-right: auto;
 }
 
@@ -92,7 +65,7 @@
   align-items: center;
   gap: var(--space-1) var(--space-3);
   font-size: 0.875rem;
-  color: var(--color-muted);
+  color: var(--text-muted);
 }
 
 .main {
@@ -110,7 +83,7 @@
   gap: var(--space-4);
   padding: var(--space-4);
   font-size: 0.875rem;
-  color: var(--color-muted);
+  color: var(--text-muted);
 }
 
 .page {
@@ -135,8 +108,8 @@
   justify-content: center;
   min-height: 44px;
   padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius);
-  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--field-border);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -148,20 +121,20 @@
 }
 
 .primary {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: var(--color-primary-text);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 
 .secondary {
-  background: var(--color-surface);
-  color: var(--color-text);
+  background: var(--surface);
+  color: var(--text);
 }
 
 .danger {
-  background: var(--color-surface);
-  border-color: var(--color-danger);
-  color: var(--color-danger);
+  background: var(--surface);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .field {
@@ -175,10 +148,10 @@
 .field textarea {
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  color: var(--color-text);
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-control);
+  background: var(--field-bg);
+  color: var(--text);
   font: inherit;
 }
 
@@ -188,31 +161,31 @@
 
 .hint {
   font-size: 0.875rem;
-  color: var(--color-muted);
+  color: var(--text-muted);
 }
 
 .fieldError {
   font-size: 0.875rem;
-  color: var(--color-danger);
+  color: var(--danger);
 }
 
 .banner {
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius);
-  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
 }
 
 .info {
-  background: var(--color-info-bg);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 
 .warning {
-  background: var(--color-warning-bg);
+  background: var(--warning-bg);
 }
 
 .error {
-  background: var(--color-error-bg);
-  border-color: var(--color-danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border-color: var(--danger);
 }
 
 .backdrop {
@@ -234,8 +207,8 @@
   max-width: 28rem;
   max-height: 100%;
   padding: var(--space-6);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -285,12 +258,12 @@
   gap: var(--space-3);
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
 }
 
 .healthWarning {
   font-size: 0.875rem;
-  color: var(--color-muted);
+  color: var(--text-muted);
 }

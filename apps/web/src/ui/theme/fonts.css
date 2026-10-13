@@ -1,0 +1,55 @@
+/*
+ * Polices embarquées (spec refonte §4, P-LOG-4) : sous-ensemble latin en woff2 des paquets Fontsource,
+ * émis dans dist/assets par Vite, servis par notre serveur et précachés par le SW. Déclarées ici plutôt que
+ * par les feuilles d'entrée Fontsource (`latin-600.css`…), qui ajoutent un repli .woff que Vite émettrait
+ * et que le SW précacherait pour rien.
+ * Chakra Petch : titres, chiffres, rangs, voix du Système. Barlow : le texte. Newsreader : titres du Carnet.
+ */
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("@fontsource/chakra-petch/files/chakra-petch-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("@fontsource/chakra-petch/files/chakra-petch-latin-700-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("@fontsource/barlow/files/barlow-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("@fontsource/barlow/files/barlow-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("@fontsource/barlow/files/barlow-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("@fontsource/newsreader/files/newsreader-latin-600-normal.woff2") format("woff2");
+}

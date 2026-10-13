@@ -1,0 +1,155 @@
+/*
+ * Jetons de Rune : la seule source des couleurs, rayons et polices (spec refonte §4).
+ * - `:root` porte le thème clair (le mélange en clair) et les jetons communs à tous les thèmes ;
+ * - Auto (aucun data-theme) passe en sombre par la media query, sans script ni flash ;
+ * - un thème forcé (data-theme, posé par applyTheme) l'emporte toujours sur le réglage du téléphone :
+ *   la media query ne vise que `:root:not([data-theme])`.
+ * Clair et sombre : tableau Tokens de GUIDE.md. Carnet : maquette Carnet. Salle de nuit : maquette Main.
+ * Contrastes vérifiés pour chaque thème par test/ui/contrast.test.ts ; theme-color (theme.ts) = --bg.
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #f1f3f7;
+  --surface: #ffffff;
+  --surface-strong: #ffffff;
+  --border: #dce2ea;
+  --text: #10151f;
+  --text-muted: #4f5c6d;
+  --accent: #1c6fb5;
+  --accent-text: #ffffff;
+  --accent-2: #6a48e8;
+  --danger: #c2333f;
+  --success: #1e9e63;
+  --warning-text: #8a5a00;
+  --warning-bg: #fff4dc;
+  --field-bg: #ffffff;
+  --field-border: #ced6e0;
+  --focus: #1c6fb5;
+
+  --radius-card: 18px;
+  --radius-control: 14px;
+  --font-display: "Chakra Petch", system-ui, sans-serif;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-title: var(--font-display);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --content-width: 40rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #070a12;
+    --surface: #0e1424;
+    --surface-strong: #0f1a30;
+    --border: rgb(255 255 255 / 0.06);
+    --text: #eef6fb;
+    --text-muted: #9db0c4;
+    --accent: #5ed8ff;
+    --accent-text: #05070d;
+    --accent-2: #8c6bff;
+    --danger: #ff8a95;
+    --success: #3ddc97;
+    --warning-text: #f5c46b;
+    --warning-bg: #2a2112;
+    --field-bg: #0e1424;
+    --field-border: rgb(255 255 255 / 0.12);
+    --focus: #5ed8ff;
+  }
+}
+
+/* Clair forcé : les valeurs de :root, sans la bascule du téléphone. */
+:root[data-theme="clair"] {
+  color-scheme: light;
+}
+
+/* Sombre forcé : mêmes couleurs que Auto en sombre (vérifié par test). */
+:root[data-theme="sombre"] {
+  color-scheme: dark;
+  --bg: #070a12;
+  --surface: #0e1424;
+  --surface-strong: #0f1a30;
+  --border: rgb(255 255 255 / 0.06);
+  --text: #eef6fb;
+  --text-muted: #9db0c4;
+  --accent: #5ed8ff;
+  --accent-text: #05070d;
+  --accent-2: #8c6bff;
+  --danger: #ff8a95;
+  --success: #3ddc97;
+  --warning-text: #f5c46b;
+  --warning-bg: #2a2112;
+  --field-bg: #0e1424;
+  --field-border: rgb(255 255 255 / 0.12);
+  --focus: #5ed8ff;
+}
+
+/* Carnet : papier crème, encre, bleu de stylo, marge rouge (accent 2) ; titres en Newsreader. */
+:root[data-theme="carnet"] {
+  color-scheme: light;
+  --bg: #f2ecdf;
+  --surface: #fbf8f1;
+  --surface-strong: #fbf8f1;
+  --border: #d3c5ad;
+  --text: #211b16;
+  --text-muted: #5c5044;
+  --accent: #1f5f8b;
+  --accent-text: #fbf8f1;
+  --accent-2: #c45c48;
+  --danger: #a8322a;
+  --success: #2f6b3a;
+  --warning-text: #7a4e00;
+  --warning-bg: #f6e3a8;
+  --field-bg: #fbf8f1;
+  --field-border: #cdbfa6;
+  --focus: #1f5f8b;
+  --radius-card: 4px;
+  --radius-control: 4px;
+  --font-title: "Newsreader", Georgia, serif;
+}
+
+/* Salle de nuit : néon pur sur le fond nuit du logo, cadres plus vifs. */
+:root[data-theme="nuit"] {
+  color-scheme: dark;
+  --bg: #05070d;
+  --surface: #0b1222;
+  --surface-strong: #08101f;
+  --border: #18243b;
+  --text: #f2fdff;
+  --text-muted: #9fb0c6;
+  --accent: #5ed8ff;
+  --accent-text: #05070d;
+  --accent-2: #8c6bff;
+  --danger: #ff8a95;
+  --success: #3ddc97;
+  --warning-text: #f5c46b;
+  --warning-bg: #2a2112;
+  --field-bg: #0b1222;
+  --field-border: #1c2a44;
+  --focus: #5ed8ff;
+  --radius-card: 12px;
+  --radius-control: 8px;
+}
+
+/*
+ * Pont vers les variables du socle encore lues par les écrans pas encore refaits (features/, sw/) :
+ * chacune pointe vers un jeton, donc suit le thème. Une ligne disparaît quand plus aucun module ne la lit.
+ */
+:root {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-primary: var(--accent);
+  --color-primary-text: var(--accent-text);
+  --color-danger: var(--danger);
+  --color-info-bg: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  --color-warning-bg: var(--warning-bg);
+  --radius: var(--radius-control);
+}
