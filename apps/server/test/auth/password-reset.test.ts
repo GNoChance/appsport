@@ -229,23 +229,36 @@ describe('admin:reset (CLI)', () => {
       const user = (id: string) =>
         c.deps.db
           .selectFrom('user')
-          .select(['status', 'updatedBy'])
+          .select(['status', 'rev', 'updatedAt', 'updatedBy'])
           .where('id', '=', id)
           .executeTakeFirstOrThrow();
       const codeOf = (line: string | undefined) => (line as string).slice('Code : '.length);
+      // La fabrique ne pose pas updatedBy : seuls rev et updatedAt prouvent que la réactivation est estampillée.
+      const before = await user(leo.id);
 
       out.length = 0;
       expect(await runCli(['admin:reset', 'leo'], env, o, e)).toBe(0);
       expect(out).toHaveLength(4);
       expect(out[0]).toBe('Compte administrateur leo réactivé.');
       expect(out[1]).toBe('Lien de réinitialisation pour leo (valable 24 h)');
-      expect(await user(leo.id)).toEqual({ status: 'active', updatedBy: null });
+      const after = await user(leo.id);
+      expect(after).toMatchObject({ status: 'active', updatedBy: null });
+      expect(after.rev).toBeGreaterThan(before.rev);
+      expect(after.updatedAt).not.toBe(before.updatedAt);
       const reactivated = await c.deps.db
         .selectFrom('securityEvent')
-        .select(['actorId', 'targetId', 'details'])
+        .select(['actorId', 'targetId', 'outcome', 'tailnetIp', 'details'])
         .where('type', '=', 'status_changed')
         .execute();
-      expect(reactivated).toEqual([{ actorId: null, targetId: leo.id, details: '{"status":"active"}' }]);
+      expect(reactivated).toEqual([
+        {
+          actorId: null,
+          targetId: leo.id,
+          outcome: 'success',
+          tailnetIp: null,
+          details: '{"status":"active"}',
+        },
+      ]);
       // Le lien sert : le compte réactivé change son mot de passe, puis se connecte.
       const used = await consumePasswordReset(c.deps, { code: codeOf(out[3]), newPassword: NEW }, null);
       expect(used.userId).toBe(leo.id);
