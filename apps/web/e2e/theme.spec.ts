@@ -30,12 +30,19 @@ test('apparence : un thème forcé l’emporte sur le téléphone, Auto suit sa 
   server,
   page,
 }) => {
-  /** Thème posé sur <html>, fond de la page et theme-color, lus dans la page. */
+  /**
+   * Thème posé sur <html>, fond de la page et theme-color, lus dans la page. index.html a une balise
+   * theme-color par schéma de couleurs : on lit celle que le navigateur applique, la première sans media ou
+   * dont la media query correspond au téléphone.
+   */
   const look = () =>
     page.evaluate(() => ({
       theme: document.documentElement.getAttribute('data-theme'),
       background: getComputedStyle(document.body).backgroundColor,
-      themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? null,
+      themeColor:
+        [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].find(
+          (meta) => !meta.media || matchMedia(meta.media).matches,
+        )?.content ?? null,
     }));
   /** Choix gardé (null : aucun, donc Auto), puis rechargement : main.tsx l'applique au démarrage. */
   const reopenWith = async (choice: string | null) => {
