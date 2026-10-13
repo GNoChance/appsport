@@ -119,6 +119,11 @@ describe('ProfileRepo', () => {
 
   it('get : coach absent ou inconnu du miroir → null', async () => {
     const { repos, db } = await setup();
+    // Ligne tirée avant 0002_coach : pas de clé coach du tout.
+    await seedMirror(db, 'training_profile', [{ id: 'u-1', ownerId: 'u-1', goal: 'muscle' }]);
+    const before0002 = await repos.profile.get();
+    expect(before0002?.goal).toBe('muscle');
+    expect(before0002?.coach).toBeNull();
     await seedMirror(db, 'training_profile', [{ id: 'u-1', ownerId: 'u-1', coach: 'berserker' }]);
     expect((await repos.profile.get())?.coach).toBeNull();
     await seedMirror(db, 'training_profile', [{ id: 'u-1', ownerId: 'u-1', coach: null }]);

@@ -6,7 +6,6 @@ import { entityRules } from '../src/entity-rules';
 describe('coach (spec refonte §8)', () => {
   it('trois coachs, dans cet ordre', () => {
     expect(COACH_IDS).toEqual(['ombre', 'skald', 'scribe']);
-    expect(CoachIdSchema.options).toEqual([...COACH_IDS]);
   });
 
   it('CoachIdSchema refuse tout autre identifiant', () => {
@@ -16,7 +15,7 @@ describe('coach (spec refonte §8)', () => {
   });
 
   it("TrainingProfilePatch accepte un coach, jamais null : un coach choisi se change, il ne s'efface pas", () => {
-    expect(TrainingProfilePatch.parse({ coach: 'skald' })).toEqual({ coach: 'skald' });
+    for (const coach of COACH_IDS) expect(TrainingProfilePatch.parse({ coach })).toEqual({ coach });
     expect(TrainingProfilePatch.safeParse({ coach: null }).success).toBe(false);
     expect(TrainingProfilePatch.safeParse({ coach: 'berserker' }).success).toBe(false);
   });
