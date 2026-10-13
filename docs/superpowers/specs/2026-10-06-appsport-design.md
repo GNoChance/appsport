@@ -1,5 +1,7 @@
 # appsport — spécification de design (vision, architecture et socle)
 
+> **Nom (2026-10-13) :** appsport était le nom de code. L'appli et tout son code s'appellent désormais **Rune** (`rune`) : dans ce document et ses sections, lire « rune » partout où un identifiant, un chemin ou un texte dit « appsport » (voir `2026-10-13-refonte-rune-design.md` §3).
+
 - **Date** : 2026-10-06
 - **Statut** : rédigée après validation du design en 4 blocs ; en attente de relecture de la spec écrite.
 - **Portée** : vision d'ensemble, décisions transverses, découpage en briques, architecture technique, et détail complet de la brique 1 (socle). Les briques 2 à 5 ont ici leurs principes, règles et modèle ; chacune aura sa spec détaillée et son plan avant implémentation.

@@ -6,7 +6,9 @@
 
 ## 1. But
 
-Faire du socle une vraie appli, avec du caractère et de la vie, prête pour la mise en production : identité Rune, thèmes, navigation d'appli, composants cohérents, animations utiles, choix du coach dès le début, onglet Progression en avant-goût. En parallèle, finir la revue du socle pour qu'une seule PR `socle` → `main` soit prête pour la prod.
+Faire du socle une vraie appli, avec du caractère et de la vie, prête pour la mise en production le jour venu : identité Rune, thèmes, navigation d'appli, composants cohérents, animations utiles, choix du coach dès le début, onglet Progression en avant-goût. En parallèle, finir la revue du socle pour qu'une seule PR `socle` → `main` soit prête.
+
+**Pas de mise en production pour l'instant (décision 2026-10-13) :** on finit d'abord toutes les briques (exercices, séances, coach, nutrition), puis on déploie. La PR `socle` → `main` passe quand même la CI, sans tag ni déploiement.
 
 Réussi = en ouvrant Rune sur son téléphone, on a l'impression d'une appli soignée et cohérente avec le logo, et un proche s'y retrouve sans explication.
 
@@ -24,7 +26,8 @@ Réussi = en ouvrant Rune sur son téléphone, on a l'impression d'une appli soi
 
 ## 3. Identité
 
-- Nom affiché : **Rune** partout (titre, manifeste PWA `name` et `short_name`, pages, textes). Le code, les paquets (`@appsport/…`), le dépôt et les chemins serveur gardent le nom de code `appsport`.
+- Nom affiché : **Rune** partout (titre, manifeste PWA `name` et `short_name`, pages, textes).
+- **Plus rien ne s'appelle appsport (décision 2026-10-13) :** le dépôt est devenu `GNoChance/rune`, et tout le code suit : paquets `@rune/…`, en-têtes `X-Rune-*`, variables `RUNE_*`, base `rune.db` et sentinelle `.rune-volume`, bases et clés du navigateur, image `ghcr.io/gnochance/rune`, chemins `/srv/rune` et `/opt/rune`, projet compose, scripts et unités `rune-*`, machine Tailscale `rune`. C'est sans risque car rien n'est encore installé. Seuls `docs/superpowers/` et `docs/research/` gardent l'ancien nom de code, par historique ; dans ces documents, lire « rune » partout où un identifiant dit « appsport ». La règle R-MDP-3 refuse désormais un mot de passe qui contient « rune » *(technique)*.
 - Slogan : « Grave ta progression. »
 - Logo « Rang brisé » : `docs/brand/rune-mark.svg`, `rune-mark-mono.svg`, `rune-icon.svg`, `rune-wordmark.svg`, `rune-wordmark-ink.svg`. Icônes PWA (192, 512, maskable 512, apple-touch 180) et favicon régénérées depuis `rune-icon.svg`, en PNG versionnés dans `apps/web/public/icons/`. `theme-color` suit le thème.
 - Texte du consentement santé : « appsport » devient « Rune » sans changer de version (1.0), car l'appli n'est utilisée par personne avant la mise en production *(technique)*.
@@ -162,13 +165,13 @@ Les maquettes du canvas font foi pour la mise en page (rangées 2 à 7 et rangé
 
 ## 11. Revue finale du socle (en parallèle, décision 2026-10-13)
 
-À appliquer dans la même branche, pour que la PR soit prête pour la prod :
+À appliquer dans la même branche, pour que la PR soit prête :
 
 1. **Décisions de confidentialité du 2026-10-12 :**
    - la fiche de traitement et la page Confidentialité mentionnent l'enveloppe de secours scellée (T45-F32) ;
    - P9 efface les sauvegardes après un dernier export (T45-F42) ;
    - `admin:reset` réactive un admin désactivé, avec un test (T45-F51).
-2. **Adresse définitive** `https://rune.<tailnet>.ts.net` : machine Tailscale `rune` dans les procédures P1 à P9 et leurs tests. Les chemins `/srv/appsport` et le projet compose ne changent pas.
+2. **Adresse définitive** `https://rune.<tailnet>.ts.net` : machine Tailscale `rune` dans les procédures P1 à P9 et leurs tests. Fait par le renommage (tâche 0), avec les chemins `/srv/rune` et le projet compose `rune`.
 3. **Remarques mineures reportées** de T30 à T45 (listées dans `progress.md`) : chacune est corrigée, ou fermée avec une raison écrite.
 4. **Tests instables** (profil, retrait du consentement, fiche de lieu) : ils deviennent déterministes, en attendant explicitement la fin des requêtes `liveQuery`.
 5. **T38-F3 :** aucun lien ni code d'invitation dans les journaux ni les traces de la CI (masquage dans le harnais E2E).

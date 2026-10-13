@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Donner au socle le look et la vie de Rune (thèmes, coquille, composants, animations, coachs, rangs, Progression en avant-goût) et terminer la revue finale, pour une PR `socle` → `main` prête pour la prod.
+**Goal:** Donner au socle le look et la vie de Rune (thèmes, coquille, composants, animations, coachs, rangs, Progression en avant-goût) et terminer la revue finale, pour une PR `socle` → `main` prête (pas de mise en production avant la fin de toutes les briques, décision du 2026-10-13).
 
 **Architecture:** On garde React 19 + modules CSS. Une couche de jetons CSS (5 thèmes) et une boîte à outils dans `apps/web/src/ui/` portent tout le style ; les écrans de `apps/web/src/features/` sont rhabillés zone par zone sans toucher aux dépôts ni à la synchro. Une seule donnée serveur nouvelle : `training_profile.coach`. La revue finale touche le serveur, l'infra, les docs et le harnais E2E dans une file à part.
 
@@ -13,9 +13,9 @@
 ## Global Constraints
 
 - Branche `socle`, un commit (ou plusieurs) par tâche, messages en français au format du dépôt (`feat(web): …`, `fix(server): …`), trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- `pnpm lint`, `pnpm typecheck`, `pnpm test` verts à la fin de chaque tâche ; E2E (`pnpm --filter @appsport/web test:e2e`) verts pour les tâches qui touchent un parcours E2E.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test` verts à la fin de chaque tâche ; E2E (`pnpm --filter @rune/web test:e2e`) verts pour les tâches qui touchent un parcours E2E.
 - CSP inchangée : `default-src 'self'` — aucune ressource externe (polices embarquées), aucun `<script>` inline, aucun `dangerouslySetInnerHTML`, aucun `style="…"` en HTML statique (les props `style` de React sont permises).
-- Nom affiché « Rune » ; identifiants de code, paquets et chemins serveur gardent `appsport`.
+- Plus rien ne s'appelle appsport (décision du 2026-10-13, tâche 0) : affichage « Rune », code `rune` (paquets `@rune/*`, en-têtes `X-Rune-*`, variables `RUNE_*`, chemins `/srv/rune`, image `ghcr.io/gnochance/rune`, dépôt `GNoChance/rune`). Seuls `docs/superpowers/` et `docs/research/` gardent l'ancien nom par historique.
 - Apostrophe droite `'` dans tous les textes ; tutoiement ; textes légaux (consentement santé, avertissement santé, ligne d'écoute) mot pour mot, seule substitution « appsport » → « Rune ».
 - Accessibilité : rôles et noms accessibles existants conservés ; cible tactile ≥ 44 px ; contrastes ≥ 4,5:1 (texte) et 3:1 (grand texte, éléments d'interface) dans les 5 thèmes ; `prefers-reduced-motion` respecté.
 - Animations : 150–250 ms (retour de geste), 300–450 ms (écran), 600–1 200 ms (célébration) ; courbe unique `cubic-bezier(.2,.8,.2,1)`.
@@ -43,6 +43,33 @@
 - `apps/web/src/features/profile/ProfileHub.tsx` (+ `ProfilePage.tsx` devient « Mon profil »).
 - Serveur : `apps/server/src/db/migrations/0002_coach.ts`, `packages/contracts/src/coach.ts`.
 
+## Tâche préalable — renommage (avant toutes les files)
+
+### Task 0: Renommage complet appsport → rune
+
+**Files:**
+- Modify: tout le dépôt sauf `docs/superpowers/**` et `docs/research/**` (historique) : `package.json` des 5 paquets et leurs imports, configs (tsconfig, vitest, biome, playwright), `pnpm-lock.yaml` (régénéré), `apps/**`, `packages/**`, `infra/**`, `.github/workflows/**`, `docs/exploitation/**`, `docs/adr/**`, `docs/fiche-de-traitement.md`, `docs/incidents.md`, `README.md`, `data/LICENSE`
+- Rename (git mv) : `infra/host/appsport-*` → `infra/host/rune-*` ; `infra/systemd/appsport-*` → `infra/systemd/rune-*` ; les fichiers d'infra nommés `appsport` (drop-in Docker, fichier apt `52appsport-unattended`, etc.) ; `docs/exploitation/installer-appsport.md` → `installer-rune.md`
+- Create: `apps/server/test/infra/name.test.ts`
+
+**Interfaces:**
+- Produces (noms que toutes les tâches suivantes utilisent) :
+  - paquets `rune` (racine), `@rune/contracts`, `@rune/domain`, `@rune/server`, `@rune/web` ; commandes `pnpm --filter @rune/<paquet>` ;
+  - en-têtes `X-Rune-Epoch`, `X-Rune-Protocol` (constantes `EPOCH_HEADER`, `PROTOCOL_HEADER` inchangées) ;
+  - variables d'environnement `RUNE_*` à la place de chaque `APPSPORT_*` (`RUNE_DATA_DIR`, `RUNE_PUBLIC_DIR`, `RUNE_CONTENT_DIR`, `RUNE_URL`, `RUNE_ROOT`, `RUNE_REPO`, `RUNE_VERSION`, …) ;
+  - données : `/data/rune.db`, sentinelle `/data/.rune-volume`, `EXPORT_FORMAT` = `rune-export/1`, fichier d'export `rune-export-AAAA-MM-JJ.json` ;
+  - navigateur : bases Dexie, clés de stockage, noms d'événements et préfixe de journal en `rune` ;
+  - hôte : `/srv/rune`, `/opt/rune`, projet compose `rune`, image `ghcr.io/gnochance/rune`, scripts `rune-unlock`, `rune-update`, `rune-backup`, `rune-restore-test`, `rune-alive`, `rune-check`, unités systemd `rune-*`, mapper LUKS `rune`, partlabel `rune-data`, verrou `/run/rune.lock`, bucket B2 `rune-backups`, machine Tailscale `rune`, adresse `https://rune.<tailnet>.ts.net`, dépôt `https://github.com/GNoChance/rune` ;
+  - textes visibles : « Rune » (consentement « que Rune enregistre », version 1.0 inchangée ; avertissement santé « Rune ne remplace pas un avis médical… », en « vous ») ;
+  - R-MDP-3 : refus d'un mot de passe qui contient « rune » (insensible à la casse), code `contains_app_name`, message « Le mot de passe ne doit pas contenir « rune ». » ;
+  - `RESERVED_USERNAMES` : `admin`, `rune`, `appsport`, `systeme`.
+
+- [ ] **Step 1: Test qui échoue** — `name.test.ts` : parcourt `git ls-files` (hors `docs/superpowers/`, `docs/research/`, fichiers binaires) et échoue si un chemin ou un contenu contient « appsport » (insensible à la casse), sauf deux exceptions exactes : l'entrée `'appsport'` de `RESERVED_USERNAMES` et le nom de fichier historique `2026-10-06-appsport-design` ; il vérifie aussi que `docs/exploitation/P1-installation.md` contient `rune.<tailnet>.ts.net` et que `isPasswordAcceptable` (ou la fonction R-MDP-3 existante) refuse « MaRune2026!! ».
+- [ ] **Step 2: Lancer** `pnpm --filter @rune/server test infra/name` après le renommage des paquets (sinon par chemin) — FAIL.
+- [ ] **Step 3: Renommer** : paquets et imports d'abord (`pnpm install` régénère le lockfile), puis identifiants, variables, chemins, scripts et unités (`git mv`), puis docs d'exploitation et textes visibles ; mettre à jour tous les tests (unitaires, bats, `docs.test.ts`, E2E).
+- [ ] **Step 4: Lancer** `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:infra` (Git Bash), `pnpm --filter @rune/web test:e2e` (Chromium et WebKit), le build de production du serveur et du web — tout vert.
+- [ ] **Step 5: Commit** `refactor: l'appli et son code s'appellent Rune`.
+
 ## File F — fondations (séquentielle)
 
 ### Task 1: Jetons, thèmes et polices
@@ -57,25 +84,26 @@
 - Structure CSS : `:root` = clair ; `@media (prefers-color-scheme: dark) { :root:not([data-theme]) { …sombre } }` ; `:root[data-theme="clair"]`, `[data-theme="sombre"]`, `[data-theme="carnet"]`, `[data-theme="nuit"]`.
 
 - [ ] **Step 1: Écrire les tests qui échouent** — `theme.test.ts` : `readThemeChoice()` renvoie `'auto'` sans stockage et quand `localStorage.getItem` lève ; `applyTheme('clair')` pose `data-theme="clair"` ; `applyTheme('auto')` retire l'attribut ; `theme-color` vaut `#F1F3F7` pour clair et `#070A12` pour sombre ; `tokens.css` ne redéfinit les jetons sombres sous `prefers-color-scheme: dark` que pour `:root:not([data-theme])` (un thème forcé l'emporte toujours sur le réglage du téléphone). `contrast.test.ts` : lit `tokens.css` (fs), extrait chaque bloc de thème et vérifie `ratio(--text, --bg) >= 4.5`, `ratio(--text-muted, --surface) >= 4.5`, `ratio(--accent-text, --accent) >= 4.5`, `ratio(--accent, --bg) >= 3` pour les 5 thèmes (fonction `contrastRatio(hexA, hexB)` WCAG 2.x dans le test).
-- [ ] **Step 2: Lancer** `pnpm --filter @appsport/web test theme contrast` — attendu : FAIL (modules absents).
+- [ ] **Step 2: Lancer** `pnpm --filter @rune/web test theme contrast` — attendu : FAIL (modules absents).
 - [ ] **Step 3: Implémenter** `tokens.css`, `theme.ts`, `fonts.ts` (imports des sous-ensembles latins woff2 : Chakra Petch 600/700, Barlow 400/500/600, Newsreader 600), appel `applyTheme(readThemeChoice())` dans `main.tsx` avant le rendu ; brancher `ui.module.css` sur les jetons.
-- [ ] **Step 4: Lancer** les deux tests, puis `pnpm --filter @appsport/web build` et vérifier dans `dist/` que les woff2 sont émis et figurent dans le manifeste de précache (test existant `precache-plugin.test.ts` vert).
+- [ ] **Step 4: Lancer** les deux tests, puis `pnpm --filter @rune/web build` et vérifier dans `dist/` que les woff2 sont émis et figurent dans le manifeste de précache (test existant `precache-plugin.test.ts` vert).
 - [ ] **Step 5: Commit** `feat(web): jetons des 5 thèmes, choix d'apparence par appareil et polices embarquées`.
 
 ### Task 2: Marque Rune, icônes et logo
 
 **Files:**
 - Create: `apps/web/src/ui/Logo.tsx`, `apps/web/scripts/render-icons.mjs`, `apps/web/test/app/brand.test.ts`
-- Modify: `apps/web/index.html` (titre `Rune`), `apps/web/public/manifest.webmanifest` (`name` `Rune`, `short_name` `Rune`, `theme_color` `#070A12`, `background_color` `#070A12`), `apps/web/public/icons/*.png` (régénérés), `packages/contracts/src/texts.ts` (consentement : « qu'appsport » → « que Rune », version inchangée), `packages/contracts/src/auth-constants.ts` (`RESERVED_USERNAMES` gagne `'rune'`), chaque texte visible contenant « appsport » dans `apps/web/src/**` (dont `install-help.ts`, `share-message.ts`, `privacy-content.ts`, `messages.ts`) et les tests qui les citent, `apps/web/test/pwa/manifest.test.ts`
+- Modify: `apps/web/public/manifest.webmanifest` (`name` `Rune`, `short_name` `Rune`, `theme_color` `#070A12`, `background_color` `#070A12`), `apps/web/public/icons/*.png` (régénérés), `apps/web/index.html` (icônes, `theme-color`), `apps/web/test/pwa/manifest.test.ts`
 
 **Interfaces:**
+- Consumes: le renommage de la tâche 0 (textes « Rune » déjà en place).
 - Produces: `<RuneMark size?: number; glow?: boolean; title?: string />` (SVG en ligne de `rune-mark-mono.svg`, `currentColor` ; `glow` ajoute le dégradé et la lueur de `rune-mark.svg`) ; `<RuneWordmark />` (texte « RUNE » en `--font-display`, `letter-spacing: .22em`).
 
-- [ ] **Step 1: Test qui échoue** — `brand.test.ts` : (a) le manifeste a `name === 'Rune'` ; (b) un parcours du dépôt `apps/web/src` et `packages/contracts/src` ne trouve aucune chaîne littérale contenant `appsport` hors `@appsport/`, `EXPORT_FORMAT` et `RESERVED_USERNAMES` ; (c) `CONSENT_TEXTS` (ou l'export actuel du texte de consentement) contient « que Rune enregistre ».
+- [ ] **Step 1: Test qui échoue** — `brand.test.ts` : (a) le manifeste a `name === 'Rune'`, `short_name === 'Rune'` et les icônes 192, 512 et maskable 512 ; (b) `RuneMark` rend un `svg` avec `role="img"` et le titre donné, sans `id` en double quand deux marques sont affichées.
 - [ ] **Step 2: Lancer** — FAIL.
-- [ ] **Step 3: Implémenter** : `render-icons.mjs` (Playwright, `docs/brand/rune-icon.svg` → 192, 512, maskable 512 avec 10 % de marge, apple-touch 180, favicon 32) puis le lancer et committer les PNG ; `Logo.tsx` ; remplacements de textes ; mettre à jour les tests qui citaient « appsport ».
+- [ ] **Step 3: Implémenter** : `render-icons.mjs` (Playwright, `docs/brand/rune-icon.svg` → 192, 512, maskable 512 avec 10 % de marge, apple-touch 180, favicon 32) puis le lancer et committer les PNG ; `Logo.tsx`.
 - [ ] **Step 4: Lancer** `pnpm test` — PASS.
-- [ ] **Step 5: Commit** `feat(web): Rune partout, logo Rang brisé et icônes de l'appli installée`.
+- [ ] **Step 5: Commit** `feat(web): logo Rang brisé et icônes de l'appli installée`.
 
 ### Task 3: Composants de base
 
@@ -101,7 +129,7 @@
 - [ ] **Step 1: Tests qui échouent** — `components.test.tsx` : `ChoiceCard` cochée expose `getByRole('radio', { name: 'Prendre du muscle', checked: true })` ; `Chips` change la valeur au clic et a des cibles `min-height` 44 (classe) ; `Switch` a `role="switch"` et `aria-checked` ; `SegmentedProgress step=3 total=9` affiche « Étape 3 sur 9 » et 9 segments dont 3 `data-done` ; `Field error="12 caractères au moins."` relie l'erreur par `aria-describedby` ; `PageHeader back="/profile"` rend `getByRole('link', { name: 'Retour' })`.
 - [ ] **Step 2: Lancer** — FAIL.
 - [ ] **Step 3: Implémenter** selon les maquettes (`GUIDE.md` › Components).
-- [ ] **Step 4: Lancer** `pnpm --filter @appsport/web test` — tous verts (les écrans existants gardent leurs rôles).
+- [ ] **Step 4: Lancer** `pnpm --filter @rune/web test` — tous verts (les écrans existants gardent leurs rôles).
 - [ ] **Step 5: Commit** `feat(web): boîte à outils de base (cartes de choix, pastilles, interrupteur, progression, listes, états vides)`.
 
 ### Task 4: Feuilles du bas, Système, coach, rangs, art et mouvement
@@ -113,7 +141,7 @@
 **Interfaces:**
 - Consumes: jetons (Task 1), `Button` (Task 3), `inert-outside.ts` existant.
 - Produces:
-  - `type CoachId = 'ombre' | 'skald' | 'scribe'` (importé de `@appsport/contracts`, Task 6 ; en attendant la fusion, cette tâche déclare le type localement dans `ui/art/coach-id.ts` et Task 6 le remplace par l'import).
+  - `type CoachId = 'ombre' | 'skald' | 'scribe'` (importé de `@rune/contracts`, Task 6 ; en attendant la fusion, cette tâche déclare le type localement dans `ui/art/coach-id.ts` et Task 6 le remplace par l'import).
   - `<CoachAvatar coach: CoachId; mode?: 'training' | 'nutrition'; size: number; animated?: boolean />` (choisit `scheme` selon le thème effectif ; ids préfixés par `useId()`).
   - `<CoachBubble coach: CoachId; label: 'Aujourd\'hui' | 'Aperçu' | 'Message d\'accueil'; mode?; children />` (avatar 40 px + bulle ; aucune animation de frappe).
   - `<SystemPanel title: string; children; tone?: 'default' | 'success' />` (étiquette « [ SYSTÈME ] », coin HUD en sombre et en Salle de nuit, barre dégradée en clair).
@@ -126,7 +154,7 @@
 - [ ] **Step 1: Tests qui échouent** — `sheet-motion.test.tsx` : `BottomSheet` ouverte → `getByRole('dialog', { name: 'Se déconnecter' })`, Échap appelle `onClose`, le focus revient au bouton déclencheur après fermeture, le reste a `inert` ; `RankBadge rank="E"` → `getByRole('img', { name: 'Rang E' })` ; `CountUp to={3}` sous `matchMedia('(prefers-reduced-motion: reduce)')` affiche « 3 » au premier rendu ; deux `CoachAvatar` sur la même page n'ont aucun `id` en double.
 - [ ] **Step 2: Lancer** — FAIL.
 - [ ] **Step 3: Implémenter** ; lancer `node apps/web/scripts/svg-to-tsx.mjs` et committer les fichiers générés (en-tête « fichier généré par svg-to-tsx.mjs »).
-- [ ] **Step 4: Lancer** `pnpm --filter @appsport/web test` — PASS.
+- [ ] **Step 4: Lancer** `pnpm --filter @rune/web test` — PASS.
 - [ ] **Step 5: Commit** `feat(web): feuilles du bas, fenêtre du Système, bulles et avatars des coachs, rangs en pierre et mouvement`.
 
 ### Task 5: Coquille, navigation et état de connexion
@@ -143,7 +171,7 @@
 - [ ] **Step 1: Tests qui échouent** — `shell.test.tsx` : sur `/places/…` l'onglet « Salles » a `aria-current="page"` ; sur `/profile/health` c'est « Profil » ; l'en-tête n'affiche plus « 0 en attente » ; quand `connection === 'offline'`, la pastille dit « Hors ligne » (jamais « En ligne ») ; l'onglet « Administration » n'existe plus dans la barre (l'admin passe par Profil) ; `/profile/places` redirige vers `/places`.
 - [ ] **Step 2: Lancer** — FAIL.
 - [ ] **Step 3: Implémenter** selon `MixSombre.dc.html` / `MixClair.dc.html` (barre flottante en pilule) ; transitions : avant = glisse depuis la droite, retour = depuis la gauche, onglet = fondu (classe posée selon l'historique wouter).
-- [ ] **Step 4: Lancer** `pnpm test` puis `pnpm --filter @appsport/web test:e2e arrival` — adapter les sélecteurs E2E qui visaient l'ancienne navigation.
+- [ ] **Step 4: Lancer** `pnpm test` puis `pnpm --filter @rune/web test:e2e arrival` — adapter les sélecteurs E2E qui visaient l'ancienne navigation.
 - [ ] **Step 5: Commit** `feat(web): coquille Rune, barre d'onglets flottante, navigation latérale et état de connexion unique`.
 
 ## File S — serveur (parallèle à la file F)
@@ -158,7 +186,7 @@
 - Produces: `COACH_IDS = ['ombre', 'skald', 'scribe'] as const` ; `CoachId` ; `CoachIdSchema = z.enum(COACH_IDS)` ; colonne SQL `coach TEXT CHECK (coach IN ('ombre','skald','scribe'))` (migration `0002_coach`, `breaking: false`, `ALTER TABLE training_profile ADD COLUMN …`) ; `PATCH /api/training-profile` accepte `{ coach }` ; `POST /api/onboarding/complete` refuse sans coach ; dépôt web `repos.profile.setCoach(coach: CoachId): Promise<void>` et `useTrainingProfile().coach: CoachId | null`.
 
 - [ ] **Step 1: Tests qui échouent** — `coach.test.ts` : la migration ajoute la colonne et une base `0001` existante migre sans perte ; `PATCH {coach:'skald'}` puis lecture → `'skald'` ; `PATCH {coach:'berserker'}` → 400 `validation` ; `complete` avec tous les autres champs mais sans coach → 400 `{ field: 'coach' }` ; avec coach → 200 ; le pull de synchro renvoie `coach` pour le propriétaire et rien pour un autre utilisateur ; l'export JSON contient `coach`.
-- [ ] **Step 2: Lancer** `pnpm --filter @appsport/server test profile/coach` — FAIL.
+- [ ] **Step 2: Lancer** `pnpm --filter @rune/server test profile/coach` — FAIL.
 - [ ] **Step 3: Implémenter** (contrats → migration → routes → dépôt web).
 - [ ] **Step 4: Lancer** `pnpm test` (serveur et web) — PASS, y compris le test de fuite de la synchro et le test de schéma.
 - [ ] **Step 5: Commit** `feat(server): coach choisi dans le profil d'entraînement, exigé pour terminer l'onboarding`.
@@ -208,7 +236,7 @@ Textes (mot pour mot ; `{pseudo}` remplacé par le pseudo) :
 - [ ] **Step 1: Tests qui échouent** — `celebration.test.tsx` : l'écran prêt montre `getByRole('heading', { name: 'Éveil terminé.' })`, la carte « Quêtes d'éveil 3/3 » avec « Profil complété », « Lieu principal choisi », « Prêt hors ligne » cochés seulement quand l'état réel l'est (prêt hors ligne non atteint → 2/3 et la case non cochée), `RankBadge` « Rang E », la bulle du coach choisi avec sa ligne `ready` ; sous mouvement réduit, « Commencer » est présent dès le premier rendu.
 - [ ] **Step 2: Lancer** — FAIL.
 - [ ] **Step 3: Implémenter** chaque étape selon `B0n-*.dc.html` (cartes de choix, pastilles pour jours et durée, sélecteur de salle avec recherche et « Créer une salle ») ; l'écran Santé garde ses textes mot pour mot, sans voix du Système ; renommer « Suivant » → « Continuer » et mettre à jour tests et E2E.
-- [ ] **Step 4: Lancer** `pnpm test` et `pnpm --filter @appsport/web test:e2e` — PASS (Chromium et WebKit).
+- [ ] **Step 4: Lancer** `pnpm test` et `pnpm --filter @rune/web test:e2e` — PASS (Chromium et WebKit).
 - [ ] **Step 5: Commit** `feat(web): onboarding Rune en 9 étapes et célébration « Éveil terminé »`.
 
 ### Task 9: Accueil et Progression
@@ -276,21 +304,21 @@ Textes (mot pour mot ; `{pseudo}` remplacé par le pseudo) :
 - [ ] **Step 1: Tests qui échouent** — Connexion : logo, « RUNE », « Grave ta progression. », champs Pseudo et Mot de passe, lien « J'ai un code d'invitation » ; Aide : l'encadré d'urgence (15, 112) est avant « Installer Rune », la section Crédits est présente ; 404 : « Page introuvable » et « Zone inconnue. » avec un lien vers l'accueil ; bannière de mise à jour : « Plus tard » absent dans la variante 426 ; erreur de mot de passe rattachée au champ.
 - [ ] **Step 2: Lancer** — FAIL.
 - [ ] **Step 3: Implémenter** selon `A01` à `A06` et `E06`.
-- [ ] **Step 4: Lancer** `pnpm test` et `pnpm --filter @appsport/web test:e2e` — PASS.
+- [ ] **Step 4: Lancer** `pnpm test` et `pnpm --filter @rune/web test:e2e` — PASS.
 - [ ] **Step 5: Commit** `feat(web): connexion, invitation, aide, 404 et bannière de mise à jour aux couleurs de Rune`.
 
 ## File R — revue finale (parallèle aux files F et E, fichiers disjoints)
 
-### Task 14: Décisions de confidentialité, adresse rune et déploiements ratés
+### Task 14: Décisions de confidentialité et déploiements ratés
 
 **Files:**
-- Modify: `docs/fiche-de-traitement.md`, `apps/web/src/features/public/privacy-content.ts` (phrase de l'enveloppe de secours, spec principale 03 et décision du 2026-10-12), `docs/exploitation/P1-installation.md` à `P9-admin-indisponible.md`, `installer-appsport.md`, `infra/RUNBOOK-reconstruction.md` (machine Tailscale `rune`, adresse `https://rune.<tailnet>.ts.net` ; P9 : supprimer les sauvegardes B2 et locales après un dernier export pour chaque membre), `apps/server/test/infra/docs.test.ts`, `apps/server/src/auth/` (`admin:reset` réactive un admin désactivé) + son test CLI, `infra/host/appsport-update` et `infra/host/test/update.bats` (T43-F14 : `pull-failed` et `backup-failed` écrivent aussi `.deploy` dans `status.json` avec `ok: false` et la version en place)
+- Modify: `docs/fiche-de-traitement.md`, `apps/web/src/features/public/privacy-content.ts` (phrase de l'enveloppe de secours, spec principale 03 et décision du 2026-10-12), `docs/exploitation/P9-admin-indisponible.md` (supprimer les sauvegardes B2 et locales après un dernier export pour chaque membre), `apps/server/test/infra/docs.test.ts`, `apps/server/src/auth/` (`admin:reset` réactive un admin désactivé) + son test CLI, `infra/host/rune-update` et `infra/host/test/update.bats` (T43-F14 : `pull-failed` et `backup-failed` écrivent aussi `.deploy` dans `status.json` avec `ok: false` et la version en place)
 
-- [ ] **Step 1: Tests qui échouent** — docs.test : P1 contient `rune.<tailnet>.ts.net` et plus `appsport.<tailnet>` ; P9 contient la suppression des sauvegardes ; la fiche de traitement contient « copie scellée » ; CLI : `admin:reset leo` sur un admin désactivé → statut actif + lien ; bats : un `pull-failed` laisse `.deploy.ok == false`.
-- [ ] **Step 2: Lancer** `pnpm --filter @appsport/server test infra/docs`, le test CLI, et `pnpm test:infra` (Git Bash) — FAIL.
+- [ ] **Step 1: Tests qui échouent** — docs.test : P9 contient la suppression des sauvegardes ; la fiche de traitement contient « copie scellée » ; CLI : `admin:reset leo` sur un admin désactivé → statut actif + lien ; bats : un `pull-failed` laisse `.deploy.ok == false`.
+- [ ] **Step 2: Lancer** `pnpm --filter @rune/server test infra/docs`, le test CLI, et `pnpm test:infra` (Git Bash) — FAIL.
 - [ ] **Step 3: Implémenter.**
 - [ ] **Step 4: Lancer** — PASS ; shellcheck propre.
-- [ ] **Step 5: Commit** `fix(ops): enveloppe de secours dite, sauvegardes effacées à l'arrêt, admin réactivé et adresse rune`.
+- [ ] **Step 5: Commit** `fix(ops): enveloppe de secours dite, sauvegardes effacées à l'arrêt, admin réactivé et déploiements ratés visibles`.
 
 ### Task 15 (après les tâches 7 à 13): Points reportés, tests instables et journaux de CI
 
@@ -298,7 +326,7 @@ Textes (mot pour mot ; `{pseudo}` remplacé par le pseudo) :
 
 - [ ] **Step 1:** Dresser la liste des points mineurs reportés de T30 à T45 (`.superpowers/sdd/2026-10-06-socle/progress.md`, sections « Deferred » et « new minors ») dans `.superpowers/sdd/2026-10-06-socle/deferred-sweep.md`, chacun marqué `corrigé`, `rendu caduc par la refonte` ou `fermé : <raison>`.
 - [ ] **Step 2:** Pour chaque point corrigé : test qui échoue, correctif, test vert.
-- [ ] **Step 3:** Tests instables : exécuter `pnpm --filter @appsport/web test` 5 fois de suite sans échec (`for i in 1 2 3 4 5; do pnpm --filter @appsport/web test || break; done`).
+- [ ] **Step 3:** Tests instables : exécuter `pnpm --filter @rune/web test` 5 fois de suite sans échec (`for i in 1 2 3 4 5; do pnpm --filter @rune/web test || break; done`).
 - [ ] **Step 4:** E2E : aucune ligne de journal ni trace ne contient `#` suivi d'un code d'invitation (test du harnais).
 - [ ] **Step 5: Commit(s)** `fix(...)` par point, puis `chore: bilan des points reportés du socle`.
 
@@ -310,7 +338,7 @@ Textes (mot pour mot ; `{pseudo}` remplacé par le pseudo) :
 - Create: `apps/web/scripts/screenshots.mjs` (lance un serveur de démo jetable comme `appsport-local/video/record-app.cjs`, parcourt les écrans en clair et en sombre à 390 × 844, enregistre `screenshots/<écran>-<thème>.png` hors dépôt)
 
 - [ ] **Step 1:** `pnpm lint && pnpm typecheck && pnpm test` — tout vert.
-- [ ] **Step 2:** `pnpm test:infra` (Git Bash) et `pnpm --filter @appsport/web test:e2e` — tout vert.
+- [ ] **Step 2:** `pnpm test:infra` (Git Bash) et `pnpm --filter @rune/web test:e2e` — tout vert.
 - [ ] **Step 3:** `node apps/web/scripts/screenshots.mjs` — une capture par écran et par thème clair/sombre ; les joindre au rapport pour la relecture du propriétaire.
 - [ ] **Step 4:** Mesurer le bundle initial (`dist/assets/index-*.js` gzip) avant/après : hausse ≤ 25 % hors polices.
 - [ ] **Step 5: Commit** `chore(web): script de captures de relecture`.
