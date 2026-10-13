@@ -122,11 +122,29 @@ describe('applyTheme', () => {
     expect(html().hasAttribute('data-theme')).toBe(false);
   });
 
-  it('agit sur la racine donnée', () => {
-    const root = document.createElement('div');
-    applyTheme('carnet', root);
-    expect(root.getAttribute('data-theme')).toBe('carnet');
+  it('une autre racine (aperçu) ne reçoit que l’attribut : la page garde sa barre et suit encore le téléphone', () => {
+    const scheme = stubColorScheme(true);
+    applyTheme('auto');
+    const preview = document.createElement('div');
+    applyTheme('carnet', preview);
+    expect(preview.getAttribute('data-theme')).toBe('carnet');
     expect(html().hasAttribute('data-theme')).toBe(false);
+    expect(themeColors()).toEqual(['#070A12']);
+    expect(scheme.listeners()).toBe(1);
+    applyTheme('auto', preview);
+    expect(preview.hasAttribute('data-theme')).toBe(false);
+    expect(scheme.listeners()).toBe(1);
+    scheme.set(false);
+    expect(themeColors()).toEqual(['#F1F3F7']);
+  });
+
+  it('une autre racine n’ajoute ni écoute du téléphone ni changement de barre, même en partant d’un thème forcé', () => {
+    const scheme = stubColorScheme(true);
+    applyTheme('nuit');
+    applyTheme('auto', document.createElement('div'));
+    expect(scheme.listeners()).toBe(0);
+    expect(themeColors()).toEqual(['#05070D']);
+    expect(html().getAttribute('data-theme')).toBe('nuit');
   });
 
   it('theme-color : #F1F3F7 en clair, #070A12 en sombre', () => {
@@ -208,6 +226,48 @@ describe('useThemeChoice', () => {
     applyTheme(readThemeChoice());
     const { result } = renderHook(() => useThemeChoice());
     expect(result.current[0]).toBe('nuit');
+  });
+});
+
+describe('autres onglets ouverts', () => {
+  /** Ce que reçoit cette page quand un autre onglet de Rune écrit dans le stockage. */
+  const fromOtherTab = (key: string | null) =>
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key }));
+    });
+
+  it('un autre onglet choisit un thème : cette page l’applique aussi, et ses composants suivent', () => {
+    applyTheme(readThemeChoice()); // démarrage, comme main.tsx
+    const { result } = renderHook(() => useThemeChoice());
+    localStorage.setItem(KEY, 'nuit');
+    fromOtherTab(KEY);
+    expect(html().getAttribute('data-theme')).toBe('nuit');
+    expect(themeColors()).toEqual(['#05070D']);
+    expect(result.current[0]).toBe('nuit');
+  });
+
+  it('un autre onglet vide le stockage : retour à Auto', () => {
+    localStorage.setItem(KEY, 'carnet');
+    applyTheme(readThemeChoice());
+    const { result } = renderHook(() => useThemeChoice());
+    localStorage.clear();
+    fromOtherTab(null);
+    expect(html().hasAttribute('data-theme')).toBe(false);
+    expect(result.current[0]).toBe('auto');
+  });
+
+  it('une autre clé ne touche pas au thème ; une seule écoute malgré plusieurs applyTheme', () => {
+    applyTheme('carnet');
+    applyTheme('auto');
+    applyTheme('carnet');
+    const getItem = vi.fn((key: string) => (key === KEY ? 'nuit' : null));
+    vi.stubGlobal('localStorage', { getItem, setItem: vi.fn(), removeItem: vi.fn() });
+    fromOtherTab('rune.autre');
+    expect(getItem).not.toHaveBeenCalled();
+    expect(html().getAttribute('data-theme')).toBe('carnet');
+    fromOtherTab(KEY);
+    expect(getItem).toHaveBeenCalledTimes(1);
+    expect(html().getAttribute('data-theme')).toBe('nuit');
   });
 });
 

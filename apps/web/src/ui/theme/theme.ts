@@ -46,6 +46,21 @@ export function writeThemeChoice(choice: ThemeChoice): void {
 const subscribers = new Set<() => void>();
 /** Écoute du réglage du téléphone, active seulement en Auto. */
 let stopFollowingPhone: (() => void) | null = null;
+/** Écoute des autres onglets, posée une fois par page au premier thème appliqué. */
+let followingOtherTabs = false;
+
+/**
+ * Un autre onglet ouvert change le choix ou vide le stockage : cette page l'applique aussi, sans attendre un
+ * rechargement. L'événement `storage` n'arrive qu'aux autres pages de la même origine, jamais à l'auteur.
+ */
+function followOtherTabs(doc: Document): void {
+  const win = doc.defaultView;
+  if (followingOtherTabs || !win) return;
+  followingOtherTabs = true;
+  win.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY || event.key === null) applyTheme(readThemeChoice(), doc.documentElement);
+  });
+}
 
 function setThemeColor(doc: Document, color: string): void {
   const metas = [...doc.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
@@ -60,15 +75,21 @@ function setThemeColor(doc: Document, color: string): void {
 
 /**
  * Applique le choix à `root` : `data-theme` pour un thème forcé, aucun attribut pour Auto (les couleurs
- * suivent alors la media query CSS). Met à jour `theme-color` ; en Auto, il suit le téléphone à l'appel
- * puis à chaque changement de son réglage.
+ * suivent alors la media query CSS). Pour la page (racine du document, par défaut), met aussi à jour
+ * `theme-color` ; en Auto, il suit le téléphone à l'appel puis à chaque changement de son réglage. La page
+ * suit ensuite le choix fait dans un autre onglet.
+ * Une autre racine (un aperçu) ne reçoit que l'attribut : tokens.css ne vise que `:root[data-theme]`, et la
+ * barre, l'écoute du téléphone et les composants abonnés restent ceux de la page.
  */
 export function applyTheme(choice: ThemeChoice, root: HTMLElement = document.documentElement): void {
+  if (choice === 'auto') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', choice);
+  const doc = root.ownerDocument;
+  if (root !== doc.documentElement) return;
+  followOtherTabs(doc);
   stopFollowingPhone?.();
   stopFollowingPhone = null;
-  const doc = root.ownerDocument;
   if (choice === 'auto') {
-    root.removeAttribute('data-theme');
     const query = typeof globalThis.matchMedia === 'function' ? globalThis.matchMedia(DARK_QUERY) : null;
     const follow = () => setThemeColor(doc, query?.matches ? THEME_COLORS.sombre : THEME_COLORS.clair);
     follow();
@@ -78,7 +99,6 @@ export function applyTheme(choice: ThemeChoice, root: HTMLElement = document.doc
       stopFollowingPhone = () => query.removeEventListener('change', follow);
     }
   } else {
-    root.setAttribute('data-theme', choice);
     setThemeColor(doc, THEME_COLORS[choice]);
   }
   for (const notify of subscribers) notify();
