@@ -1576,15 +1576,16 @@ describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', 
     }
   });
 
-  it('page Confidentialité : la copie scellée est dite, comme dans la fiche (T45-F32)', () => {
-    const page = read('apps/web/src/features/public/privacy-content.ts');
-    expect(page).toContain('copie scellée');
-    expect(page).toContain('personne de confiance majeure');
-    expect(page).toMatch(/; au quotidien, seul \$\{owner\} en détient les clés\.`/);
-    // T14-F3 : l'enveloppe ouvre le serveur, pas seulement les sauvegardes ; la personne s'engage à ne rien consulter.
-    expect(page).toContain('Une copie scellée des clés du serveur et des sauvegardes');
-    expect(page).toContain('sans consulter tes données');
-    expect(page).not.toContain('copie scellée de ces clés');
+  // La page Confidentialité (copie scellée, phrase entière de l'enveloppe, avec et sans prénom) est
+  // vérifiée rendue dans apps/web/test/app/public-pages.test.tsx : la source lue ici passerait sur sa JSDoc.
+
+  it("fiche : sauvegardes effacées à l'arrêt du service, après le dernier export de chaque proche (T45-F42)", () => {
+    const backups = tableRows(section(fiche, 'Durées de conservation')).find(
+      ([label]) => label === 'Sauvegardes',
+    );
+    expect(backups?.[1]).toContain(
+      "effacées à l'arrêt du service, après le dernier export de chaque proche (P9)",
+    );
   });
 
   it("P9 : export de chaque proche confirmé, timers arrêtés, sauvegardes B2 et locales effacées, puis l'arrêt (T45-F42)", () => {
@@ -1593,15 +1594,14 @@ describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', 
       s.body.includes('Résultat attendu : chaque proche confirme son export'),
     );
     expect(exported, "étape de l'export confirmé").toBeDefined();
-    expectInOrder(p9, [
-      '« Télécharger mes données »',
-      'Résultat attendu : chaque proche confirme son export',
-    ]);
+    expect(exported?.body).toContain('noter chaque confirmation et sa date');
     const timers = stepRunning(p9, 'sudo systemctl disable --now rune-backup.timer rune-restore-test.timer');
     const offsite = stepRunning(p9, '--unsafe-allow-remove-all');
     const local = stepRunning(p9, 'sudo rm -rf /srv/backup/restic');
     const off = stepRunning(p9, 'sudo poweroff');
-    expect(timers.body).toMatch(/après la date annoncée[^\n]*export/);
+    expect(timers.body).toContain(
+      `seulement après la date annoncée, une fois l'export de chaque proche confirmé ou sa réponse notée (étape ${exported?.n})`,
+    );
     const order = [exported?.n ?? -1, timers.n, offsite.n, local.n, off.n];
     expect(order, 'étapes dans cet ordre').toEqual([...order].sort((a, b) => a - b));
     expect(new Set(order).size).toBe(order.length);
@@ -1627,7 +1627,11 @@ describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', 
         new RegExp(`^\\s*findmnt /srv/\\w+ && sudo rm -rf [^\\n]*${path}(?: |$)`, 'm'),
       );
     }
-    expect(p9).toContain('30 jours');
+
+    // L'introduction dit pourquoi effacer : sans admin, plus rien ne tiendrait la promesse des 30 jours.
+    const longAbsence = p9.split(/\r?\n/).find((line) => line.startsWith('**Absence longue ou définitive**'));
+    expect(longAbsence).toContain('Rune promet de ne garder aucune sauvegarde plus de 30 jours');
+    expect(longAbsence).toContain("Elles ne sont effacées qu'après le dernier export de chaque proche");
   });
 
   it("P9 : plus rien ne recrée de sauvegarde avant l'effacement : timers désactivés, services arrêtés et vérifiés, clés B2 retirées", () => {
