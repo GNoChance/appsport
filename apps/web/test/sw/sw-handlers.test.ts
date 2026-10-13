@@ -79,6 +79,7 @@ async function bodyOf(response: Promise<Response> | null): Promise<string> {
   return (await response).text();
 }
 
+/** Noms triés, comparés à une liste attendue triée elle aussi : on vérifie quels caches restent, pas leur ordre. */
 const cacheNames = async (s: FakeSwScope) => (await s.caches.keys()).sort();
 const cachedText = async (s: FakeSwScope, cacheName: string, path: string) =>
   (await s.caches.match(path, { cacheName }))?.text();
@@ -222,7 +223,7 @@ describe('activate', () => {
     const h = createSwHandlers(s, A);
     await h.install();
     await h.activate();
-    expect(await cacheNames(s)).toEqual([ILLUSTRATIONS_CACHE, LOCAL_DB_MARKER_CACHE, SHELL_A]);
+    expect(await cacheNames(s)).toEqual([ILLUSTRATIONS_CACHE, LOCAL_DB_MARKER_CACHE, SHELL_A].sort());
     expect(s.claimCalls).toBe(1);
     expect(s.skipWaitingCalls).toBe(0);
     expect(await getMeta(local, 'userId')).toBe('u1');
@@ -340,12 +341,9 @@ describe('handleFetch', () => {
       expect(await bodyOf(hA.handleFetch(get('/assets/app-1.js')))).toBe('A-app');
       expect(sA.fetchLog).toEqual([]);
     }
-    expect((await caches.keys()).sort()).toEqual([
-      ILLUSTRATIONS_CACHE,
-      LOCAL_DB_MARKER_CACHE,
-      SHELL_A,
-      'shell-bbbbbbbbbbbb',
-    ]);
+    expect((await caches.keys()).sort()).toEqual(
+      [ILLUSTRATIONS_CACHE, LOCAL_DB_MARKER_CACHE, SHELL_A, 'shell-bbbbbbbbbbbb'].sort(),
+    );
     expect(sA.skipWaitingCalls + sB.skipWaitingCalls).toBe(0);
 
     // index.html perdu par A pendant que B attend : A ne lit que shell-aaaaaaaaaaaa, jamais l'index de B
@@ -366,11 +364,9 @@ describe('handleFetch', () => {
     expect(await bodyOf(hB.handleFetch(nav('/')))).toBe('B-index');
     expect(await bodyOf(hB.handleFetch(get('/assets/app-2.js')))).toBe('B-app');
     expect(sB.fetchLog).toEqual([]);
-    expect((await caches.keys()).sort()).toEqual([
-      ILLUSTRATIONS_CACHE,
-      LOCAL_DB_MARKER_CACHE,
-      'shell-bbbbbbbbbbbb',
-    ]);
+    expect((await caches.keys()).sort()).toEqual(
+      [ILLUSTRATIONS_CACHE, LOCAL_DB_MARKER_CACHE, 'shell-bbbbbbbbbbbb'].sort(),
+    );
   });
 
   it('fichier du manifeste : servi du cache sans réseau ; absent du cache → réseau', async () => {
@@ -746,7 +742,7 @@ describe('checkKillSwitch (R-PWA-6, étapes 1 à 3 côté SW)', () => {
     expect(await h.checkKillSwitch()).toBe(true);
     expect(s.unregistered).toBe(true);
     // Le marqueur de base locale reste, comme la base qu'il décrit (ADR 0001 décision 5).
-    expect(await cacheNames(s)).toEqual(['autre', LOCAL_DB_MARKER_CACHE]);
+    expect(await cacheNames(s)).toEqual(['autre', LOCAL_DB_MARKER_CACHE].sort());
     expect(s.navigations).toEqual([`${ORIGIN}/profile`]);
     // R-PWA-6 dans l'ordre : désenregistré, caches vidés, puis seulement rechargé (depuis le réseau).
     const doomed = ['illustrations-v0', ILLUSTRATIONS_CACHE, SHELL_A, 'shell-bbbbbbbbbbbb'];

@@ -608,7 +608,8 @@ describe('bootServiceWorker', () => {
     expect(registerSpy).not.toHaveBeenCalled();
     expect(swControllerStore.get()).toBeNull();
     expect(f.unregisterCalls).toBe(0);
-    expect((await caches.keys()).sort()).toEqual(['autre', LOCAL_DB_MARKER_CACHE]);
+    // Triées des deux côtés : on vérifie quels caches restent, pas l'ordre de leurs noms.
+    expect((await caches.keys()).sort()).toEqual(['autre', LOCAL_DB_MARKER_CACHE].sort());
     expect(reload).not.toHaveBeenCalled();
     expect(f.controllerMessages).toEqual([]);
   });
