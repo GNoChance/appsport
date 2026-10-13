@@ -69,9 +69,12 @@
   }
 }
 
-/* Clair forcé : les valeurs de :root, sans la bascule du téléphone. */
+/*
+ * Clair forcé : les valeurs de :root, sans la bascule du téléphone. « only light » interdit aussi au
+ * navigateur d'assombrir la page de lui-même (assombrissement automatique de Chrome Android, Samsung Internet).
+ */
 :root[data-theme="clair"] {
-  color-scheme: light;
+  color-scheme: only light;
 }
 
 /* Sombre forcé : mêmes couleurs que Auto en sombre (vérifié par test). */
@@ -95,9 +98,12 @@
   --focus: #5ed8ff;
 }
 
-/* Carnet : papier crème, encre, bleu de stylo, marge rouge (accent 2) ; titres en Newsreader. */
+/*
+ * Carnet : papier crème, encre, bleu de stylo, marge rouge (accent 2) ; titres en Newsreader. Cartes à 4 px ;
+ * champs et boutons gardent les 14 px du guide. « only light » : comme Clair forcé.
+ */
 :root[data-theme="carnet"] {
-  color-scheme: light;
+  color-scheme: only light;
   --bg: #f2ecdf;
   --surface: #fbf8f1;
   --surface-strong: #fbf8f1;
@@ -115,7 +121,6 @@
   --field-border: #cdbfa6;
   --focus: #1f5f8b;
   --radius-card: 4px;
-  --radius-control: 4px;
   --font-title: "Newsreader", Georgia, serif;
   /* Marge rouge à 33 px et lignes de cahier toutes les 32 px ; le texte part à 46 px, après la marge. */
   --page-decor:
@@ -130,7 +135,7 @@
   --page-inset-start: 46px;
 }
 
-/* Salle de nuit : néon pur sur le fond nuit du logo, cadres plus vifs. */
+/* Salle de nuit : néon pur sur le fond nuit du logo, cadres plus vifs ; cartes à 12 px, contrôles à 14 px. */
 :root[data-theme="nuit"] {
   color-scheme: dark;
   --bg: #05070d;
@@ -150,7 +155,6 @@
   --field-border: #1c2a44;
   --focus: #5ed8ff;
   --radius-card: 12px;
-  --radius-control: 8px;
   /* Halo néon en haut de page, qui s'éteint dans le fond nuit. */
   --page-decor: radial-gradient(420px 260px at 50% 230px, rgb(94 216 255 / 0.1), rgb(5 7 13 / 0) 70%);
 }
@@ -158,6 +162,7 @@
 /*
  * Pont vers les variables du socle encore lues par les écrans pas encore refaits (features/, sw/) :
  * chacune pointe vers un jeton, donc suit le thème. Une ligne disparaît quand plus aucun module ne la lit.
+ * Correspondances vérifiées par test/ui/theme.test.ts, contrastes à travers le pont par test/ui/contrast.test.ts.
  */
 :root {
   --color-bg: var(--bg);

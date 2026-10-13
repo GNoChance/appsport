@@ -335,6 +335,56 @@ describe('tokens.css', () => {
       /^"Newsreader",/,
     );
   });
+
+  it('un thème clair forcé refuse l’assombrissement automatique du navigateur ; Auto reste « light »', () => {
+    const blocks = tokensBlocks();
+    expect(declarationsOf(blocks, ':root')?.get('color-scheme')).toBe('light');
+    for (const choice of ['clair', 'carnet']) {
+      const theme = declarationsOf(blocks, `:root[data-theme="${choice}"]`);
+      expect(theme?.get('color-scheme'), choice).toBe('only light');
+    }
+  });
+
+  it('champs et boutons gardent 14 px dans chaque thème ; seules les cartes changent en Carnet et Salle de nuit', () => {
+    const blocks = tokensBlocks();
+    const root = declarationsOf(blocks, ':root');
+    const themes: [string, string | null][] = [
+      ...['clair', 'sombre', 'carnet', 'nuit'].map((c): [string, null] => [`:root[data-theme="${c}"]`, null]),
+      [':root:not([data-theme])', DARK],
+    ];
+    for (const [selector, media] of themes) {
+      const effective = new Map([...(root ?? []), ...(declarationsOf(blocks, selector, media) ?? [])]);
+      expect(effective.get('--radius-control'), selector).toBe('14px');
+    }
+    expect(declarationsOf(blocks, ':root[data-theme="carnet"]')?.get('--radius-card')).toBe('4px');
+    expect(declarationsOf(blocks, ':root[data-theme="nuit"]')?.get('--radius-card')).toBe('12px');
+  });
+
+  it('pont --color-* : chaque variable du socle pointe vers son jeton, sur :root seulement', () => {
+    // Retirer la ligne ici aussi quand un écran refait ne la lit plus et qu'elle disparaît de tokens.css.
+    const BRIDGE = {
+      '--color-bg': 'var(--bg)',
+      '--color-surface': 'var(--surface)',
+      '--color-text': 'var(--text)',
+      '--color-muted': 'var(--text-muted)',
+      '--color-border': 'var(--border)',
+      '--color-primary': 'var(--accent)',
+      '--color-primary-text': 'var(--accent-text)',
+      '--color-danger': 'var(--danger)',
+      '--color-info-bg': 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
+      '--color-warning-bg': 'var(--warning-bg)',
+      '--radius': 'var(--radius-control)',
+    };
+    const isBridge = (name: string) => name.startsWith('--color-') || name === '--radius';
+    const blocks = tokensBlocks();
+    const root = [...(declarationsOf(blocks, ':root') ?? [])];
+    expect(Object.fromEntries(root.filter(([name]) => isBridge(name)))).toEqual(BRIDGE);
+    // Redéfini dans un thème, le pont ne suivrait plus ses jetons.
+    for (const block of blocks.filter((b) => b.selector !== ':root' || b.media !== null)) {
+      const names = [...block.declarations.keys()].filter(isBridge);
+      expect(names, `${block.selector} ${block.media ?? ''}`).toEqual([]);
+    }
+  });
 });
 
 describe('feuilles de style de src/', () => {

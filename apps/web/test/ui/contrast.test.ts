@@ -8,12 +8,17 @@ import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
 const TOKENS_CSS = resolve(import.meta.dirname, '../../src/ui/theme/tokens.css');
 const DARK = '(prefers-color-scheme: dark)';
 
-/** Luminance relative WCAG 2.x d'une couleur `#rgb` ou `#rrggbb`. */
-function luminance(hex: string): number {
+/** `#rgb` ou `#rrggbb` → [r, g, b] de 0 à 255. */
+function hexToRgb(hex: string): number[] {
   const h = hex.slice(1);
   const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h;
-  const [r, g, b] = [0, 2, 4].map((i) => {
-    const s = Number.parseInt(full.slice(i, i + 2), 16) / 255;
+  return [0, 2, 4].map((i) => Number.parseInt(full.slice(i, i + 2), 16));
+}
+
+/** Luminance relative WCAG 2.x d'une couleur `#rgb` ou `#rrggbb`. */
+function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const s = c / 255;
     return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
   }) as [number, number, number];
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -58,17 +63,64 @@ const PAIRS: readonly (readonly [string, string, number])[] = [
 
 const CHECKED_TOKENS = [...new Set([...PAIRS.map(([fg]) => fg), ...PAIRS.map(([, bg]) => bg)])];
 
+/**
+ * Paires que lisent les écrans pas encore refaits, à travers le pont `--color-*` de tokens.css : le texte
+ * courant se pose sur les fonds du pont (bandeaux de mise à jour, pastille « mineur » des membres), le
+ * primaire sert de contour du focus, de point « prêt » et de cadre.
+ */
+const BRIDGE_PAIRS: readonly (readonly [string, string, number])[] = [
+  ['--color-text', '--color-bg', TEXT],
+  ['--color-text', '--color-surface', TEXT],
+  ['--color-text', '--color-info-bg', TEXT],
+  ['--color-text', '--color-warning-bg', TEXT],
+  ['--color-muted', '--color-bg', TEXT],
+  ['--color-muted', '--color-surface', TEXT],
+  ['--color-primary-text', '--color-primary', TEXT],
+  ['--color-danger', '--color-bg', TEXT],
+  ['--color-danger', '--color-surface', TEXT],
+  ['--color-primary', '--color-bg', UI],
+  ['--color-primary', '--color-surface', UI],
+];
+
+const rgbToHex = (rgb: number[]) =>
+  `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+
+/**
+ * Couleur calculée d'une variable comme le navigateur la lit : suit les `var(--x)` et calcule
+ * `color-mix(in srgb, var(--a) N%, var(--b))` ; null si la valeur n'aboutit pas à un hexadécimal.
+ */
+function resolveColor(name: string, vars: ReadonlyMap<string, string>, depth = 0): string | null {
+  const value = vars.get(name);
+  if (value === undefined || depth > 8) return null;
+  if (HEX.test(value)) return value;
+  const ref = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value);
+  if (ref) return resolveColor(ref[1] as string, vars, depth + 1);
+  const mix = /^color-mix\(in srgb,\s*var\((--[\w-]+)\)\s+(\d+(?:\.\d+)?)%,\s*var\((--[\w-]+)\)\s*\)$/.exec(
+    value,
+  );
+  if (!mix) return null;
+  const a = resolveColor(mix[1] as string, vars, depth + 1);
+  const b = resolveColor(mix[3] as string, vars, depth + 1);
+  if (!a || !b) return null;
+  const p = Number(mix[2]) / 100;
+  const [ra, rb] = [hexToRgb(a), hexToRgb(b)];
+  return rgbToHex(ra.map((c, i) => c * p + (rb[i] as number) * (1 - p)));
+}
+
 type ForcedTheme = Exclude<ThemeChoice, 'auto'>;
-type Scheme = 'light' | 'dark';
+type Scheme = 'light' | 'only light' | 'dark';
 
 /** Thèmes forcés, tirés de THEME_CHOICES : un thème ajouté au choix doit avoir son bloc et ses contrastes. */
 const FORCED = THEME_CHOICES.filter((c): c is ForcedTheme => c !== 'auto');
 
-/** `color-scheme` attendu : les contrôles natifs (champs, cases, barres de défilement) suivent le fond. */
+/**
+ * `color-scheme` attendu : les contrôles natifs (champs, cases, barres de défilement) suivent le fond ; un
+ * thème clair forcé dit « only light » pour que le navigateur ne l'assombrisse pas de lui-même.
+ */
 const SCHEMES: Record<ForcedTheme, Scheme> = {
-  clair: 'light',
+  clair: 'only light',
   sombre: 'dark',
-  carnet: 'light',
+  carnet: 'only light',
   nuit: 'dark',
 };
 
@@ -152,6 +204,23 @@ describe('contrastes des jetons, pour chaque thème', () => {
           const b = tokens?.get(bg);
           expect(a, `${fg} (${p.name})`).toMatch(HEX);
           expect(b, `${bg} (${p.name})`).toMatch(HEX);
+          const ratio = contrastRatio(a as string, b as string);
+          expect(
+            ratio,
+            `${fg} ${a} sur ${bg} ${b} (${p.name}) : ${ratio.toFixed(2)}:1`,
+          ).toBeGreaterThanOrEqual(min);
+        }
+      });
+
+      // Le pont est déclaré sur :root ; le bloc du thème, plus spécifique, l'emporte pour les jetons.
+      it('à travers le pont --color-* : chaque paire lue par les écrans atteint son minimum', () => {
+        const vars = seen(p);
+        expect(vars, `bloc ${p.selector} absent de tokens.css`).not.toBeNull();
+        for (const [fg, bg, min] of BRIDGE_PAIRS) {
+          const a = resolveColor(fg, vars ?? new Map());
+          const b = resolveColor(bg, vars ?? new Map());
+          expect(a, `${fg} → ${vars?.get(fg)} (${p.name})`).toMatch(HEX);
+          expect(b, `${bg} → ${vars?.get(bg)} (${p.name})`).toMatch(HEX);
           const ratio = contrastRatio(a as string, b as string);
           expect(
             ratio,
