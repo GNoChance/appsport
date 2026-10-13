@@ -130,20 +130,38 @@ describe('migration 0002_coach', () => {
 });
 
 describe('PATCH /api/me/training-profile : coach', () => {
-  it('pose puis change le coach ; un patch sans coach le garde', async () => {
+  it('pose puis change le coach seul (comme setCoach) : rev, sync_counter et updatedAt avancent', async () => {
     const c = await context();
     const u = await createUserAndLogin(c);
     expect((await patch(c, u.cookie, { coach: 'skald' })).status).toBe(200);
-    expect(await profileRow(c, u.id)).toMatchObject({ coach: 'skald', goal: null, updatedBy: u.id });
+    const set = await profileRow(c, u.id);
+    expect(set).toMatchObject({ coach: 'skald', goal: null, updatedBy: u.id });
 
-    const rev = (await profileRow(c, u.id))?.rev ?? 0;
-    expect((await patch(c, u.cookie, { coach: 'scribe', goal: 'muscle' })).status).toBe(200);
-    const changed = await profileRow(c, u.id);
-    expect(changed).toMatchObject({ coach: 'scribe', goal: 'muscle' });
-    expect(changed?.rev).toBeGreaterThan(rev);
+    c.clock.advance(60_000);
+    const counter = await syncCounter(c);
+    expect((await patch(c, u.cookie, { coach: 'scribe' })).status).toBe(200);
+    expect(await syncCounter(c)).toBe(counter + 1);
+    expect(await profileRow(c, u.id)).toEqual({
+      ...set,
+      coach: 'scribe',
+      rev: counter + 1,
+      updatedAt: '2026-10-06T10:01:00.000Z',
+    });
 
     expect((await patch(c, u.cookie, { experience: 'none' })).status).toBe(200);
     expect(await profileRow(c, u.id)).toMatchObject({ coach: 'scribe', experience: 'none' });
+  });
+
+  it("renvoyer le même coach n'écrit rien : rev, sync_counter et updatedAt inchangés", async () => {
+    const c = await context();
+    const u = await createUserAndLogin(c);
+    expect((await patch(c, u.cookie, { coach: 'scribe' })).status).toBe(200);
+    const before = { row: await profileRow(c, u.id), counter: await syncCounter(c) };
+
+    c.clock.advance(60_000);
+    expect((await patch(c, u.cookie, { coach: 'scribe' })).status).toBe(200);
+    expect(await profileRow(c, u.id)).toEqual(before.row);
+    expect(await syncCounter(c)).toBe(before.counter);
   });
 
   it.each([
@@ -212,6 +230,29 @@ describe('POST /api/me/onboarding/complete : coach exigé', () => {
     expect(await syncCounter(c)).toBe(before.counter);
   });
 
+  it("reprise sans coach à l'étape « availability » : refus, puis le coach seul ne touche pas à l'étape", async () => {
+    const c = await context();
+    const u = await createUserAndLogin(c);
+    const midway = { goal: 'muscle', experience: 'none', onboardingStep: 'availability' };
+    expect((await patch(c, u.cookie, midway)).status).toBe(200);
+    await insertFixtureRow(c.deps.db, 'place', { ownerId: u.id, kind: 'home', isPrimary: 1 });
+    const before = await userRow(c, u.id);
+    expect(before.onboardingStep).toBe('availability');
+
+    const refused = await complete(c, u.cookie);
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({ error: 'validation', field: 'coach' });
+
+    const res = await patch(c, u.cookie, { coach: 'scribe' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ onboardingStep: 'availability', onboardingCompletedAt: null });
+    expect(await userRow(c, u.id)).toEqual(before);
+
+    const resumed = await complete(c, u.cookie);
+    expect(resumed.status).toBe(409);
+    expect(await resumed.json()).toEqual({ error: 'onboarding_incomplete', step: 'availability' });
+  });
+
   it('avec un coach : 200 et onboarding terminé', async () => {
     const c = await context();
     const u = await createUserAndLogin(c);
@@ -229,8 +270,16 @@ describe('coach : donnée du seul propriétaire (C1, classe E)', () => {
     const a = await createUserAndLogin(c);
     const b = await createUserAndLogin(c);
     expect((await patch(c, a.cookie, { coach: 'ombre' })).status).toBe(200);
+    const rowOfA = await profileRow(c, a.id);
+    expect(rowOfA).toMatchObject({ coach: 'ombre', updatedBy: a.id });
+
+    // B crée sa ligne (INSERT) puis la modifie (UPDATE) alors que celle de A existe.
+    c.clock.advance(60_000);
     expect((await patch(c, b.cookie, { coach: 'scribe' })).status).toBe(200);
-    expect(await profileRow(c, a.id)).toMatchObject({ coach: 'ombre' });
+    c.clock.advance(60_000);
+    expect((await patch(c, b.cookie, { coach: 'skald', goal: 'strength' })).status).toBe(200);
+    expect(await profileRow(c, b.id)).toMatchObject({ coach: 'skald', goal: 'strength', updatedBy: b.id });
+    expect(await profileRow(c, a.id)).toEqual(rowOfA);
 
     type Pulled = { entity: string; row: Record<string, unknown> };
     const profiles = async (cookie: string) => {
@@ -242,7 +291,7 @@ describe('coach : donnée du seul propriétaire (C1, classe E)', () => {
     const ofA = await profiles(a.cookie);
     expect(ofA.profiles).toEqual([expect.objectContaining({ id: a.id, coach: 'ombre' })]);
     const ofB = await profiles(b.cookie);
-    expect(ofB.profiles).toEqual([expect.objectContaining({ id: b.id, coach: 'scribe' })]);
+    expect(ofB.profiles).toEqual([expect.objectContaining({ id: b.id, coach: 'skald' })]);
     expect(JSON.stringify(ofB.rows)).not.toContain(a.id);
   });
 
