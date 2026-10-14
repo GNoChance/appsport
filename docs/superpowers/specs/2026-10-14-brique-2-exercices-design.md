@@ -1,6 +1,6 @@
 # Brique 2 · Exercices : spec de conception
 
-> **Statut :** version 3 du 2026-10-14, après relecture par quatre relecteurs (vie privée, cohérence, expérience, testabilité) et une vérification des corrections. À valider par le propriétaire.
+> **Statut :** version 3 du 2026-10-14, **validée par le propriétaire le 2026-10-14** (page de synthèse : les 6 choix de la section 4 cochés ; adducteurs gardés avec Quadriceps). Relue par quatre relecteurs (vie privée, cohérence, expérience, testabilité) et une vérification des corrections.
 > **Base :** la section [04-exercices](2026-10-06-appsport-design/04-exercices.md) de la spec principale reste l'autorité pour tout ce que ce document ne remplace pas explicitement : schéma des fiches, taxonomie, chaînes, fonctions partagées, chargeur, export, diffusion hors ligne, illustrations et crédits. Ce document fixe les décisions du cadrage du 2026-10-14, les écrans, et ce qui s'ajoute ou change.
 > **Refonte :** les écrans suivent la [spec de la refonte](2026-10-13-refonte-rune-design.md) : jetons, 5 thèmes, boîte à outils, feuilles du bas, mouvement, voix du Système.
 
