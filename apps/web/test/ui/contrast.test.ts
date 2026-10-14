@@ -6,6 +6,7 @@ import { THEME_CHOICES, type ThemeChoice } from '../../src/ui/theme/theme';
 import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
 
 const TOKENS_CSS = resolve(import.meta.dirname, '../../src/ui/theme/tokens.css');
+const VOICE_CSS = resolve(import.meta.dirname, '../../src/ui/voice.module.css');
 const DARK = '(prefers-color-scheme: dark)';
 
 /** `#rgb` ou `#rrggbb` → [r, g, b] de 0 à 255. */
@@ -167,6 +168,7 @@ describe('contrastRatio (WCAG 2.x)', () => {
 
 describe('contrastes des jetons, pour chaque thème', () => {
   const blocks = parseCssBlocks(readFileSync(TOKENS_CSS, 'utf8'));
+  const voice = parseCssBlocks(readFileSync(VOICE_CSS, 'utf8'));
   const root = declarationsOf(blocks, ':root');
   const own = (p: Palette) => declarationsOf(blocks, p.selector, p.media);
   /** Ce que voit la page dans ce rendu : `:root`, puis le bloc du thème par-dessus (la cascade). */
@@ -209,6 +211,33 @@ describe('contrastes des jetons, pour chaque thème', () => {
             ratio,
             `${fg} ${a} sur ${bg} ${b} (${p.name}) : ${ratio.toFixed(2)}:1`,
           ).toBeGreaterThanOrEqual(min);
+        }
+      });
+
+      // L'étiquette « [ SYSTÈME ] » (12 px, demi-gras) est du texte courant : 4,5:1 dans chaque ton, sur le
+      // fond de la fenêtre (--surface en clair, dégradé de --surface-strong à --surface en sombre).
+      it('fenêtre du Système : l’étiquette atteint 4,5:1 dans chaque ton', () => {
+        const tokens = seen(p);
+        expect(tokens, `bloc ${p.selector} absent de tokens.css`).not.toBeNull();
+        const label = declarationsOf(voice, '.systemLabel')?.get('color');
+        expect(label, '.systemLabel color').toBeTruthy();
+        for (const tone of ['.panel', '.success']) {
+          const vars = new Map([
+            ...(tokens ?? []),
+            ...(declarationsOf(voice, '.panel') ?? []),
+            ...(declarationsOf(voice, tone) ?? []),
+            ['--label', label as string],
+          ]);
+          const fg = resolveColor('--label', vars);
+          expect(fg, `${label} (${tone}, ${p.name})`).toMatch(HEX);
+          for (const bg of ['--surface', '--surface-strong']) {
+            const b = vars.get(bg) as string;
+            const ratio = contrastRatio(fg as string, b);
+            expect(
+              ratio,
+              `étiquette ${fg} (${tone}) sur ${bg} ${b} (${p.name}) : ${ratio.toFixed(2)}:1`,
+            ).toBeGreaterThanOrEqual(TEXT);
+          }
         }
       });
 

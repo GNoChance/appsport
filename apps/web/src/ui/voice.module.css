@@ -5,9 +5,13 @@
 
 /* ---------- Fenêtre du Système ---------- */
 
-/* En clair et en Carnet : carte blanche, ombre douce, barre dégradée de 3 px en haut, rognée par la carte. */
+/*
+ * En clair : carte blanche, ombre douce, barre dégradée de 3 px en haut, rognée par la carte. --panel-tone colore
+ * la barre, le coin et le liseré ; --panel-tone-text, l’étiquette, qui est du texte (4,5:1).
+ */
 .panel {
   --panel-tone: var(--accent);
+  --panel-tone-text: var(--accent);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -29,8 +33,10 @@
   background: linear-gradient(90deg, var(--panel-tone), var(--accent-2));
 }
 
+/* Le vert du succès est trop clair pour du texte sur le blanc du thème clair (3,4:1) : l’étiquette le mêle à l’encre. */
 .success {
   --panel-tone: var(--success);
+  --panel-tone-text: color-mix(in srgb, var(--success) 70%, var(--text));
 }
 
 .success::before {
@@ -67,6 +73,17 @@
   display: block;
 }
 
+/* En Carnet (maquette Carnet) : carte de papier, cadre d’encre de 1,5 px et ombre franche, sans barre. */
+:global(:root[data-theme="carnet"]) .panel {
+  border: 1.5px solid var(--text);
+  border-radius: var(--radius-card);
+  box-shadow: 4px 4px 0 var(--text);
+}
+
+:global(:root[data-theme="carnet"]) .panel::before {
+  display: none;
+}
+
 @media (prefers-color-scheme: dark) {
   :global(:root:not([data-theme])) .panel {
     background: linear-gradient(180deg, var(--surface-strong), var(--surface));
@@ -94,15 +111,22 @@
   font-weight: 600;
   font-size: 0.75rem;
   letter-spacing: 0.24em;
-  color: var(--panel-tone);
+  color: var(--panel-tone-text);
 }
 
+/* Police des titres du thème : Chakra Petch, Newsreader en Carnet. */
 .panelTitle {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-title);
   font-weight: 700;
   font-size: 1.375rem;
   line-height: 1.2;
+}
+
+/* Newsreader n’est embarqué qu’en 600 : pas de gras synthétisé. */
+:global(:root[data-theme="carnet"]) .panelTitle {
+  font-weight: 600;
+  font-size: 1.5625rem;
 }
 
 .panelBody {

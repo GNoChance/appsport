@@ -299,10 +299,13 @@
  * Feuille du bas (GUIDE, Bottom sheet ; maquette C06) : voile noir à 55 %, feuille ancrée en bas, coins
  * hauts de 24 px, poignée, titre, actions empilées en pleine largeur. Elle monte en --dur-screen, le voile
  * apparaît en --dur-fast ; sous mouvement réduit, un simple fondu (voir en bas de la feuille).
+ * Rendue sur place, sans portail : son z-index la pose au-dessus de tout contrôle positionné de l'écran (champ
+ * transparent des cartes de choix et des puces, en z-index 1), qui sinon la couvrirait et prendrait ses touchers.
  */
 .backdrop {
   position: fixed;
   inset: 0;
+  z-index: 100;
   display: flex;
   align-items: flex-end;
   justify-content: center;

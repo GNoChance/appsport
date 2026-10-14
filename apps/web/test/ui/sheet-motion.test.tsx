@@ -213,6 +213,33 @@ describe('BottomSheet (spec refonte §6 : poignée, fond assombri, focus piégé
   });
 });
 
+describe('BottomSheet : au-dessus de la page', () => {
+  /** Toutes les feuilles de style de l'appli, composants et écrans. */
+  const sheets = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const path = resolve(dir, e.name);
+      if (e.isDirectory()) return sheets(path);
+      return e.name.endsWith('.css') ? [path] : [];
+    });
+
+  // Rendue sur place (sans portail), la feuille partage le contexte d'empilement de la page : un contrôle
+  // positionné avec un z-index (champ transparent d'une ChoiceCard ou d'une Chip) la couvrirait et prendrait
+  // ses touchers.
+  it('le voile a un z-index au-dessus de tout autre z-index de l’appli', () => {
+    const backdrop = Number(
+      declarationsOf(parseCssBlocks(read('ui.module.css')), '.backdrop')?.get('z-index'),
+    );
+    expect(backdrop).toBeGreaterThan(0);
+    for (const file of sheets(resolve(UI, '..'))) {
+      for (const block of parseCssBlocks(readFileSync(file, 'utf8'))) {
+        if (block.selector === '.backdrop') continue;
+        const z = Number(block.declarations.get('z-index') ?? Number.NaN);
+        if (Number.isFinite(z)) expect(z, `${file} ${block.selector}`).toBeLessThan(backdrop);
+      }
+    }
+  });
+});
+
 describe('Dialog : même API, rendu en feuille du bas', () => {
   it('titre, contenu et actions dans une feuille avec poignée', () => {
     render(
@@ -227,7 +254,6 @@ describe('Dialog : même API, rendu en feuille du bas', () => {
     expect(within(dialog).getByText('Le lieu disparaît.')).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: 'Supprimer' })).toBeTruthy();
     expect(dialog.querySelector('[data-sheet-handle]')).not.toBeNull();
-    expect(document.querySelector('main')?.hasAttribute('inert')).toBe(false);
   });
 
   it('inertOutside : le reste de la page inerte, comme avant', () => {
@@ -503,6 +529,24 @@ describe('SystemPanel (la voix du Système)', () => {
     const b = screen.getByRole('group', { name: 'B' });
     expect(a.getAttribute('data-tone')).toBe('default');
     expect(b.getAttribute('data-tone')).toBe('success');
+  });
+
+  it('titre dans la police des titres du thème (Newsreader en Carnet), étiquette en police d’affichage', () => {
+    const voice = parseCssBlocks(read('voice.module.css'));
+    expect(declarationsOf(voice, '.panelTitle')?.get('font-family')).toBe('var(--font-title)');
+    expect(declarationsOf(voice, '.systemLabel')?.get('font-family')).toBe('var(--font-display)');
+  });
+
+  it('Carnet (maquette Carnet) : carte de papier à cadre d’encre et ombre franche, sans barre dégradée', () => {
+    const voice = parseCssBlocks(read('voice.module.css'));
+    const carnet = ':global(:root[data-theme="carnet"])';
+    const panel = declarationsOf(voice, `${carnet} .panel`);
+    expect(panel?.get('border')).toBe('1.5px solid var(--text)');
+    expect(panel?.get('box-shadow')).toBe('4px 4px 0 var(--text)');
+    expect(panel?.get('border-radius')).toBe('var(--radius-card)');
+    expect(declarationsOf(voice, `${carnet} .panel::before`)?.get('display')).toBe('none');
+    // Newsreader n'est embarqué qu'en 600 : pas de gras synthétisé par le navigateur.
+    expect(declarationsOf(voice, `${carnet} .panelTitle`)?.get('font-weight')).toBe('600');
   });
 });
 

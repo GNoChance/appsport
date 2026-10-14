@@ -3,7 +3,8 @@ import styles from './voice.module.css';
 
 /**
  * Fenêtre du Système (sa voix froide, aux moments clés seulement) : étiquette « [ SYSTÈME ] », titre, texte.
- * En sombre et en Salle de nuit, un coin HUD ; en clair et en Carnet, une barre dégradée en haut.
+ * En sombre et en Salle de nuit, un coin HUD ; en clair, une barre dégradée en haut ; en Carnet, une carte de
+ * papier à cadre d'encre et ombre franche, titre en Newsreader.
  * `success` : la même fenêtre au vert du succès (quête remplie, action réussie).
  * Un groupe nommé par son titre, pas un repère de page (plusieurs fenêtres n'encombrent pas la liste des
  * régions). `headingLevel` (2 par défaut) suit le plan de la page : 3 dans une feuille du bas ou une section
