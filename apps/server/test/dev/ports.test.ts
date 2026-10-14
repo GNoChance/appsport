@@ -18,6 +18,13 @@ const listen = (host: string): Promise<number> =>
     s.listen(0, host, () => resolve((s.address() as AddressInfo).port));
   });
 
+/** Sans boucle locale IPv6 (certains runners), écouter sur ::1 échoue (EADDRNOTAVAIL) : le test ::1 est alors sauté. */
+const hasIpv6Loopback = await new Promise<boolean>((resolve) => {
+  const probe = createServer();
+  probe.once('error', () => resolve(false));
+  probe.listen(0, '::1', () => probe.close(() => resolve(true)));
+});
+
 describe('isPortBusy', () => {
   it('voit un port pris sur 127.0.0.1, puis libre une fois fermé', async () => {
     const port = await listen('127.0.0.1');
@@ -27,7 +34,7 @@ describe('isPortBusy', () => {
     expect(await isPortBusy(port)).toBe(false);
   });
 
-  it('voit un port pris sur ::1 seulement (Vite écoute sur localhost)', async () => {
+  it.skipIf(!hasIpv6Loopback)('voit un port pris sur ::1 seulement (Vite écoute sur localhost)', async () => {
     const port = await listen('::1');
     expect(await isPortBusy(port)).toBe(true);
   });

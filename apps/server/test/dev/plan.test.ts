@@ -92,7 +92,16 @@ describe('devSettings', () => {
     );
   });
 
-  it.each(['abc', '0', '70000', '-1', '3000x'])('refuse un port invalide (%s)', (port) => {
+  it.each([1, 65535])('accepte les bornes de port (%i)', (port) => {
+    const s = devSettings(
+      { PORT: String(port), RUNE_DEV_ANY_PORT: '1', RUNE_DEV_WEB_PORT: String(port) },
+      ctx,
+    );
+    expect(s.serverPort).toBe(port);
+    expect(s.webPort).toBe(port);
+  });
+
+  it.each(['abc', '0', '65536', '70000', '-1', '3000x'])('refuse un port invalide (%s)', (port) => {
     expect(() => devSettings({ PORT: port }, ctx)).toThrow(DevError);
     expect(() => devSettings({ RUNE_DEV_WEB_PORT: port }, ctx)).toThrow(/port/i);
   });
