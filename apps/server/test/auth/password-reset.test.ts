@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { acceptInvitation } from '../../src/auth/invitations';
-import { checkPasswordReset } from '../../src/auth/password-reset';
+import { checkPasswordReset, consumePasswordReset } from '../../src/auth/password-reset';
 import { runCli } from '../../src/cli';
 import { createTestContext, createUser, login, type TestContext, type TestUser } from '../support';
 
@@ -207,6 +207,85 @@ describe('admin:reset (CLI)', () => {
         username: 'porteur',
         role: 'admin',
       });
+    } finally {
+      c.close();
+    }
+  });
+
+  it('réactive un administrateur désactivé, dont le lien sert ; un membre désactivé le reste (T45-F51)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'rune-reset-'));
+    writeFileSync(join(dir, '.rune-volume'), '');
+    const env = { APP_ORIGIN: 'https://rune.test.ts.net', RUNE_DATA_DIR: dir };
+    const out: string[] = [];
+    const o = (l: string): void => {
+      out.push(l);
+    };
+    const e = (): void => {};
+    expect(await runCli(['init'], env, o, e)).toBe(0);
+    const c = await createTestContext({ dbPath: join(dir, 'rune.db') });
+    try {
+      const leo = await createUser(c, { username: 'leo', role: 'admin', status: 'disabled' });
+      const mia = await createUser(c, { username: 'mia', status: 'disabled' });
+      const user = (id: string) =>
+        c.deps.db
+          .selectFrom('user')
+          .select(['status', 'rev', 'updatedAt', 'updatedBy'])
+          .where('id', '=', id)
+          .executeTakeFirstOrThrow();
+      const codeOf = (line: string | undefined) => (line as string).slice('Code : '.length);
+      // La fabrique ne pose pas updatedBy : seuls rev et updatedAt prouvent que la réactivation est estampillée.
+      const before = await user(leo.id);
+
+      out.length = 0;
+      expect(await runCli(['admin:reset', 'leo'], env, o, e)).toBe(0);
+      expect(out).toHaveLength(4);
+      expect(out[0]).toBe('Compte administrateur leo réactivé.');
+      expect(out[1]).toBe('Lien de réinitialisation pour leo (valable 24 h)');
+      const after = await user(leo.id);
+      expect(after).toMatchObject({ status: 'active', updatedBy: null });
+      expect(after.rev).toBeGreaterThan(before.rev);
+      expect(after.updatedAt).not.toBe(before.updatedAt);
+      const reactivated = await c.deps.db
+        .selectFrom('securityEvent')
+        .select(['actorId', 'targetId', 'outcome', 'tailnetIp', 'details'])
+        .where('type', '=', 'status_changed')
+        .execute();
+      expect(reactivated).toEqual([
+        {
+          actorId: null,
+          targetId: leo.id,
+          outcome: 'success',
+          tailnetIp: null,
+          details: '{"status":"active"}',
+        },
+      ]);
+      // Le lien sert : le compte réactivé change son mot de passe, puis se connecte.
+      const used = await consumePasswordReset(c.deps, { code: codeOf(out[3]), newPassword: NEW }, null);
+      expect(used.userId).toBe(leo.id);
+      await login(c, 'leo', NEW);
+
+      // Admin actif : aucune réactivation, trois lignes comme avant.
+      out.length = 0;
+      expect(await runCli(['admin:reset', 'leo'], env, o, e)).toBe(0);
+      expect(out).toHaveLength(3);
+      expect(out[0]).toBe('Lien de réinitialisation pour leo (valable 24 h)');
+
+      // Membre désactivé : jamais réactivé par la commande, son lien reste refusé à l'usage.
+      out.length = 0;
+      expect(await runCli(['admin:reset', 'mia'], env, o, e)).toBe(0);
+      expect(out).toHaveLength(3);
+      expect(out[0]).toBe('Lien de réinitialisation pour mia (valable 24 h)');
+      expect((await user(mia.id)).status).toBe('disabled');
+      await expect(
+        consumePasswordReset(c.deps, { code: codeOf(out[2]), newPassword: NEW }, null),
+      ).rejects.toMatchObject({ code: 'account_disabled' });
+      expect(
+        await c.deps.db
+          .selectFrom('securityEvent')
+          .select('id')
+          .where('type', '=', 'status_changed')
+          .execute(),
+      ).toHaveLength(1);
     } finally {
       c.close();
     }

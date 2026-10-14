@@ -1511,3 +1511,210 @@ describe('registres de vie privée : revue de la tâche 45', () => {
     });
   });
 });
+
+describe('décisions de confidentialité du 2026-10-12 (refonte Rune, §11.1)', () => {
+  const p9 = p[9] as string;
+
+  /** Première étape de la page dont les commandes contiennent la chaîne donnée. */
+  function stepRunning(text: string, needle: string): { n: number; head: string; body: string } {
+    const found = steps(text).find((s) => codeOf(s.body).includes(needle));
+    if (!found) throw new Error(`aucune étape avec la commande ${needle}`);
+    return found;
+  }
+
+  it('fiche : clés détenues au quotidien par le porteur, copie scellée chez une personne de confiance (T45-F32)', () => {
+    const owner = section(fiche, 'Responsable');
+    for (const needle of [
+      'seul détenteur des clés au quotidien',
+      'une copie scellée (enveloppe de secours, R-OPS-14) est confiée à une personne de confiance majeure',
+      "ouverte seulement en cas d'indisponibilité longue",
+      'P9',
+    ]) {
+      expect(owner, needle).toContain(needle);
+    }
+    expect(owner).not.toContain('le seul détenteur des clés de sauvegarde');
+    const to = section(fiche, 'Destinataires');
+    expect(to).toMatch(/^- Personne de confiance[^\n]*copie scellée[^\n]*P9/m);
+  });
+
+  it('fiche : la copie scellée est dite là où les clés sont nommées, mot de passe Unix compris (R-OPS-14)', () => {
+    // Contenu de l'enveloppe selon 08 §11 R-OPS-14 : phrase LUKS, compte Unix (sudo), mot de passe restic, clé B2.
+    expect(section(fiche, 'Destinataires')).toMatch(
+      /^- Personne de confiance[^\n]*\(phrase du volume chiffré ; nom et mot de passe du compte Unix du serveur, qui a les droits sudo ; mot de passe des sauvegardes ; clé B2\)/m,
+    );
+    expect(section(fiche, 'Transferts hors UE')).toMatch(
+      /^- Backblaze[^\n]*les clés restent chez le porteur \(copie scellée chez la personne de confiance, voir Destinataires\)/m,
+    );
+  });
+
+  it('fiche : version datée, sans exception de version que nulle décision ne donne', () => {
+    const header = fiche.slice(0, fiche.indexOf('\n## '));
+    expect(header).toMatch(
+      new RegExp(
+        `^Version ${PRIVACY_POLICY_VERSION.replace('.', '\\.')} \\(\`PRIVACY_POLICY_VERSION\`\\), [^\\n]*\\d{4}-\\d{2}-\\d{2}`,
+        'm',
+      ),
+    );
+    expect(header).not.toMatch(/reste \d+\.\d+ tant que|version antérieure/);
+  });
+
+  it("fiche : l'enveloppe ouvre aussi le compte du serveur (sudo), même engagement que l'admin (T14-F3, R-OPS-14, P-ADM-3)", () => {
+    const trusted = section(fiche, 'Destinataires')
+      .split(/\r?\n/)
+      .find((line) => line.startsWith('- Personne de confiance'));
+    expect(trusted, 'ligne Personne de confiance').toBeDefined();
+    // Contenu de l'enveloppe selon R-OPS-14 et P9 étape 1 : phrase LUKS, compte Unix (sudo), restic, B2.
+    for (const needle of [
+      'phrase du volume chiffré',
+      'nom et mot de passe du compte Unix du serveur, qui a les droits sudo',
+      'mot de passe des sauvegardes',
+      'clé B2',
+      "le même accès technique que l'admin au serveur et à la base",
+      "aucune requête manuelle sur les données d'une personne sans son accord (P-ADM-3)",
+    ]) {
+      expect(trusted, needle).toContain(needle);
+    }
+  });
+
+  // La page Confidentialité (copie scellée, phrase entière de l'enveloppe, avec et sans prénom) est
+  // vérifiée rendue dans apps/web/test/app/public-pages.test.tsx : la source lue ici passerait sur sa JSDoc.
+
+  it("fiche : sauvegardes effacées à l'arrêt du service, après le dernier export de chaque proche (T45-F42)", () => {
+    const backups = tableRows(section(fiche, 'Durées de conservation')).find(
+      ([label]) => label === 'Sauvegardes',
+    );
+    expect(backups?.[1]).toContain(
+      "effacées à l'arrêt du service, après le dernier export de chaque proche (P9)",
+    );
+  });
+
+  it("P9 : export de chaque proche confirmé, timers arrêtés, sauvegardes B2 et locales effacées, puis l'arrêt (T45-F42)", () => {
+    // Le corps d'une étape commence après la ligne de son titre (où P9 cite « Télécharger mes données »).
+    const exported = steps(p9).find((s) =>
+      s.body.includes('Résultat attendu : chaque proche confirme son export'),
+    );
+    expect(exported, "étape de l'export confirmé").toBeDefined();
+    expect(exported?.body).toContain('noter chaque confirmation et sa date');
+    const timers = stepRunning(p9, 'sudo systemctl disable --now rune-backup.timer rune-restore-test.timer');
+    const offsite = stepRunning(p9, '--unsafe-allow-remove-all');
+    const local = stepRunning(p9, 'sudo rm -rf /srv/backup/restic');
+    const off = stepRunning(p9, 'sudo poweroff');
+    expect(timers.body).toContain(
+      `seulement après la date annoncée, une fois l'export de chaque proche confirmé ou sa réponse notée (étape ${exported?.n})`,
+    );
+    const order = [exported?.n ?? -1, timers.n, offsite.n, local.n, off.n];
+    expect(order, 'étapes dans cet ordre').toEqual([...order].sort((a, b) => a - b));
+    expect(new Set(order).size).toBe(order.length);
+
+    // Dépôt hors site : clés B2 dans un sous-shell, sans cache sur le disque en clair, puis vérification.
+    const b2 = codeOf(offsite.body)
+      .split('\n')
+      .filter((line) => line.includes('restic -r'));
+    expect(b2).toHaveLength(2);
+    for (const line of b2) {
+      expect(line).toMatch(
+        /^\s*sudo bash -c 'set -a; \. \/srv\/rune\/secrets\/b2\.env; set \+a; restic -r "\$RESTIC_OFFSITE_REPOSITORY" /,
+      );
+      expect(line).toContain('--password-file /srv/rune/secrets/restic.pass --no-cache ');
+    }
+    expect(b2[0]).toContain(' forget --host rune --unsafe-allow-remove-all --prune');
+    expect(b2[1]).toMatch(/ snapshots'$/);
+    expect(offsite.body).toContain('Keep only the last version of the file');
+
+    // Dépôt local, instantanés de la base (bases remplacées comprises) et cache restic, chacun sous son montage.
+    for (const path of ['/srv/backup/restic', '/srv/rune/data/snapshots', '/srv/rune/cache/restic']) {
+      expect(codeOf(local.body), path).toMatch(
+        new RegExp(`^\\s*findmnt /srv/\\w+ && sudo rm -rf [^\\n]*${path}(?: |$)`, 'm'),
+      );
+    }
+
+    // L'introduction dit pourquoi effacer : sans admin, plus rien ne tiendrait la promesse des 30 jours.
+    const longAbsence = p9.split(/\r?\n/).find((line) => line.startsWith('**Absence longue ou définitive**'));
+    expect(longAbsence).toContain('Rune promet de ne garder aucune sauvegarde plus de 30 jours');
+    expect(longAbsence).toContain("Elles ne sont effacées qu'après le dernier export de chaque proche");
+  });
+
+  it("P9 : plus rien ne recrée de sauvegarde avant l'effacement : timers désactivés, services arrêtés et vérifiés, clés B2 retirées", () => {
+    // rune-unlock (étape 3 après un redémarrage) relance rune-backup.service, puis rune-restore-test.service,
+    // sans passer par les timers : arrêter les timers seuls laisserait la sauvegarde téléverser après l'effacement.
+    const stop = stepRunning(p9, 'sudo systemctl disable --now rune-backup.timer rune-restore-test.timer');
+    expectInOrder(codeOf(stop.body), [
+      'findmnt /srv/rune',
+      'sudo systemctl disable --now rune-backup.timer rune-restore-test.timer',
+      'sudo systemctl stop rune-backup.service rune-restore-test.service',
+      'systemctl is-active rune-backup.service rune-restore-test.service',
+    ]);
+    expect(stop.body).toMatch(/Résultat attendu :[^\n]*deux lignes, chacune `inactive` ou `failed`/);
+    expect(stop.body).toMatch(/Sinon :[^\n]*`activating`[^\n]*attendre/);
+    expect(p9).not.toContain('systemctl stop rune-backup.timer');
+
+    const offsite = stepRunning(p9, '--unsafe-allow-remove-all');
+    expect(stop.n, "services vérifiés arrêtés avant l'effacement hors site").toBeLessThan(offsite.n);
+    // Clés B2 retirées après la vérification : un déverrouillage ultérieur ne peut plus rien téléverser.
+    expectInOrder(codeOf(offsite.body), [
+      '--unsafe-allow-remove-all --prune',
+      " snapshots'",
+      'sudo rm /srv/rune/secrets/b2.env',
+    ]);
+    // L'admin qui revient remet ce que P9 a retiré (le texte de l'étape est sur la ligne de son titre).
+    expect(p9).toMatch(
+      /^\d+\. \*\*Garder l'enveloppe[^\n]*`b2\.env`[^\n]*« Dépôts restic »[^\n]*« Timers systemd »/m,
+    );
+  });
+
+  it("P9 : rien ne s'efface à vide : volumes montés vérifiés, verrou périmé levé, contrôle positif", () => {
+    const offsite = stepRunning(p9, '--unsafe-allow-remove-all');
+    const sinon = /^\s*Sinon :.*$/m.exec(offsite.body)?.[0] ?? '';
+    // Volume verrouillé (redémarrage) : b2.env et restic.pass absents ; revenir au déverrouillage.
+    for (const needle of [
+      'b2.env: No such file or directory',
+      'Please specify repository location',
+      'étapes 2, 3 et 5',
+    ]) {
+      expect(sinon, needle).toContain(needle);
+    }
+    // Services arrêtés (étape 5) : un verrou restant est périmé, restic unlock le lève.
+    expect(sinon).toMatch(
+      /`repository is already locked`[^\n]*`sudo bash -c 'set -a; \. \/srv\/rune\/secrets\/b2\.env; set \+a; restic -r "\$RESTIC_OFFSITE_REPOSITORY" --password-file \/srv\/rune\/secrets\/restic\.pass --no-cache unlock'`/,
+    );
+    expect(sinon).not.toContain('attendre 10 minutes');
+
+    const local = stepRunning(p9, 'sudo rm -rf /srv/backup/restic');
+    const code = codeOf(local.body);
+    // Chaque effacement est enchaîné à la vérification de son montage : disque absent, rien ne passe pour fait.
+    const removals = code.split('\n').filter((line) => line.includes('rm -rf'));
+    expect(removals).toEqual([
+      '   findmnt /srv/backup && sudo rm -rf /srv/backup/restic',
+      "   findmnt /srv/rune && sudo rm -rf /srv/rune/data/snapshots /srv/rune/cache/restic && sudo bash -c 'rm -rf /srv/rune/tmp/restore-test-*'",
+    ]);
+    // Contrôle positif : la base vive et le système de fichiers du disque sont listés, les sauvegardes non.
+    expect(local.body).toMatch(
+      /Résultat attendu :[^\n]*`lost\+found`[^\n]*`rune\.db`[^\n]*ni `restic` ni `snapshots`/,
+    );
+    expect(local.body).toMatch(/Sinon :[^\n]*étapes 2, 3 et 5/);
+  });
+
+  it("P9 : sans export possible, rien n'est effacé (les sauvegardes permettront de reconstruire)", () => {
+    const unlock = steps(p9).find((s) => codeOf(s.body).includes('sudo rune-unlock'));
+    expect(unlock?.body).toMatch(/Tout autre message[^\n]*sauvegardes ne sont pas effacées/);
+  });
+
+  it('P1 : bucket B2 en « Keep only the last version of the file », sinon restic ne fait que cacher (30 jours au plus)', () => {
+    const bucket = steps(section(p[1] as string, 'Dépôts restic')).find(
+      (s) => s.head === 'Créer le bucket Backblaze B2.',
+    );
+    expect(bucket?.body).toMatch(/Lifecycle Settings[^\n]*« Keep only the last version of the file »/);
+    expect(bucket?.body).toMatch(/Résultat attendu :[^\n]*Keep only the last version of the file/);
+  });
+
+  it('P4 et P8 : admin:reset réactive un admin désactivé et donne son lien (T45-F51)', () => {
+    const surPlace = section(p[4] as string, 'Sur place');
+    const reapply = steps(surPlace).find((s) => s.body.includes('server.mjs privacy:reapply'))?.body ?? '';
+    expect(reapply).toContain(`${COMPOSE} run --rm --no-deps app node /app/server.mjs admin:reset <pseudo>`);
+    expect(reapply).toContain('« Compte administrateur <pseudo> réactivé. »');
+    expect(reapply).not.toContain('aucune commande du socle ne le réactive');
+    expect(section(p[8] as string, 'Mot de passe admin oublié')).toContain(
+      '« Compte administrateur <pseudo> réactivé. »',
+    );
+  });
+});

@@ -79,6 +79,19 @@ record_deploy() {
   log_deploy "$@" || log "Avertissement : deploy.log non écrit."
 }
 
+# Section deploy de status.json (page santé) ; même règle que record_deploy si elle ne s'écrit pas.
+record_status() {
+  status_merge deploy "$1" || log "Avertissement : status.json non mis à jour."
+}
+
+# Pull ou sauvegarde pre-deploy en échec (T43-F14) : dépôt ramené au tag en place, résultat dans deploy.log,
+# et la page santé le montre : deploy {version en place, inchangée, ok false}.
+not_deployed() {
+  checkout_back "$1"
+  record_deploy "$1" "$NEW" "$2"
+  record_status "$(deploy_json "$1" "$1" false)"
+}
+
 main() {
   local line prev cur lock=0
   parse_args "$@"
@@ -118,13 +131,11 @@ main() {
   "$GIT" -C "$RUNE_REPO" fetch --tags || die "git fetch impossible. Rien n'a été changé."
   "$GIT" -C "$RUNE_REPO" checkout --quiet "$NEW" || die "Tag $NEW introuvable. Rien n'a été changé."
   if ! RUNE_VERSION="$NEW" compose pull app; then
-    checkout_back "$prev"
-    record_deploy "$prev" "$NEW" pull-failed
+    not_deployed "$prev" pull-failed
     die "Échec du téléchargement de l'image $NEW (jeton GHCR expiré ? voir P5). Rien n'a été changé."
   fi
   if ! app_cli snapshot --tag "pre-$NEW" || ! restic_backup_all pre-deploy; then
-    checkout_back "$prev"
-    record_deploy "$prev" "$NEW" backup-failed
+    not_deployed "$prev" backup-failed
     die "Échec de l'instantané ou de la sauvegarde pre-deploy. Le service n'a pas été modifié."
   fi
   # Étape 5 (R-DEP-3) : à partir d'ici, tout échec passe par le retour arrière, qui ramène le dépôt et consigne.
@@ -138,8 +149,7 @@ main() {
   if compose up -d && wait_health "$NEW"; then
     trap - INT TERM
     record_deploy "$prev" "$NEW" ok
-    status_merge deploy "$(deploy_json "$NEW" "$prev" true)" ||
-      log "Avertissement : status.json non mis à jour."
+    record_status "$(deploy_json "$NEW" "$prev" true)"
     log "Déploiement de $NEW réussi."
     return 0
   fi
@@ -155,13 +165,11 @@ finish() {
   local result=$1 ok=true
   if [ "$RB_KIND" = auto ]; then
     record_deploy "$RB_TARGET" "$RB_FROM" "$result"
-    status_merge deploy "$(deploy_json "$RB_FROM" "$RB_TARGET" false)" ||
-      log "Avertissement : status.json non mis à jour."
+    record_status "$(deploy_json "$RB_FROM" "$RB_TARGET" false)"
   else
     if [ "$result" = rollback-failed ]; then ok=false; fi
     record_deploy "$RB_FROM" "$RB_TARGET" "$result"
-    status_merge deploy "$(deploy_json "$RB_TARGET" "$RB_FROM" "$ok")" ||
-      log "Avertissement : status.json non mis à jour."
+    record_status "$(deploy_json "$RB_TARGET" "$RB_FROM" "$ok")"
   fi
 }
 

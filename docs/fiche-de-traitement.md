@@ -1,12 +1,12 @@
 # Fiche de traitement Rune
 
-Version 1.0 (`PRIVACY_POLICY_VERSION`), 2026-10-12.
+Version 1.0 (`PRIVACY_POLICY_VERSION`), complétée le 2026-10-13, avant toute mise en service.
 
 Cette fiche tient lieu de registre des traitements, obligatoire dès qu'on traite des données de santé (RGPD, art. 30.5). Elle est la source de la page Confidentialité de l'appli (`apps/web/src/features/public/privacy-content.ts`) : toute modification de fond change les deux, et la version `PRIVACY_POLICY_VERSION` (03 §1, §13.5). L'exemption domestique (art. 2.2.c) est plausible mais pas garantie : on ne s'y fie pas.
 
 ## Responsable
 
-Le porteur du projet, personne physique, qui héberge le serveur chez lui, en France, à titre personnel et sans but lucratif. Son prénom figure sur la page Confidentialité (variable `VITE_OWNER_FIRST_NAME`). Contact : directement auprès de lui. Il est le seul administrateur, et le seul détenteur des clés de sauvegarde. Reportés tant que l'appli reste entre proches : AIPD, DPO, CGU, mentions légales.
+Le porteur du projet, personne physique, qui héberge le serveur chez lui, en France, à titre personnel et sans but lucratif. Son prénom figure sur la page Confidentialité (variable `VITE_OWNER_FIRST_NAME`). Contact : directement auprès de lui. Il est le seul administrateur, et le seul détenteur des clés au quotidien ; une copie scellée (enveloppe de secours, R-OPS-14) est confiée à une personne de confiance majeure, ouverte seulement en cas d'indisponibilité longue, pour permettre l'export (P9). Reportés tant que l'appli reste entre proches : AIPD, DPO, CGU, mentions légales.
 
 ## Finalités
 
@@ -38,13 +38,14 @@ Aucun e-mail n'est collecté : l'identifiant est un pseudo. Les empreintes de mo
 - Anthropic (coach, brique 4) : avec l'accord coach, les messages et le dossier du coach : tranche d'âge (`age_band`, jamais l'âge exact), niveau, objectif, contexte, matériel, programme, historique récent ; C2 seulement si les accords santé et coach sont actifs (P-COA-1). Jamais : pseudo, date de naissance, identifiant interne, nom ou enseigne de la salle, autres membres, adresse IP.
 - Backblaze (B2) : sauvegardes chiffrées côté client avant de quitter le serveur ; Backblaze ne voit que des données chiffrées.
 - Tailscale (réseau) : comptes Tailscale des proches et métadonnées de leurs appareils ; le trafic de l'appli reste chiffré de bout en bout.
+- Personne de confiance majeure, gardienne de l'enveloppe de secours : aucun accès au quotidien. La copie scellée des clés (phrase du volume chiffré ; nom et mot de passe du compte Unix du serveur, qui a les droits sudo ; mot de passe des sauvegardes ; clé B2) donne, une fois ouverte, le même accès technique que l'admin au serveur et à la base. Elle n'est ouverte qu'en cas d'indisponibilité longue de l'admin, pour remettre le serveur en marche afin que les proches exportent leurs données, puis pour effacer les sauvegardes et arrêter le service (P9). La personne de confiance s'engage, comme l'admin, à ne faire aucune requête manuelle sur les données d'une personne sans son accord (P-ADM-3).
 
 Aucun autre sous-traitant : ni statistiques, ni traceur, ni service tiers dans l'appli (P-LOG-4) ; la supervision (Healthchecks.io) ne reçoit aucune donnée personnelle.
 
 ## Transferts hors UE
 
 - Anthropic, États-Unis : messages et dossier du coach, avec l'accord coach qui l'annonce. Anthropic n'entraîne pas ses modèles sur ces données et les efface sous 30 jours, ou jusqu'à 2 ans si ses filtres de sécurité signalent un échange.
-- Backblaze, société américaine : données stockées en région UE (EU Central), chiffrées côté client ; les clés restent chez le porteur. Choix assumé, inscrit ici.
+- Backblaze, société américaine : données stockées en région UE (EU Central), chiffrées côté client ; les clés restent chez le porteur (copie scellée chez la personne de confiance, voir Destinataires). Choix assumé, inscrit ici.
 - Tailscale, société américaine : serveur de coordination et relais éventuels, sans accès au contenu du trafic.
 
 ## Durées de conservation
@@ -64,7 +65,7 @@ Aucun autre sous-traitant : ni statistiques, ni traceur, ni service tiers dans l
 | Journaux techniques | 90 jours au plus |
 | Marques de suppression de la synchro (tombstones) | 90 jours (`TOMBSTONE_TTL`) ; les salles et lieux supprimés restent, pour l'historique (R-SAL-7, R-LIEU-5 du socle) |
 | Journal d'idempotence de la synchro (`applied_op` : identifiants d'opération, sans contenu) | 12 mois (R-SYN-23) ; supprimé avec le compte |
-| Sauvegardes | 30 jours au plus, instantanés locaux compris |
+| Sauvegardes | 30 jours au plus, instantanés locaux compris ; effacées à l'arrêt du service, après le dernier export de chaque proche (P9) |
 | Données locales du téléphone | jusqu'à la déconnexion (si la file d'envoi est vide), au retrait d'un accord pour la catégorie concernée, ou jusqu'au `410 account_deleted` |
 
 ## Mesures de sécurité

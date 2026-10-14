@@ -18,6 +18,13 @@ last_deploy_line() { tail -n1 "$RUNE_ROOT/deploy.log"; }
 deployed_version() { sed -n 's/^RUNE_VERSION=//p' "$RUNE_ROOT/deploy.env"; }
 # Aucun up -d n'a vu RUNE_VERSION dans l'environnement (compose la préférerait à deploy.env).
 assert_up_env_unset() { [ -s "$STATE/up-env" ] && ! grep -qvx unset "$STATE/up-env"; }
+# T43-F14 : pull ou sauvegarde pre-deploy en échec, visible sur la page santé : .deploy {version en place v1.2.0,
+# inchangée, ok false} ; les autres sections de status.json sont gardées.
+assert_failed_deploy_status() {
+  jq -e '.deploy | .version == "v1.2.0" and .previousVersion == "v1.2.0" and .ok == false and (.at | test("Z$"))' \
+    "$STATUS_FILE"
+  jq -e '.backup.ok == true' "$STATUS_FILE"
+}
 
 # Second scénario dans le même test : hôte sain en v1.2.0 repris de zéro (règles, appels et état effacés).
 reset_host() {
@@ -191,6 +198,7 @@ remember_files() {
   refute_call "docker compose * up *"
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ pull-failed$ ]]
+  assert_failed_deploy_status
 
   # deploy.log non inscriptible : avertissement, et le message « Rien n'a été changé » s'affiche quand même.
   reset_host
@@ -200,6 +208,18 @@ remember_files() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Avertissement : deploy.log non écrit."* ]]
   [[ "$output" == *"Échec du téléchargement de l'image v1.3.0 (jeton GHCR expiré ? voir P5). Rien n'a été changé."* ]]
+  assert_failed_deploy_status
+
+  # status.json non inscriptible (son verrou tenu) : avertissement, deploy.log et le message d'échec quand même.
+  reset_host
+  on docker '* pull app' 1
+  on flock '-w 30 8' 1
+  run "$UPDATE" v1.3.0 --yes
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Avertissement : status.json non mis à jour."* ]]
+  [[ "$output" == *"Échec du téléchargement de l'image v1.3.0 (jeton GHCR expiré ? voir P5). Rien n'a été changé."* ]]
+  [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ pull-failed$ ]]
+  jq -e '.deploy == null and .backup.ok == true' "$STATUS_FILE"
 }
 
 # Instantané, dépôt local ou dépôt offsite en échec : retour au tag en place, ni up ni deploy.env, backup-failed.
@@ -210,6 +230,7 @@ assert_backup_failed() {
   refute_call "docker compose * up *"
   [ "$(deployed_version)" = "v1.2.0" ]
   [[ "$(last_deploy_line)" =~ ^$ISO\ v1\.2\.0\ v1\.3\.0\ backup-failed$ ]]
+  assert_failed_deploy_status
 }
 
 @test "sauvegarde pre-deploy en échec (instantané, dépôt local ou offsite) : pas de up, backup-failed, deploy.env inchangé" {
@@ -235,7 +256,7 @@ assert_backup_failed() {
     "restic -r $OFFSITE backup *" \
     "git -C $RUNE_REPO checkout --quiet v1.2.0"
 
-  # deploy.log non inscriptible : avertissement, et le message d'échec s'affiche quand même.
+  # deploy.log non inscriptible : avertissement, le message d'échec s'affiche et la page santé le montre quand même.
   reset_host
   on restic "-r $OFFSITE backup *" 1
   break_deploy_log
@@ -243,6 +264,7 @@ assert_backup_failed() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Avertissement : deploy.log non écrit."* ]]
   [[ "$output" == *"Échec de l'instantané ou de la sauvegarde pre-deploy. Le service n'a pas été modifié."* ]]
+  assert_failed_deploy_status
 }
 
 @test "nouvelle version KO, image précédente saine : retour image seule, ni restore ni privacy, rolled-back-image" {

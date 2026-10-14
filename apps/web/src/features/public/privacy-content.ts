@@ -17,7 +17,9 @@ export interface PrivacySection {
 /**
  * Page « Confidentialité et règles » (03 §13.5), tirée de la fiche de traitement. Toute
  * modification de fond change `PRIVACY_POLICY_VERSION`. Le responsable des données, contact et
- * seul détenteur des clés de sauvegarde, est le porteur (03 §1, §10.8), nommé par son prénom.
+ * seul détenteur des clés au quotidien, est le porteur (03 §1, §10.8), nommé par son prénom ; une
+ * copie scellée des clés du serveur et des sauvegardes est confiée à une personne de confiance
+ * (enveloppe de secours, R-OPS-14, P9).
  */
 export function buildPrivacySections(rawOwner: string | undefined): readonly PrivacySection[] {
   const first = ownerFirstName(rawOwner);
@@ -51,7 +53,8 @@ export function buildPrivacySections(rawOwner: string | undefined): readonly Pri
       items: [
         'Sur un serveur à domicile en France, chiffré au repos, joignable seulement par le réseau privé Tailscale du cercle, jamais depuis Internet.',
         "Aux États-Unis pour le coach (brique 4) : avec ton accord coach seulement, tes messages et les informations utiles sont envoyés à Anthropic, qui fournit l'IA Claude.",
-        `Dans des sauvegardes chiffrées hors du domicile (Backblaze), chiffrées avant de quitter le serveur ; seul ${owner} en détient les clés.`,
+        `Dans des sauvegardes chiffrées hors du domicile (Backblaze), chiffrées avant de quitter le serveur ; au quotidien, seul ${owner} en détient les clés.`,
+        `Une copie scellée des clés du serveur et des sauvegardes (l'enveloppe de secours) est confiée à une personne de confiance majeure. Elle n'est ouverte que si ${owner} est indisponible longtemps : cette personne remet alors le serveur en marche, sans consulter tes données, pour que tu puisses les exporter, puis les sauvegardes sont effacées et le service arrêté.`,
         "Sur ton téléphone : une copie de tes données, pour utiliser l'appli sans réseau.",
       ],
     },
