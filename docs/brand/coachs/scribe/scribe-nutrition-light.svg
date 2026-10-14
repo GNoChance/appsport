@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Le Skald, mode nutrition">
+<defs>
+<radialGradient id="emb-nutrition-l-plate" cx="256" cy="200" r="300" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#FDF9F0"/><stop offset="1" stop-color="#F7EEDB"/></radialGradient>
+<linearGradient id="emb-nutrition-l-frame-stroke" x1="68" y1="24" x2="444" y2="488" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#B47A0C"/><stop offset="1" stop-color="#9A5C00"/></linearGradient>
+<linearGradient id="emb-nutrition-l-glyph-fill" x1="0" y1="-372" x2="0" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4A3000"/><stop offset="0.5" stop-color="#A86A00"/><stop offset="1" stop-color="#B8740A"/></linearGradient>
+</defs>
+<g id="emb-plate"><path d="M256 37.9L432.7 135.7L432.7 376.3L256 474.1L79.3 376.3L79.3 135.7Z" fill="url(#emb-nutrition-l-plate)"/></g>
+<g id="emb-frame"><path d="M296.9 465.4L256 488L68 384L68 128L256 24L444 128L444 384L369.7 425.1" fill="none" stroke="url(#emb-nutrition-l-frame-stroke)" stroke-width="24" stroke-linejoin="miter" stroke-miterlimit="4"/><path d="M24 247H50V265H24ZM462 247H488V265H462Z" fill="#1C6FB5"/></g>
+<g id="emb-glyph"><path transform="translate(333.3 445.25) rotate(-22.22)" d="M-10 -100L10 -100L10 30L-10 46ZM-4 -100L-6.2 -131.5L-29.3 -158.1L-59.1 -163.4L-58 -133.2L-34.9 -106.6ZM4 -100L34.9 -106.6L58 -133.2L59.1 -163.4L29.3 -158.1L6.2 -131.5ZM-4 -178L-6.2 -209.5L-29.3 -236.1L-59.1 -241.4L-58 -211.2L-34.9 -184.6ZM4 -178L34.9 -184.6L58 -211.2L59.1 -241.4L29.3 -236.1L6.2 -209.5ZM-4 -256L-6.2 -287.5L-29.3 -314.1L-59.1 -319.4L-58 -289.2L-34.9 -262.6ZM4 -256L34.9 -262.6L58 -289.2L59.1 -319.4L29.3 -314.1L6.2 -287.5ZM0 -298L18 -320.8L18 -352.7L0 -374L-18 -352.7L-18 -320.8Z" fill="url(#emb-nutrition-l-glyph-fill)" fill-rule="evenodd"/></g>
+</svg>

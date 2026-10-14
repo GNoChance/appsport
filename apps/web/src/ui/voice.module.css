@@ -1,0 +1,184 @@
+/*
+ * Les deux voix de Rune : la fenêtre du Système (froide, aux moments clés) et la bulle du coach (textes
+ * écrits à l'avance). Maquettes B08 (fenêtre en sombre) et F01–F03 (bulles) ; couleurs prises dans les jetons.
+ */
+
+/* ---------- Fenêtre du Système ---------- */
+
+/* En clair et en Carnet : carte blanche, ombre douce, barre dégradée de 3 px en haut, rognée par la carte. */
+.panel {
+  --panel-tone: var(--accent);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--text) 6%, transparent),
+    0 6px 18px color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--panel-tone), var(--accent-2));
+}
+
+.success {
+  --panel-tone: var(--success);
+}
+
+.success::before {
+  background: var(--success);
+}
+
+/* Coin HUD : sombre et Salle de nuit seulement. */
+.hudCorner {
+  display: none;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 12px;
+  height: 12px;
+  border-top: 2px solid var(--panel-tone);
+  border-right: 2px solid var(--panel-tone);
+}
+
+/* En sombre (forcé ou Auto la nuit) et en Salle de nuit : carte forte, liseré glacé, coin HUD. */
+:global(:root[data-theme="sombre"]) .panel,
+:global(:root[data-theme="nuit"]) .panel {
+  background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--panel-tone) 22%, transparent);
+  box-shadow: none;
+}
+
+:global(:root[data-theme="sombre"]) .panel::before,
+:global(:root[data-theme="nuit"]) .panel::before {
+  display: none;
+}
+
+:global(:root[data-theme="sombre"]) .hudCorner,
+:global(:root[data-theme="nuit"]) .hudCorner {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .panel {
+    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+    border: 1px solid color-mix(in srgb, var(--panel-tone) 22%, transparent);
+    box-shadow: none;
+  }
+
+  :global(:root:not([data-theme])) .panel::before {
+    display: none;
+  }
+
+  :global(:root:not([data-theme])) .hudCorner {
+    display: block;
+  }
+}
+
+.panelHead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.systemLabel {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.24em;
+  color: var(--panel-tone);
+}
+
+.panelTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.375rem;
+  line-height: 1.2;
+}
+
+.panelBody {
+  font-size: 0.96875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.panelBody > :global(p) {
+  margin: 0;
+}
+
+/* Contour forcé (Windows) : la carte garde un cadre, la barre et le coin restent lisibles. */
+@media (forced-colors: active) {
+  .panel {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ---------- Bulle du coach ---------- */
+
+.bubbleRow {
+  --bubble-tone: var(--accent);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.bubbleRow[data-mode="nutrition"] {
+  --bubble-tone: var(--warning-text);
+}
+
+.bubbleAvatar {
+  flex: none;
+  padding-top: 2px;
+}
+
+/* Bulle accrochée à l'avatar : coin haut gauche à 4 px. */
+.bubble {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 13px 10px;
+  border-radius: 4px 16px 16px;
+  background: color-mix(in srgb, var(--bubble-tone) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--bubble-tone) 28%, transparent);
+}
+
+.bubbleHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.bubbleName {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bubble-tone);
+}
+
+.bubbleLabel {
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.bubbleText {
+  margin-top: 3px;
+  font-size: 0.9375rem;
+  line-height: 1.42;
+  color: var(--text);
+}
+
+.bubbleText > :global(p) {
+  margin: 0;
+}

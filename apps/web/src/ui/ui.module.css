@@ -295,40 +295,63 @@
   color: var(--danger);
 }
 
+/*
+ * Feuille du bas (GUIDE, Bottom sheet ; maquette C06) : voile noir à 55 %, feuille ancrée en bas, coins
+ * hauts de 24 px, poignée, titre, actions empilées en pleine largeur. Elle monte en --dur-screen, le voile
+ * apparaît en --dur-fast ; sous mouvement réduit, un simple fondu (voir en bas de la feuille).
+ */
 .backdrop {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: var(--space-4);
   background: var(--backdrop);
+  animation: sheet-fade var(--dur-fast) var(--ease) backwards;
 }
 
 /*
- * Jamais plus haut que l'écran (téléphone en paysage, texte agrandi, clavier ouvert) : le titre et
- * les actions restent visibles, le contenu défile entre les deux.
+ * Jamais plus haute que l'écran (téléphone en paysage, texte agrandi, clavier ouvert) : un bandeau du voile
+ * reste visible en haut, le titre et les actions restent visibles, le contenu défile entre les deux.
  */
-.dialog {
+.sheet {
   width: 100%;
-  max-width: 28rem;
-  max-height: 100%;
-  padding: var(--space-6);
-  border-radius: var(--radius-card);
+  max-height: calc(100% - var(--space-6));
+  padding: 10px 18px calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  border-radius: 24px 24px 0 0;
+  border-top: 1px solid var(--border);
   background: var(--surface);
+  box-shadow: 0 -12px 40px var(--backdrop);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  animation: sheet-up var(--dur-screen) var(--ease) backwards;
 }
 
-.dialog h2 {
+/* La feuille reçoit le focus à l'ouverture pour le lecteur d'écran : pas de contour autour de toute la feuille. */
+.sheet:focus-visible {
+  outline: none;
+}
+
+.sheetHandle {
   flex: none;
-  margin: 0;
-  font-size: 1.25rem;
+  align-self: center;
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text) 20%, transparent);
+}
+
+.sheet h2 {
+  flex: none;
+  margin: 2px 0 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 /* Marge rendue au contour du focus des champs, que le défilement rognerait sinon. */
-.dialogBody {
+.sheetBody {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -336,13 +359,68 @@
   padding: var(--space-1);
 }
 
-/* Actions d'un dialogue : jamais réduites, toujours visibles sous le contenu qui défile. */
-.actions {
+/* Actions : empilées en pleine largeur, jamais réduites, toujours visibles sous le contenu qui défile. */
+.sheetActions {
   flex: none;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sheetActions > * {
+  width: 100%;
+}
+
+/* Écran large : la même fenêtre au centre, sans poignée, actions côte à côte à droite. */
+@media (min-width: 600px) {
+  .backdrop {
+    align-items: center;
+    padding: var(--space-4);
+  }
+
+  .sheet {
+    max-width: 28rem;
+    max-height: 100%;
+    padding: var(--space-6);
+    border: 0;
+    border-radius: var(--radius-card);
+    box-shadow: none;
+    animation-name: sheet-pop;
+  }
+
+  .sheetHandle {
+    display: none;
+  }
+
+  .sheetActions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
+  .sheetActions > * {
+    width: auto;
+  }
+}
+
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
 }
 
 /* Légende d'un groupe de choix : comme un libellé de champ. */
@@ -956,5 +1034,13 @@ button.row:focus-visible {
 
   .checkGlyph {
     animation-name: check-fade;
+  }
+}
+
+/* Feuille du bas sous mouvement réduit : elle apparaît en fondu, sans monter. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation-name: sheet-fade;
+    animation-duration: var(--dur-fast);
   }
 }

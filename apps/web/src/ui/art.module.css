@@ -1,0 +1,163 @@
+/*
+ * Avatars des coachs et pierres de rang (spec refonte §8 et §9). Animations de repos d'après le prototype :
+ * une pièce par direction, lente, discrète, sur la courbe unique (motion.css). Elles ne déplacent que de
+ * quelques pixels et ne partent jamais d'une opacité nulle : le dessin est entier sans elles.
+ */
+.avatar {
+  display: inline-flex;
+  flex: none;
+  line-height: 0;
+}
+
+.art {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+/* Rang pas encore atteint : visible, nommé, mais éteint. */
+.locked {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.animated [data-g] {
+  transform-box: fill-box;
+}
+
+/* L'Ombre : le casque flotte, la visière flotte et pulse, l'épi de la nutrition flotte. */
+.animated [data-g="sys-helm"] {
+  transform-origin: center;
+  animation: hover 5.2s var(--ease) infinite alternate;
+}
+
+.animated [data-g="sys-visor"] {
+  transform-origin: center;
+  animation:
+    hover 5.2s var(--ease) infinite alternate,
+    visor-pulse 2.8s var(--ease) infinite;
+}
+
+.animated [data-g="sys-glyph"] {
+  transform-origin: center;
+  animation: float 3.2s var(--ease) infinite alternate;
+}
+
+/* Le Skald : le corps respire, les yeux clignent, la tresse se balance, la pomme flotte. */
+.animated [data-g="per-body"] {
+  transform-origin: 50% 100%;
+  animation: breathe 4.6s var(--ease) infinite alternate;
+}
+
+.animated [data-g="per-eyes"] {
+  transform-origin: 50% 50%;
+  animation:
+    blink 5.6s var(--ease) infinite,
+    breathe 4.6s var(--ease) infinite alternate;
+}
+
+.animated [data-g="per-braid"] {
+  transform-origin: 20% 0%;
+  animation:
+    sway 4.6s var(--ease) infinite alternate,
+    breathe 4.6s var(--ease) infinite alternate;
+}
+
+.animated [data-g="per-prop"] {
+  transform-origin: center;
+  animation: float 3.4s var(--ease) infinite alternate;
+}
+
+/* Le Scribe : la lueur respire, la plume flotte. */
+.animated [data-g="emb-glow"] {
+  animation: glow-breathe 3.8s var(--ease) infinite alternate;
+}
+
+.animated [data-g="emb-glyph"] {
+  transform-origin: 50% 80%;
+  animation: quill 4.4s var(--ease) infinite alternate;
+}
+
+@keyframes hover {
+  from {
+    translate: 0 5px;
+  }
+  to {
+    translate: 0 -7px;
+  }
+}
+
+@keyframes visor-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+@keyframes float {
+  from {
+    translate: 0 5px;
+  }
+  to {
+    translate: 0 -10px;
+  }
+}
+
+@keyframes breathe {
+  from {
+    translate: 0 0;
+  }
+  to {
+    translate: 0 -6px;
+  }
+}
+
+@keyframes blink {
+  0%,
+  92%,
+  100% {
+    scale: 1 1;
+  }
+  94.5% {
+    scale: 1 0.08;
+  }
+}
+
+@keyframes sway {
+  from {
+    rotate: -3deg;
+  }
+  to {
+    rotate: 3deg;
+  }
+}
+
+@keyframes glow-breathe {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 0.95;
+  }
+}
+
+@keyframes quill {
+  from {
+    translate: 0 6px;
+    rotate: -1.6deg;
+  }
+  to {
+    translate: 0 -9px;
+    rotate: 1.6deg;
+  }
+}
+
+/* Mouvement réduit (spec refonte §7) : avatars immobiles, dessinés en entier. */
+@media (prefers-reduced-motion: reduce) {
+  .animated [data-g] {
+    animation: none;
+  }
+}

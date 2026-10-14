@@ -1,11 +1,18 @@
+// Mouvement commun (variables et classes .enter-up, .stagger, .pop), chargé avec la boîte à outils.
+import './motion.css';
+
 export * from './AppShell';
 export * from './Badge';
 export * from './Banner';
+export * from './BottomSheet';
 export * from './Button';
 export * from './Chips';
 export * from './ChoiceCard';
 export * from './ChoiceList';
+export * from './CoachAvatar';
+export * from './CoachBubble';
 export * from './CopyButton';
+export * from './CountUp';
 export * from './Dialog';
 export * from './download';
 export * from './EmptyState';
@@ -16,6 +23,9 @@ export * from './HealthWarning';
 export * from './ListRow';
 export * from './Page';
 export * from './PageHeader';
+export * from './RankBadge';
 export * from './SegmentedProgress';
 export * from './Switch';
+export * from './SystemPanel';
 export * from './use-action';
+export * from './use-reduced-motion';

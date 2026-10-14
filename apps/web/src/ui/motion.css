@@ -1,0 +1,111 @@
+/*
+ * Mouvement de Rune (spec refonte §7) : une seule courbe, trois durées, et les classes communes des écrans.
+ * - retour d'un geste 150–250 ms (--dur-fast), changement d'écran 300–450 ms (--dur-screen),
+ *   célébration 600–1 200 ms (--dur-celebrate) ;
+ * - une animation d'entrée ne fait que rejouer l'arrivée (fill-mode backwards) : sans elle, l'élément est
+ *   là, entier et visible. Aucune règle ne pose d'opacité nulle hors des keyframes ;
+ * - mouvement réduit : plus de déplacement ni de ressort, un simple fondu, sans cascade.
+ */
+:root {
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 200ms;
+  --dur-screen: 380ms;
+  --dur-celebrate: 900ms;
+}
+
+@keyframes rune-enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rune-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rune-pop {
+  0% {
+    transform: scale(0.97);
+  }
+  60% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* Entrée d'un bloc : monte de 18 px en apparaissant. */
+.enter-up {
+  animation: rune-enter-up var(--dur-screen) var(--ease) backwards;
+}
+
+/* Cascade : chaque enfant entre comme .enter-up, 60 ms après le précédent (plafonné au 8e). */
+.stagger > * {
+  animation: rune-enter-up var(--dur-screen) var(--ease) backwards;
+}
+
+.stagger > :nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.stagger > :nth-child(3) {
+  animation-delay: 120ms;
+}
+
+.stagger > :nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.stagger > :nth-child(5) {
+  animation-delay: 240ms;
+}
+
+.stagger > :nth-child(6) {
+  animation-delay: 300ms;
+}
+
+.stagger > :nth-child(7) {
+  animation-delay: 360ms;
+}
+
+.stagger > :nth-child(n + 8) {
+  animation-delay: 420ms;
+}
+
+/* Petit ressort d'un choix fait (retour du geste). */
+.pop {
+  animation: rune-pop var(--dur-fast) var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter-up {
+    animation-name: rune-fade;
+    animation-duration: var(--dur-fast);
+  }
+
+  .stagger > * {
+    animation-name: rune-fade;
+    animation-duration: var(--dur-fast);
+    animation-delay: 0ms;
+  }
+
+  /* Aussi spécifique que les retards de la cascade, qu'elle annule. */
+  .stagger > :nth-child(n) {
+    animation-delay: 0ms;
+  }
+
+  .pop {
+    animation: none;
+  }
+}
