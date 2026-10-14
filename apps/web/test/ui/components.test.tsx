@@ -380,42 +380,56 @@ describe('Switch', () => {
 });
 
 describe('SegmentedProgress', () => {
-  it('« Étape 3 sur 9 », 9 segments dont 3 faits', () => {
+  /** État de chaque segment, dans l'ordre de la barre : `true` s'il est fait. */
+  const filled = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-segment]')].map((segment) => segment.hasAttribute('data-done'));
+  /** Les `done` premiers segments faits sur `total`, les autres non. */
+  const firsts = (done: number, total: number) => Array.from({ length: total }, (_, i) => i < done);
+
+  it('« Étape 3 sur 9 », 9 segments dont les 3 premiers faits', () => {
     const { container } = render(<SegmentedProgress step={3} total={9} />);
     expect(screen.getByText('Étape 3 sur 9')).toBeTruthy();
-    expect(container.querySelectorAll('[data-segment]')).toHaveLength(9);
-    const done = (c: Element) =>
-      [...c.querySelectorAll('[data-segment]')].map((s) => s.hasAttribute('data-done'));
-    // Les premiers segments sont faits, dans l'ordre (pas les derniers).
-    expect(done(container)).toEqual([true, true, true, false, false, false, false, false, false]);
+    expect(filled(container)).toEqual([true, true, true, false, false, false, false, false, false]);
     for (const segment of container.querySelectorAll('[data-segment]')) {
       expect(segment.closest('[aria-hidden="true"]')).not.toBeNull();
     }
   });
 
-  it('étape 0 et étape = total : la barre et le texte disent la même chose', () => {
-    const zero = render(<SegmentedProgress step={0} total={9} />);
-    expect(within(zero.container).getByText('Étape 0 sur 9')).toBeTruthy();
-    expect(zero.container.querySelectorAll('[data-segment][data-done]')).toHaveLength(0);
-    zero.unmount();
-    const full = render(<SegmentedProgress step={9} total={9} />);
-    expect(within(full.container).getByText('Étape 9 sur 9')).toBeTruthy();
-    expect(full.container.querySelectorAll('[data-segment][data-done]')).toHaveLength(9);
-  });
+  // La barre est cachée aux lecteurs d'écran : le texte est la seule copie lisible, il dit donc
+  // toujours ce que la barre montre, même pour une étape hors bornes ou non entière.
+  it.each([
+    { step: 0, done: 0 },
+    { step: 1, done: 1 },
+    { step: 9, done: 9 },
+    { step: 11, done: 9 },
+    { step: -1, done: 0 },
+    { step: 2.6, done: 3 },
+    { step: Number.NaN, done: 0 },
+  ])(
+    'step=$step total=9 : « Étape $done sur 9 », $done segments faits en tête de barre',
+    ({ step, done }) => {
+      const { container } = render(<SegmentedProgress step={step} total={9} />);
+      expect(screen.getByText(`Étape ${done} sur 9`)).toBeTruthy();
+      expect(filled(container)).toEqual(firsts(done, 9));
+    },
+  );
 
-  it('hors bornes ou non entière, l’étape est bornée et arrondie comme la barre (seule copie accessible)', () => {
-    for (const [step, shown] of [
-      [11, 9],
-      [-1, 0],
-      [2.6, 3],
-      [Number.NaN, 0],
-    ] as const) {
-      const { container, unmount } = render(<SegmentedProgress step={step} total={9} />);
-      expect(within(container).getByText(`Étape ${shown} sur 9`)).toBeTruthy();
-      expect(container.querySelectorAll('[data-segment][data-done]')).toHaveLength(shown);
-      unmount();
-    }
-  });
+  // Le total passe par le même arrondi : le texte ne dit jamais « sur 9.4 » ou « sur NaN » à côté
+  // d'une barre de 9 ou de 0 segments, et un total infini ne fait pas planter le rendu.
+  it.each([
+    { total: 9.4, shown: 9, done: 3 },
+    { total: 2.6, shown: 3, done: 3 },
+    { total: -2, shown: 0, done: 0 },
+    { total: Number.NaN, shown: 0, done: 0 },
+    { total: Number.POSITIVE_INFINITY, shown: 0, done: 0 },
+  ])(
+    'step=3 total=$total : « Étape $done sur $shown », $shown segments dont les $done premiers faits',
+    ({ total, shown, done }) => {
+      const { container } = render(<SegmentedProgress step={3} total={total} />);
+      expect(screen.getByText(`Étape ${done} sur ${shown}`)).toBeTruthy();
+      expect(filled(container)).toEqual(firsts(done, shown));
+    },
+  );
 });
 
 describe('Badge', () => {
@@ -487,8 +501,8 @@ describe('ListGroup et ListRow', () => {
     expect(screen.getByText('En ligne')).toBeTruthy();
   });
 
-  it('ligne lien avec onClick : le clic appelle onClick puis navigue', () => {
-    const memory = memoryLocation({ path: '/profil', record: true });
+  it('ligne lien avec onClick : le clic lance onClick puis navigue, sans devenir un bouton', () => {
+    const memory = memoryLocation({ path: '/profile', record: true });
     const markSeen = vi.fn();
     render(
       <Router hook={memory.hook}>
@@ -499,7 +513,8 @@ describe('ListGroup et ListRow', () => {
     );
     fireEvent.click(screen.getByRole('link', { name: 'Réglages' }));
     expect(markSeen).toHaveBeenCalledTimes(1);
-    expect(memory.history).toEqual(['/profil', '/settings']);
+    expect(memory.history).toEqual(['/profile', '/settings']);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });
 
