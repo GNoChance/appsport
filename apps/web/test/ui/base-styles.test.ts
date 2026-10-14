@@ -89,11 +89,14 @@ describe('décor de page (spec refonte §4 : lignes et marge du Carnet, fond nui
 });
 
 describe('composants de base : tailles d’écran, gros texte, contraste élevé (spec refonte §6)', () => {
-  it('bouton block : pleine largeur sur téléphone, largeur propre (240 px au moins) au-delà', () => {
+  it('bouton block : pleine largeur sur téléphone, largeur propre (de 240 à 420 px) au-delà', () => {
     expect(rule('.block')?.get('width')).toBe('100%');
     const wide = declarationsOf(base(), '.block', '(min-width: 600px)');
     expect(wide?.get('width')).toBe('auto');
     expect(wide?.get('min-width')).toBe('240px');
+    // Dans une colonne flex qui étire ses enfants (formulaires, .page), width: auto ne suffit pas : la borne
+    // haute empêche le bouton de reprendre toute la largeur du contenu.
+    expect(wide?.get('max-width')).toBe('420px');
   });
 
   it('champ en lecture seule : visé par l’attribut readonly, pas par :read-only (désactivé, case, curseur)', () => {

@@ -146,10 +146,12 @@
   width: 100%;
 }
 
+/* La borne haute tient aussi dans une colonne flex qui étire ses enfants, où width: auto ne change rien. */
 @media (min-width: 600px) {
   .block {
     width: auto;
     min-width: 240px;
+    max-width: 420px;
   }
 }
 
@@ -714,7 +716,11 @@
   background: var(--accent-text);
 }
 
-/* Couleurs forcées (contraste élevé Windows) : les fonds disparaissent, on redessine piste et bouton. */
+/*
+ * Couleurs forcées (contraste élevé Windows) : les fonds disparaissent, on redessine piste et bouton.
+ * Le rembourrage passe à 2 px pour faire place à la bordure (border-box) : le bouton de 24 px tient dans la
+ * piste et sa course reste de 20 px.
+ */
 @media (forced-colors: active) {
   .switchTrack {
     padding: 2px;
