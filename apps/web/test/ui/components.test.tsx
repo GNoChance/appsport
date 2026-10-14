@@ -35,11 +35,20 @@ const cls = (name: string): string => {
   return generated;
 };
 
+/**
+ * Icône qui s'annoncerait d'elle-même (role img, nommée) : seul l'aria-hidden posé par le composant
+ * autour d'elle la tait. Une icône déjà cachée rendrait vides les vérifications « décorative ».
+ */
 const icon = (
-  <svg aria-hidden="true" viewBox="0 0 24 24">
+  <svg role="img" aria-label="haltère" viewBox="0 0 24 24">
     <path d="M6 7v10" />
   </svg>
 );
+/** L'icône d'essai est rendue mais pas annoncée : un ancêtre aria-hidden la retire de l'arbre d'accessibilité. */
+const expectIconSilenced = () => {
+  expect(screen.getByRole('img', { name: 'haltère', hidden: true })).toBeTruthy();
+  expect(screen.queryByRole('img', { name: 'haltère' })).toBeNull();
+};
 
 describe('Button', () => {
   it('bouton de type button par défaut, désactivable, 52 px de haut', () => {
@@ -131,6 +140,7 @@ describe('ChoiceCard et ChoiceGroup', () => {
     const radio = within(group).getByRole('radio', { name: 'Prendre du muscle', checked: true });
     expect(radio.tagName).toBe('INPUT');
     expect(within(group).getByRole('radio', { name: 'Gagner en force', checked: false })).toBeTruthy();
+    expectIconSilenced();
   });
 
   it('la description décrit le choix sans allonger son nom', () => {
@@ -147,6 +157,31 @@ describe('ChoiceCard et ChoiceGroup', () => {
     );
     expect(
       screen.getByRole('radio', { name: 'Salle du centre', description: 'Lyon · 2 membres visibles' }),
+    ).toBeTruthy();
+  });
+
+  it('description et describedBy ensemble : la carte est décrite par les deux, dans cet ordre', () => {
+    render(
+      <>
+        <p id="raison">Ton objectif demande une salle.</p>
+        <ChoiceCard
+          type="radio"
+          name="place"
+          value="home"
+          checked={false}
+          disabled
+          onChange={() => {}}
+          title="À la maison"
+          description="Poids du corps et haltères"
+          describedBy="raison"
+        />
+      </>,
+    );
+    expect(
+      screen.getByRole('radio', {
+        name: 'À la maison',
+        description: 'Poids du corps et haltères Ton objectif demande une salle.',
+      }),
     ).toBeTruthy();
   });
 
@@ -232,13 +267,35 @@ describe('Chips', () => {
     );
   }
 
-  it('radios sous une légende ; un clic change la valeur', () => {
-    render(<Rhythm />);
+  const options = ['45', '60', '75'].map((v) => ({ value: v, label: `${v} min` }));
+  /** Libellés des pastilles qui portent la coche (la sélection ne passe jamais par la seule couleur). */
+  const checkedLabels = () =>
+    ['45 min', '60 min', '75 min'].filter((t) =>
+      (screen.getByText(t).closest('label') as HTMLElement).querySelector('[data-check]'),
+    );
+
+  it('radios sous une légende ; un clic rend la valeur choisie à onChange', () => {
+    const onChange = vi.fn();
+    render(<Chips name="m" legend="Durée d'une séance" value="60" onChange={onChange} options={options} />);
     const group = screen.getByRole('group', { name: "Durée d'une séance" });
     expect(within(group).getByRole('radio', { name: '60 min', checked: true })).toBeTruthy();
     fireEvent.click(within(group).getByRole('radio', { name: '45 min' }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('45');
+  });
+
+  it('contrôlée par value : la coche et l’état suivent le parent, rien de coché sans valeur', () => {
+    const { rerender } = render(<Rhythm />);
+    const group = screen.getByRole('group', { name: "Durée d'une séance" });
+    fireEvent.click(within(group).getByRole('radio', { name: '45 min' }));
     expect(within(group).getByRole('radio', { name: '45 min', checked: true })).toBeTruthy();
     expect(within(group).getByRole('radio', { name: '60 min', checked: false })).toBeTruthy();
+    expect(checkedLabels()).toEqual(['45 min']);
+    rerender(
+      <Chips name="m" legend="Durée d'une séance" value={null} onChange={() => {}} options={options} />,
+    );
+    expect(screen.queryByRole('radio', { checked: true })).toBeNull();
+    expect(checkedLabels()).toEqual([]);
   });
 
   it('chaque pastille est une cible d’au moins 44 px ; la pastille choisie porte une coche', () => {
@@ -248,8 +305,7 @@ describe('Chips', () => {
     );
     for (const label of labels) expect(label.classList.contains(cls('chip'))).toBe(true);
     expect(px(rule('.chip')?.get('min-height'))).toBeGreaterThanOrEqual(44);
-    const checked = labels.filter((l) => l.querySelector('[data-check]'));
-    expect(checked.map((l) => l.textContent)).toEqual(['60 min']);
+    expect(checkedLabels()).toEqual(['60 min']);
   });
 });
 
@@ -281,12 +337,39 @@ describe('Switch', () => {
     expect(sw.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('vrai bouton : Espace et Entrée l’actionnent nativement ; cible d’au moins 44 px', () => {
+  it('aria-checked vient du parent : un nouveau checked sans clic est annoncé', () => {
+    const { rerender } = render(<Switch id="s" label="Rappels" checked={false} onChange={() => {}} />);
+    const sw = screen.getByRole('switch', { name: 'Rappels' });
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    rerender(<Switch id="s" label="Rappels" checked onChange={() => {}} />);
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    rerender(<Switch id="s" label="Rappels" checked={false} onChange={() => {}} />);
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('parent qui refuse le changement (enregistrement refusé) : aria-checked reste l’état réel', () => {
+    const onChange = vi.fn();
+    function Refuse() {
+      const [on] = useState(false);
+      return <Switch id="r" label="Profil visible" checked={on} onChange={onChange} />;
+    }
+    render(<Refuse />);
+    const sw = screen.getByRole('switch', { name: 'Profil visible' });
+    fireEvent.click(sw);
+    expect(onChange).toHaveBeenLastCalledWith(true);
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(sw);
+    expect(onChange).toHaveBeenLastCalledWith(true);
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('bouton natif de type button sans tabindex forcé (clavier laissé au navigateur) ; cible de 44 px', () => {
     const onChange = vi.fn();
     render(<Switch id="v" label="Visible" checked onChange={onChange} />);
     const sw = screen.getByRole('switch', { name: 'Visible', checked: true });
     expect(sw.tagName).toBe('BUTTON');
     expect(sw.getAttribute('type')).toBe('button');
+    expect(sw.hasAttribute('tabindex')).toBe(false);
     fireEvent.click(sw);
     expect(onChange).toHaveBeenCalledWith(false);
     expect(sw.classList.contains(cls('switch'))).toBe(true);
@@ -371,9 +454,10 @@ describe('ListGroup et ListRow', () => {
       description: 'Apparence, synchronisation 1 refusé',
     });
     expect(link.getAttribute('href')).toBe('/settings');
-    expect(link.querySelectorAll('svg').length).toBeGreaterThan(0);
+    expect(link.querySelectorAll('[data-chevron]')).toHaveLength(1);
     for (const svg of link.querySelectorAll('svg'))
       expect(svg.closest('[aria-hidden="true"]')).not.toBeNull();
+    expectIconSilenced();
     expect(link.classList.contains(cls('row'))).toBe(true);
     expect(px(rule('.row')?.get('min-height'))).toBe(56);
   });
@@ -393,8 +477,9 @@ describe('ListGroup et ListRow', () => {
     fireEvent.click(logout);
     expect(onClick).toHaveBeenCalledTimes(2);
     // Maquettes : une ligne qui mène ailleurs a son chevron ; l'action dangereuse isolée (C01) n'en a pas.
-    expect(password.querySelector('svg')).not.toBeNull();
-    expect(logout.querySelector('svg')).toBeNull();
+    expect(password.querySelectorAll('[data-chevron]')).toHaveLength(1);
+    expect(logout.querySelector('[data-chevron]')).toBeNull();
+    expect(screen.getByText('En ligne').closest('li')?.querySelector('[data-chevron]')).toBeNull();
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.queryByRole('button', { name: /Connexion/ })).toBeNull();
@@ -430,9 +515,7 @@ describe('EmptyState', () => {
     expect(screen.getByText('Aucune salle')).toBeTruthy();
     expect(screen.getByText('Ajoute ta salle pour la retrouver ici.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Ajouter une salle' })).toBeTruthy();
-    expect(
-      screen.getByText('Aucune salle').parentElement?.querySelector('svg')?.closest('[aria-hidden="true"]'),
-    ).toBeTruthy();
+    expectIconSilenced();
   });
 });
 

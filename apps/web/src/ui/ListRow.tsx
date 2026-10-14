@@ -23,6 +23,7 @@ export function ListGroup(p: { title?: string; children: ReactNode }) {
 function Chevron() {
   return (
     <svg
+      data-chevron=""
       className={styles.rowChevron}
       aria-hidden="true"
       width="20"
