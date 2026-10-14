@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DevError,
@@ -84,9 +84,15 @@ describe('devSettings', () => {
   it('refuse le dossier de données de la procédure « Comme en production »', () => {
     const prod = join(HOME, 'rune-data');
     expect(() => devSettings({ RUNE_DATA_DIR: prod }, ctx)).toThrow(DevError);
-    expect(() => devSettings({ RUNE_DATA_DIR: join(prod, '') }, ctx)).toThrow(
-      /rune-data-dev|nouveau terminal/,
-    );
+    expect(() => devSettings({ RUNE_DATA_DIR: prod }, ctx)).toThrow(/rune-data-dev|nouveau terminal/);
+    // Même dossier écrit autrement : séparateur final, barres obliques, détour par « .. » (join les effacerait).
+    for (const variant of [
+      `${prod}${sep}`,
+      `${prod.split(sep).join('/')}/`,
+      [HOME, 'x', '..', 'rune-data'].join(sep),
+    ]) {
+      expect(() => devSettings({ RUNE_DATA_DIR: variant }, ctx), variant).toThrow(DevError);
+    }
     expect(devSettings({ RUNE_DATA_DIR: join(HOME, 'rune-data-essai') }, ctx).dataDir).toBe(
       join(HOME, 'rune-data-essai'),
     );

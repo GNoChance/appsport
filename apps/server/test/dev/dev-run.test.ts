@@ -1,5 +1,5 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { type AddressInfo, createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -408,4 +408,54 @@ describe('pnpm dev', () => {
     expect(output).toContain(`Le port ${serverPort} (serveur) est déjà pris`);
     expect(existsSync(dataDir)).toBe(false);
   }, 60_000);
+
+  it.each([
+    ['sans le repère .rune-dev', true, 'pas de repère .rune-dev'],
+    ['sans la sentinelle', false, 'pas la sentinelle .rune-volume'],
+  ])(
+    "base que pnpm dev n'a pas créée (%s) : refusée, rien écrit, rien lancé",
+    async (_, sentinel, reason) => {
+      // Base faite par la CLI du serveur, comme celle de la procédure « Comme en production ».
+      const dataDir = join(tmp, 'donnees');
+      mkdirSync(dataDir);
+      writeFileSync(join(dataDir, '.rune-volume'), '');
+      execFileSync(process.execPath, ['--import', TSX, 'src/main.ts', 'init'], {
+        cwd: SERVER_DIR,
+        env: devEnv({ RUNE_DATA_DIR: dataDir, APP_ORIGIN: 'http://localhost:3100' }),
+        stdio: 'ignore',
+      });
+      if (!sentinel) rmSync(join(dataDir, '.rune-volume'));
+      const dbPath = join(dataDir, 'rune.db');
+      const db = statSync(dbPath);
+      expect(db.size).toBeGreaterThan(0);
+      const entries = readdirSync(dataDir).sort();
+
+      const [serverPort, webPort] = (await freePorts(2)) as [number, number];
+      const proc = startDev({
+        RUNE_DATA_DIR: dataDir,
+        PORT: String(serverPort),
+        RUNE_DEV_ANY_PORT: '1',
+        RUNE_DEV_WEB_PORT: String(webPort),
+      });
+      // Un refus sort avant tout lancement : un script encore là après ce délai a accepté la base.
+      const code = await Promise.race([
+        exitOf(proc),
+        new Promise<'toujours lancé'>((resolve) => setTimeout(() => resolve('toujours lancé'), 20_000)),
+      ]);
+      expect(code, masked()).not.toBe('toujours lancé');
+      expect(code).not.toBe(0);
+      expect(code).not.toBeNull();
+      // Booléens et sortie masquée : un lien affiché par erreur ne finit pas dans le message d'échec.
+      expect(output.includes(reason), masked()).toBe(true);
+      expect(output.includes('invite#'), masked()).toBe(false);
+      expect(masked()).not.toMatch(/^\[(serveur|web)\] /m);
+      const after = statSync(dbPath);
+      expect(after.mtimeMs).toBe(db.mtimeMs);
+      expect(after.size).toBe(db.size);
+      // Ni repère .rune-dev, ni journal SQLite, ni dossier public vide : le dossier n'a pas bougé.
+      expect(readdirSync(dataDir).sort()).toEqual(entries);
+      expect(entries).not.toContain('.rune-dev');
+    },
+    60_000,
+  );
 });
