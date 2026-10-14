@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 
 // Logique pure de `pnpm dev` : variables, dossier de données, lecture de la sortie de la CLI du serveur.
 
@@ -44,6 +44,15 @@ const given = (env: Env, key: string): string | undefined => {
   return value === undefined || value === '' ? undefined : value;
 };
 
+/** Les chemins de Windows ne tiennent pas compte de la casse : `path.win32` compare sans elle. */
+const pathsOf = (platform: NodeJS.Platform) => (platform === 'win32' ? win32 : posix);
+
+/** `child` est `parent` lui-même ou un dossier en dessous. */
+function isWithin(paths: typeof posix, parent: string, child: string): boolean {
+  const rel = paths.relative(parent, child);
+  return rel !== '..' && !rel.startsWith(`..${paths.sep}`) && !paths.isAbsolute(rel);
+}
+
 function parsePort(raw: string, name: string): number {
   const port = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
   if (!(port >= 1 && port <= 65535))
@@ -53,7 +62,7 @@ function parsePort(raw: string, name: string): number {
 
 export function devSettings(
   env: Env,
-  ctx: { homeDir: string; repoRoot: string; webDistExists: boolean },
+  ctx: { homeDir: string; repoRoot: string; webDistExists: boolean; platform?: NodeJS.Platform },
 ): DevSettings {
   const webPortRaw = given(env, 'RUNE_DEV_WEB_PORT') ?? DEFAULT_WEB_PORT;
   const webPort = parsePort(webPortRaw, 'RUNE_DEV_WEB_PORT');
@@ -64,8 +73,20 @@ export function devSettings(
       `PORT vaut ${serverPort}, mais le proxy /api de Vite vise le port ${PROXY_PORT}. ${FRESH_TERMINAL_HINT}`,
     );
   }
+  const paths = pathsOf(ctx.platform ?? process.platform);
   const dataDir = given(env, 'RUNE_DATA_DIR') ?? join(ctx.homeDir, DEV_DATA_DIR_NAME);
-  if (resolve(dataDir) === resolve(ctx.homeDir, PROD_LIKE_DATA_DIR_NAME)) {
+  if (!paths.isAbsolute(dataDir)) {
+    // pnpm lance le script depuis apps/server : un chemin relatif y tomberait, dans le dépôt.
+    throw new DevError(
+      `RUNE_DATA_DIR doit être un chemin absolu (reçu : ${dataDir}) : un chemin relatif dépend du dossier où le script est lancé.`,
+    );
+  }
+  if (isWithin(paths, ctx.repoRoot, dataDir)) {
+    throw new DevError(
+      `RUNE_DATA_DIR vise ${dataDir}, dans le dépôt : la base pourrait finir dans un commit. Il faut un dossier hors du dépôt, comme ${DEV_DATA_DIR_NAME} du dossier personnel.`,
+    );
+  }
+  if (paths.relative(paths.join(ctx.homeDir, PROD_LIKE_DATA_DIR_NAME), dataDir) === '') {
     throw new DevError(
       `RUNE_DATA_DIR vise ${dataDir}, le dossier de la procédure « Comme en production » ; pnpm dev utilise ${DEV_DATA_DIR_NAME}. ${FRESH_TERMINAL_HINT}`,
     );

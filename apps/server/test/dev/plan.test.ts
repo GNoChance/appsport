@@ -1,4 +1,4 @@
-import { join, sep } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DevError,
@@ -9,8 +9,10 @@ import {
   usersFromDbStats,
 } from '../../scripts/dev/plan';
 
-const HOME = join('C:', 'Users', 'proche');
-const REPO = join('C:', 'depot', 'rune');
+// Chemins absolus sur la plateforme qui lance le test (C:… sous Windows, /… ailleurs).
+const HOME = resolve('/Users/proche');
+const REPO = resolve('/depot/rune');
+const ELSEWHERE = resolve('/autre');
 const ctx = { homeDir: HOME, repoRoot: REPO, webDistExists: true };
 
 describe('devSettings', () => {
@@ -44,15 +46,15 @@ describe('devSettings', () => {
       APP_ORIGIN: 'http://127.0.0.1:4000',
       HOST: 'localhost',
       PORT: '3100',
-      RUNE_DATA_DIR: join('D:', 'essai'),
-      RUNE_PUBLIC_DIR: join('D:', 'pub'),
-      RUNE_CONTENT_DIR: join('D:', 'contenu'),
+      RUNE_DATA_DIR: join(ELSEWHERE, 'essai'),
+      RUNE_PUBLIC_DIR: join(ELSEWHERE, 'pub'),
+      RUNE_CONTENT_DIR: join(ELSEWHERE, 'contenu'),
       RUNE_DEV_WEB_PORT: '5300',
       RUNE_DEV_BIRTH_DATE: '1985-06-15',
       RUNE_DEV_ANY_PORT: '1',
     };
     const s = devSettings(env, { ...ctx, webDistExists: false });
-    expect(s.dataDir).toBe(join('D:', 'essai'));
+    expect(s.dataDir).toBe(join(ELSEWHERE, 'essai'));
     expect(s.serverPort).toBe(3100);
     expect(s.webPort).toBe(5300);
     expect(s.birthDate).toBe('1985-06-15');
@@ -61,9 +63,9 @@ describe('devSettings', () => {
       APP_ORIGIN: 'http://127.0.0.1:4000',
       HOST: 'localhost',
       PORT: '3100',
-      RUNE_DATA_DIR: join('D:', 'essai'),
-      RUNE_PUBLIC_DIR: join('D:', 'pub'),
-      RUNE_CONTENT_DIR: join('D:', 'contenu'),
+      RUNE_DATA_DIR: join(ELSEWHERE, 'essai'),
+      RUNE_PUBLIC_DIR: join(ELSEWHERE, 'pub'),
+      RUNE_CONTENT_DIR: join(ELSEWHERE, 'contenu'),
     });
   });
 
@@ -96,6 +98,58 @@ describe('devSettings', () => {
     expect(devSettings({ RUNE_DATA_DIR: join(HOME, 'rune-data-essai') }, ctx).dataDir).toBe(
       join(HOME, 'rune-data-essai'),
     );
+  });
+
+  it('refuse un RUNE_DATA_DIR relatif : il dépendrait du dossier où pnpm lance le script', () => {
+    for (const relative of ['essai', join('.', 'essai'), join('..', 'essai')]) {
+      expect(() => devSettings({ RUNE_DATA_DIR: relative }, ctx)).toThrow(DevError);
+      expect(() => devSettings({ RUNE_DATA_DIR: relative }, ctx)).toThrow(/absolu/);
+    }
+  });
+
+  it('refuse un dossier de données dans le dépôt, qui pourrait finir dans un commit', () => {
+    const insideRepo = [
+      REPO,
+      join(REPO, 'essai'),
+      join(REPO, 'apps', 'server', 'essai'),
+      join(REPO, '..essai'),
+    ];
+    for (const inside of insideRepo) {
+      expect(() => devSettings({ RUNE_DATA_DIR: inside }, ctx)).toThrow(DevError);
+      expect(() => devSettings({ RUNE_DATA_DIR: inside }, ctx)).toThrow(/dépôt/);
+    }
+    // À côté du dépôt (même préfixe de nom, ou dossier parent) : accepté.
+    expect(devSettings({ RUNE_DATA_DIR: `${REPO}-donnees` }, ctx).dataDir).toBe(`${REPO}-donnees`);
+    for (const beside of [join(REPO, '..'), join(REPO, '..', 'donnees')]) {
+      expect(devSettings({ RUNE_DATA_DIR: beside }, ctx).dataDir).toBe(beside);
+    }
+  });
+
+  it('sous Windows, compare les dossiers sans tenir compte de la casse', () => {
+    const win = {
+      homeDir: 'C:\\Users\\Proche',
+      repoRoot: 'C:\\Depot\\Rune',
+      webDistExists: true,
+      platform: 'win32' as const,
+    };
+    expect(() => devSettings({ RUNE_DATA_DIR: 'c:\\users\\proche\\RUNE-DATA' }, win)).toThrow(
+      /Comme en production/,
+    );
+    expect(() => devSettings({ RUNE_DATA_DIR: 'c:\\depot\\rune\\essai' }, win)).toThrow(/dépôt/);
+    expect(() => devSettings({ RUNE_DATA_DIR: 'essai' }, win)).toThrow(/absolu/);
+    expect(devSettings({ RUNE_DATA_DIR: 'D:\\essai' }, win).dataDir).toBe('D:\\essai');
+    // Ailleurs, la casse compte : /home/proche/Rune-Data n'est pas /home/proche/rune-data.
+    const posix = {
+      homeDir: '/home/proche',
+      repoRoot: '/depot/rune',
+      webDistExists: true,
+      platform: 'linux' as const,
+    };
+    expect(() => devSettings({ RUNE_DATA_DIR: '/home/proche/rune-data' }, posix)).toThrow(DevError);
+    expect(devSettings({ RUNE_DATA_DIR: '/home/proche/Rune-Data' }, posix).dataDir).toBe(
+      '/home/proche/Rune-Data',
+    );
+    expect(() => devSettings({ RUNE_DATA_DIR: '/depot/rune/essai' }, posix)).toThrow(/dépôt/);
   });
 
   it.each([1, 65535])('accepte les bornes de port (%i)', (port) => {
