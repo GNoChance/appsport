@@ -32,13 +32,16 @@ export function runCapture(cmd: Command): Promise<{ code: number | null; stdout:
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  // Décodage par flux : un caractère réparti sur deux morceaux reste entier.
+  proc.stdout.setEncoding('utf8');
+  proc.stderr.setEncoding('utf8');
   let stdout = '';
   let stderr = '';
-  proc.stdout.on('data', (d: Buffer) => {
-    stdout += d.toString();
+  proc.stdout.on('data', (d: string) => {
+    stdout += d;
   });
-  proc.stderr.on('data', (d: Buffer) => {
-    stderr += d.toString();
+  proc.stderr.on('data', (d: string) => {
+    stderr += d;
   });
   return exitOf(proc).then((code) => ({ code, stdout, stderr }));
 }
@@ -57,8 +60,10 @@ export function spawnPrefixed(label: string, cmd: Command, keepOut?: (line: stri
   });
   const out = createLinePrefixer(`[${label}]`, (text) => process.stdout.write(text), keepOut);
   const err = createLinePrefixer(`[${label}]`, (text) => process.stderr.write(text));
-  proc.stdout.on('data', (d: Buffer) => out.push(d.toString()));
-  proc.stderr.on('data', (d: Buffer) => err.push(d.toString()));
+  proc.stdout.setEncoding('utf8');
+  proc.stderr.setEncoding('utf8');
+  proc.stdout.on('data', (d: string) => out.push(d));
+  proc.stderr.on('data', (d: string) => err.push(d));
   const exited = exitOf(proc).then((code) => {
     out.end();
     err.end();

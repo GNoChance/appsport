@@ -5,10 +5,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DB_FILE, SENTINEL_FILE } from '../../src/config';
 import {
+  DEV_MARKER_FILE,
   DevError,
   type DevSettings,
   devSettings,
   invitationLinkFrom,
+  PROXY_PORT,
   planDataDir,
   portBusyMessage,
   usersFromDbStats,
@@ -24,8 +26,6 @@ import { supervise } from './supervisor';
 const SERVER_DIR = fileURLToPath(new URL('../../', import.meta.url));
 const REPO_ROOT = join(SERVER_DIR, '..', '..');
 const WEB_DIR = join(REPO_ROOT, 'apps', 'web');
-/** Port visé par le proxy `/api` et `/illustrations` de `apps/web/vite.config.ts`. */
-const PROXY_PORT = 3000;
 const GRACE_MS = 5000;
 
 const log = (line: string): void => {
@@ -69,6 +69,7 @@ async function prepare(): Promise<{
     if (await isPortBusy(port)) throw new DevError(portBusyMessage(port, role));
   }
   if (settings.serverPort !== PROXY_PORT) {
+    // Seulement avec la dérogation RUNE_DEV_ANY_PORT (tests) : sinon devSettings refuse ce port.
     log(`Attention : le proxy /api de Vite vise le port ${PROXY_PORT}, pas ${settings.serverPort}.`);
   }
   const serverEnv: NodeJS.ProcessEnv = { ...process.env, ...settings.serverEnv };
@@ -78,12 +79,14 @@ async function prepare(): Promise<{
     {
       sentinelExists: existsSync(join(dataDir, SENTINEL_FILE)),
       dbExists: existsSync(join(dataDir, DB_FILE)),
+      devMarkerExists: existsSync(join(dataDir, DEV_MARKER_FILE)),
     },
     dataDir,
   );
   if (plan.kind === 'refused') throw new DevError(plan.message);
   if (plan.kind === 'init') {
     if (plan.writeSentinel) writeFileSync(join(dataDir, SENTINEL_FILE), '');
+    if (plan.writeDevMarker) writeFileSync(join(dataDir, DEV_MARKER_FILE), '');
     for (const line of (await serverCli(serverEnv, ['init'])).trim().split(/\r?\n/)) log(line);
   }
   log(`Données de dev : ${dataDir}`);
@@ -108,8 +111,18 @@ async function main(): Promise<number> {
   }
   const { settings, serverEnv, link } = prepared;
 
+  // Premier signal : arrêt poli ; un second (Ctrl+C répété pendant le délai) : tout est tué tout de suite.
+  // Le gestionnaire reste en place, sinon le second signal tuerait le script et laisserait les enfants.
   const { promise: stop, resolve: requestStop } = Promise.withResolvers<void>();
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.once(signal, () => requestStop());
+  const { promise: force, resolve: requestForce } = Promise.withResolvers<void>();
+  let signals = 0;
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.on(signal, () => {
+      signals += 1;
+      if (signals === 1) requestStop();
+      else requestForce();
+    });
+  }
 
   const color: NodeJS.ProcessEnv =
     process.stdout.isTTY && process.env.FORCE_COLOR === undefined ? { FORCE_COLOR: '1' } : {};
@@ -155,6 +168,7 @@ async function main(): Promise<number> {
     env: { ...process.env, ...color },
   });
   log(`Serveur : http://localhost:${settings.serverPort}  ·  Web : http://localhost:${settings.webPort}`);
+  log(`Processus : serveur ${String(server.pid)}, web ${String(web.pid)}`);
   if (link) {
     log('Premier lancement : il faut créer le compte administrateur.');
     log('Ouvre ce lien dans le navigateur (valable 24 h) :');
@@ -164,7 +178,14 @@ async function main(): Promise<number> {
     );
   }
 
-  return supervise([server, web], { stop, graceMs: GRACE_MS, interrupt: interruptTree, killTree, log });
+  return supervise([server, web], {
+    stop,
+    force,
+    graceMs: GRACE_MS,
+    interrupt: interruptTree,
+    killTree,
+    log,
+  });
 }
 
 main().then(

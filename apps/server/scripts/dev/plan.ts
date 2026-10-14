@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 // Logique pure de `pnpm dev` : variables, dossier de données, lecture de la sortie de la CLI du serveur.
 
@@ -11,7 +11,17 @@ export class DevError extends Error {
 
 export const DEV_DATA_DIR_NAME = 'rune-data-dev';
 export const EMPTY_PUBLIC_DIR_NAME = 'public-vide';
-const DEFAULT_SERVER_PORT = '3000';
+/** Dossier de données de la procédure « Comme en production » du README : jamais celui de pnpm dev. */
+export const PROD_LIKE_DATA_DIR_NAME = 'rune-data';
+/** Repère écrit par pnpm dev au premier lancement : seule une base qui l'a est une base de dev. */
+export const DEV_MARKER_FILE = '.rune-dev';
+/** Port visé par le proxy `/api` et `/illustrations` de `apps/web/vite.config.ts`. */
+export const PROXY_PORT = 3000;
+/** Dérogation explicite (tests) : un autre port du serveur, que le proxy de Vite n'atteint pas. */
+const ANY_PORT_VARIABLE = 'RUNE_DEV_ANY_PORT';
+const FRESH_TERMINAL_HINT =
+  'Des variables de la procédure « Comme en production » restent peut-être dans ce terminal : il faut lancer pnpm dev dans un nouveau terminal.';
+const DEFAULT_SERVER_PORT = String(PROXY_PORT);
 const DEFAULT_WEB_PORT = '5173';
 const DEFAULT_BIRTH_DATE = '1990-01-01';
 
@@ -49,7 +59,17 @@ export function devSettings(
   const webPort = parsePort(webPortRaw, 'RUNE_DEV_WEB_PORT');
   const portRaw = given(env, 'PORT') ?? DEFAULT_SERVER_PORT;
   const serverPort = parsePort(portRaw, 'PORT');
+  if (serverPort !== PROXY_PORT && given(env, ANY_PORT_VARIABLE) !== '1') {
+    throw new DevError(
+      `PORT vaut ${serverPort}, mais le proxy /api de Vite vise le port ${PROXY_PORT}. ${FRESH_TERMINAL_HINT}`,
+    );
+  }
   const dataDir = given(env, 'RUNE_DATA_DIR') ?? join(ctx.homeDir, DEV_DATA_DIR_NAME);
+  if (resolve(dataDir) === resolve(ctx.homeDir, PROD_LIKE_DATA_DIR_NAME)) {
+    throw new DevError(
+      `RUNE_DATA_DIR vise ${dataDir}, le dossier de la procédure « Comme en production » ; pnpm dev utilise ${DEV_DATA_DIR_NAME}. ${FRESH_TERMINAL_HINT}`,
+    );
+  }
   const publicGiven = given(env, 'RUNE_PUBLIC_DIR');
   const emptyPublicDir =
     publicGiven === undefined && !ctx.webDistExists ? join(dataDir, EMPTY_PUBLIC_DIR_NAME) : null;
@@ -72,22 +92,33 @@ export function devSettings(
 
 export type DataDirPlan =
   | { kind: 'ready' }
-  | { kind: 'init'; writeSentinel: boolean }
+  | { kind: 'init'; writeSentinel: boolean; writeDevMarker: boolean }
   | { kind: 'refused'; message: string };
 
-/** Premier lancement : sentinelle puis `init`, une seule fois ; une base existante n'est jamais refaite. */
+/**
+ * Premier lancement : sentinelle et repère de dev, puis `init`, une seule fois ; une base existante n'est
+ * jamais refaite. Une base sans le repère `.rune-dev` n'a pas été créée par pnpm dev : elle est refusée.
+ */
 export function planDataDir(
-  state: { sentinelExists: boolean; dbExists: boolean },
+  state: { sentinelExists: boolean; dbExists: boolean; devMarkerExists: boolean },
   dataDir: string,
 ): DataDirPlan {
   if (state.dbExists) {
-    if (state.sentinelExists) return { kind: 'ready' };
-    return {
-      kind: 'refused',
-      message: `Une base existe dans ${dataDir} mais pas la sentinelle .rune-volume : ce dossier n'est pas un dossier de dev, rien n'est lancé.`,
-    };
+    if (!state.sentinelExists) {
+      return {
+        kind: 'refused',
+        message: `Une base existe dans ${dataDir} mais pas la sentinelle .rune-volume : ce dossier n'est pas un dossier de dev, rien n'est lancé.`,
+      };
+    }
+    if (!state.devMarkerExists) {
+      return {
+        kind: 'refused',
+        message: `La base de ${dataDir} n'a pas été créée par pnpm dev (pas de repère ${DEV_MARKER_FILE}) : rien n'est lancé. ${FRESH_TERMINAL_HINT}`,
+      };
+    }
+    return { kind: 'ready' };
   }
-  return { kind: 'init', writeSentinel: !state.sentinelExists };
+  return { kind: 'init', writeSentinel: !state.sentinelExists, writeDevMarker: !state.devMarkerExists };
 }
 
 /** Nombre de comptes lu dans la ligne JSON de `db:stats`. */

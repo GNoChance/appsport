@@ -49,6 +49,7 @@ describe('devSettings', () => {
       RUNE_CONTENT_DIR: join('D:', 'contenu'),
       RUNE_DEV_WEB_PORT: '5300',
       RUNE_DEV_BIRTH_DATE: '1985-06-15',
+      RUNE_DEV_ANY_PORT: '1',
     };
     const s = devSettings(env, { ...ctx, webDistExists: false });
     expect(s.dataDir).toBe(join('D:', 'essai'));
@@ -72,6 +73,25 @@ describe('devSettings', () => {
     expect(s.serverPort).toBe(3000);
   });
 
+  it('refuse un port du serveur que le proxy de Vite ne vise pas, sauf dérogation explicite', () => {
+    // Cas typique : PORT=3100 laissé par la procédure « Comme en production » dans le même terminal.
+    expect(() => devSettings({ PORT: '3100' }, ctx)).toThrow(DevError);
+    expect(() => devSettings({ PORT: '3100' }, ctx)).toThrow(/3000.*nouveau terminal/s);
+    expect(devSettings({ PORT: '3100', RUNE_DEV_ANY_PORT: '1' }, ctx).serverPort).toBe(3100);
+    expect(devSettings({ PORT: '3000' }, ctx).serverPort).toBe(3000);
+  });
+
+  it('refuse le dossier de données de la procédure « Comme en production »', () => {
+    const prod = join(HOME, 'rune-data');
+    expect(() => devSettings({ RUNE_DATA_DIR: prod }, ctx)).toThrow(DevError);
+    expect(() => devSettings({ RUNE_DATA_DIR: join(prod, '') }, ctx)).toThrow(
+      /rune-data-dev|nouveau terminal/,
+    );
+    expect(devSettings({ RUNE_DATA_DIR: join(HOME, 'rune-data-essai') }, ctx).dataDir).toBe(
+      join(HOME, 'rune-data-essai'),
+    );
+  });
+
   it.each(['abc', '0', '70000', '-1', '3000x'])('refuse un port invalide (%s)', (port) => {
     expect(() => devSettings({ PORT: port }, ctx)).toThrow(DevError);
     expect(() => devSettings({ RUNE_DEV_WEB_PORT: port }, ctx)).toThrow(/port/i);
@@ -82,28 +102,40 @@ describe('planDataDir', () => {
   const dir = join(HOME, 'rune-data-dev');
 
   it('premier lancement : sentinelle puis init', () => {
-    expect(planDataDir({ sentinelExists: false, dbExists: false }, dir)).toEqual({
+    expect(planDataDir({ sentinelExists: false, dbExists: false, devMarkerExists: false }, dir)).toEqual({
       kind: 'init',
       writeSentinel: true,
+      writeDevMarker: true,
     });
   });
 
   it('sentinelle sans base : init seul', () => {
-    expect(planDataDir({ sentinelExists: true, dbExists: false }, dir)).toEqual({
+    expect(planDataDir({ sentinelExists: true, dbExists: false, devMarkerExists: true }, dir)).toEqual({
       kind: 'init',
       writeSentinel: false,
+      writeDevMarker: false,
     });
   });
 
   it('la base existe : rien à refaire', () => {
-    expect(planDataDir({ sentinelExists: true, dbExists: true }, dir)).toEqual({ kind: 'ready' });
+    expect(planDataDir({ sentinelExists: true, dbExists: true, devMarkerExists: true }, dir)).toEqual({
+      kind: 'ready',
+    });
   });
 
   it('une base sans sentinelle est refusée, sans rien écrire', () => {
-    const plan = planDataDir({ sentinelExists: false, dbExists: true }, dir);
+    const plan = planDataDir({ sentinelExists: false, dbExists: true, devMarkerExists: false }, dir);
     expect(plan.kind).toBe('refused');
     expect(plan.kind === 'refused' && plan.message).toContain(dir);
     expect(plan.kind === 'refused' && plan.message).toContain('.rune-volume');
+  });
+
+  it("une base que pnpm dev n'a pas créée (sans le repère .rune-dev) est refusée, sans rien écrire", () => {
+    // Le dossier de la procédure « Comme en production » a la sentinelle et la base, mais pas le repère.
+    const plan = planDataDir({ sentinelExists: true, dbExists: true, devMarkerExists: false }, dir);
+    expect(plan.kind).toBe('refused');
+    expect(plan.kind === 'refused' && plan.message).toContain(dir);
+    expect(plan.kind === 'refused' && plan.message).toContain('.rune-dev');
   });
 });
 

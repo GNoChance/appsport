@@ -7,6 +7,8 @@ export interface SupervisedChild {
 export interface SuperviseOptions<C extends SupervisedChild> {
   /** Résolue à la demande d'arrêt (Ctrl+C, fermeture de la console). */
   stop: Promise<void>;
+  /** Résolue à une seconde demande d'arrêt : le délai de grâce est abandonné, tout est tué tout de suite. */
+  force?: Promise<void>;
   /** Délai laissé aux enfants pour sortir seuls, puis après un arrêt forcé. */
   graceMs: number;
   /** Demande polie (SIGINT au groupe) ; sous Windows, Ctrl+C a déjà atteint toute la console. */
@@ -40,7 +42,8 @@ export async function supervise<C extends SupervisedChild>(
   let code = 0;
   if (first === null) {
     for (const child of alive) opts.interrupt(child);
-    await within(Promise.all([...alive].map((c) => c.exited)), opts.graceMs);
+    const allExited = Promise.all([...alive].map((c) => c.exited));
+    await within(opts.force ? Promise.race([allExited, opts.force]) : allExited, opts.graceMs);
   } else {
     code = first.code === null || first.code === 0 ? 1 : first.code;
     alive.delete(first.child);

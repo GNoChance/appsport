@@ -10,13 +10,18 @@ function fakeChild(label: string): FakeChild {
   return { label, exited: promise, exit: resolve };
 }
 
-function harness(children: FakeChild[], opts: { exitOnInterrupt?: boolean; exitOnKill?: boolean } = {}) {
+function harness(
+  children: FakeChild[],
+  opts: { exitOnInterrupt?: boolean; exitOnKill?: boolean; graceMs?: number } = {},
+) {
   const calls: string[] = [];
   const logs: string[] = [];
   const { promise: stop, resolve: requestStop } = Promise.withResolvers<void>();
+  const { promise: force, resolve: requestForce } = Promise.withResolvers<void>();
   const run = supervise(children, {
     stop,
-    graceMs: 30,
+    force,
+    graceMs: opts.graceMs ?? 30,
     interrupt: (child) => {
       calls.push(`interrupt ${child.label}`);
       if (opts.exitOnInterrupt) (child as FakeChild).exit(0);
@@ -27,7 +32,7 @@ function harness(children: FakeChild[], opts: { exitOnInterrupt?: boolean; exitO
     },
     log: (line) => logs.push(line),
   });
-  return { calls, logs, requestStop, run };
+  return { calls, logs, requestStop, requestForce, run };
 }
 
 describe('supervise', () => {
@@ -81,5 +86,18 @@ describe('supervise', () => {
     web.exit(1);
     expect(await h.run).toBe(1);
     expect(h.logs.join('\n')).toMatch(/serveur/);
+  });
+
+  it('un second Ctrl+C pendant le délai tue tout de suite les enfants avec leurs sous-processus', async () => {
+    const server = fakeChild('serveur');
+    const web = fakeChild('web');
+    const h = harness([server, web], { graceMs: 60_000 });
+    h.requestStop();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    h.requestForce();
+    const started = Date.now();
+    expect(await h.run).toBe(0);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(h.calls).toEqual(['interrupt serveur', 'interrupt web', 'kill serveur', 'kill web']);
   });
 });
