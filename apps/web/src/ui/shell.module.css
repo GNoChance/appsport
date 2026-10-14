@@ -4,13 +4,27 @@
  * démarrage. Couleurs : jetons de theme/tokens.css seulement, donc juste dans les 5 thèmes.
  */
 
-/* Téléphone : la page garde sous elle la place de la barre flottante (68 px, 16 px au-dessus et en dessous). */
+/*
+ * Téléphone : la page garde sous elle la place de la barre d'onglets flottante, 16 px dessous, la barre, 16 px
+ * dessus, plus l'encoche. La barre fait 68 px mais grandit quand un libellé passe à la ligne (gros texte, écran
+ * étroit) : 16 px de cadre, 23 px d'icône, 2 px d'écart et jusqu'à 3 lignes de libellé de 0,9 rem
+ * (« Progression » à 320 px, texte à 200 %).
+ */
 .shell {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   overflow-x: clip;
-  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(73px + 2.7rem + env(safe-area-inset-bottom, 0px));
+}
+
+/*
+ * Tant que la barre est là, le focus ne finit jamais dessous (WCAG 2.2, 2.4.11) : tabulation et focus() d'un
+ * champ s'arrêtent au-dessus d'elle. Même place que le bas de .shell (vérifié par test) ; sur PC, pas de barre,
+ * donc rien de retenu.
+ */
+:global(html):has(.tabBar) {
+  scroll-padding-bottom: calc(73px + 2.7rem + env(safe-area-inset-bottom, 0px));
 }
 
 .column {
@@ -29,12 +43,18 @@
   padding-inline-start: max(18px, var(--page-inset-start));
 }
 
-/* En-tête de l'accueil : marque à gauche, pastille et initiale à droite. */
+/*
+ * En-tête de l'accueil : marque à gauche, pastille et initiale à droite. Trop étroit (320 px, gros texte, état
+ * long comme « Mise à jour nécessaire ») : pastille et initiale passent sous la marque, toujours au bout de la
+ * ligne, et le texte de la pastille va à la ligne plutôt que de recouvrir l'initiale.
+ */
 .header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  row-gap: 6px;
   width: 100%;
   max-width: var(--content-width);
   margin: 0 auto;
@@ -59,9 +79,13 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+  margin-inline-start: auto;
 }
 
-/* Rond de 36 px de l'initiale, dans une cible de 44 × 44. */
+/*
+ * Rond de 36 px de l'initiale, dans une cible de 44 × 44. Teinte d'accent à 10 %, opaque : l'initiale (16 px,
+ * texte courant) y garde 4,5:1 dans les 5 thèmes (4,6:1 en clair ; à 14 %, 4,35:1).
+ */
 .avatar {
   flex: none;
   display: grid;
@@ -78,13 +102,13 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   color: var(--accent);
   font-family: var(--font-display);
   font-weight: 700;
 }
 
-/* Pastille de connexion : point de 7 px, texte secondaire en 13 px. */
+/* Pastille de connexion : point de 7 px, texte secondaire en 13 px, qui peut aller à la ligne (en-tête étroit). */
 .pill {
   display: inline-flex;
   align-items: center;
@@ -92,7 +116,6 @@
   min-width: 0;
   font-size: 0.8125rem;
   color: var(--text-muted);
-  white-space: nowrap;
 }
 
 .pillDot {
@@ -127,6 +150,7 @@
 /*
  * Barre d'onglets en pilule (68 px, rayon 24, 4 colonnes) posée au-dessus du contenu, sous les feuilles du bas
  * (z-index 100). Fond de la carte presque opaque et flou derrière ; ombre portée des maquettes en clair.
+ * Hauteur minimale : un libellé passé à la ligne la fait grandir vers le haut au lieu de déborder.
  */
 .tabBar {
   position: fixed;
@@ -135,7 +159,7 @@
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   z-index: 50;
   max-width: 560px;
-  height: 68px;
+  min-height: 68px;
   margin: 0 auto;
   padding: 7px;
   display: grid;
@@ -151,7 +175,11 @@
   backdrop-filter: blur(12px);
 }
 
-/* Pastille de l'onglet actif : une colonne de large, elle glisse jusqu'à l'onglet n° --tab-index. */
+/*
+ * Pastille de l'onglet actif : une colonne de large, elle glisse jusqu'à l'onglet n° --tab-index. Teinte
+ * d'accent à 10 %, opaque sur la carte : le libellé actif (12 px) y garde 4,5:1 dans les 5 thèmes (4,6:1 en
+ * clair, où les 12 % de la maquette restaient sous 4,5:1).
+ */
 .tabPill {
   position: absolute;
   left: 7px;
@@ -159,7 +187,7 @@
   bottom: 7px;
   width: calc((100% - 26px) / 4);
   border-radius: 17px;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   transform: translateX(calc(var(--tab-index, 0) * (100% + 4px)));
   transition: transform var(--dur-screen) var(--ease);
 }
@@ -168,6 +196,7 @@
   display: none;
 }
 
+/* Libellé coupé (avec un tiret quand la langue le permet) et centré dans sa colonne, jamais sur l'onglet voisin. */
 .tab {
   position: relative;
   z-index: 1;
@@ -183,6 +212,10 @@
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+  -webkit-hyphens: auto;
+  hyphens: auto;
   text-decoration: none;
   transition: color var(--dur-fast) var(--ease);
 }
@@ -237,8 +270,9 @@
     color var(--dur-fast) var(--ease);
 }
 
+/* Même teinte opaque que la pastille des onglets : 4,5:1 dans les 5 thèmes. */
 .sideItem[aria-current="page"] {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   color: var(--accent);
   font-weight: 600;
 }

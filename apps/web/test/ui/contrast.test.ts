@@ -7,6 +7,7 @@ import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
 
 const TOKENS_CSS = resolve(import.meta.dirname, '../../src/ui/theme/tokens.css');
 const VOICE_CSS = resolve(import.meta.dirname, '../../src/ui/voice.module.css');
+const SHELL_CSS = resolve(import.meta.dirname, '../../src/ui/shell.module.css');
 const DARK = '(prefers-color-scheme: dark)';
 
 /** `#rgb` ou `#rrggbb` → [r, g, b] de 0 à 255. */
@@ -81,6 +82,16 @@ const BRIDGE_PAIRS: readonly (readonly [string, string, number])[] = [
   ['--color-danger', '--color-surface', TEXT],
   ['--color-primary', '--color-bg', UI],
   ['--color-primary', '--color-surface', UI],
+];
+
+/**
+ * Libellés actifs de la coquille, texte courant (12 à 16 px), sur leur teinte d'accent : [nom, règle qui
+ * colore le texte, règle qui pose le fond]. La teinte est opaque, mélangée à --surface : le calcul la lit.
+ */
+const SHELL_PAIRS: readonly (readonly [string, string, string])[] = [
+  ['onglet actif', '.tab[aria-current="page"]', '.tabPill'],
+  ['entrée latérale active', '.sideItem[aria-current="page"]', '.sideItem[aria-current="page"]'],
+  ['initiale du profil', '.avatar > span', '.avatar > span'],
 ];
 
 const rgbToHex = (rgb: number[]) =>
@@ -169,6 +180,7 @@ describe('contrastRatio (WCAG 2.x)', () => {
 describe('contrastes des jetons, pour chaque thème', () => {
   const blocks = parseCssBlocks(readFileSync(TOKENS_CSS, 'utf8'));
   const voice = parseCssBlocks(readFileSync(VOICE_CSS, 'utf8'));
+  const shell = parseCssBlocks(readFileSync(SHELL_CSS, 'utf8'));
   const root = declarationsOf(blocks, ':root');
   const own = (p: Palette) => declarationsOf(blocks, p.selector, p.media);
   /** Ce que voit la page dans ce rendu : `:root`, puis le bloc du thème par-dessus (la cascade). */
@@ -238,6 +250,29 @@ describe('contrastes des jetons, pour chaque thème', () => {
               `étiquette ${fg} (${tone}) sur ${bg} ${b} (${p.name}) : ${ratio.toFixed(2)}:1`,
             ).toBeGreaterThanOrEqual(TEXT);
           }
+        }
+      });
+
+      it('coquille : onglet actif, entrée latérale active et initiale atteignent 4,5:1 sur leur teinte', () => {
+        const tokens = seen(p);
+        expect(tokens, `bloc ${p.selector} absent de tokens.css`).not.toBeNull();
+        for (const [name, text, tint] of SHELL_PAIRS) {
+          const color = declarationsOf(shell, text)?.get('color');
+          const background = declarationsOf(shell, tint)?.get('background');
+          const vars = new Map([
+            ...(tokens ?? []),
+            ['--pair-text', color ?? ''],
+            ['--pair-tint', background ?? ''],
+          ]);
+          const fg = resolveColor('--pair-text', vars);
+          const bg = resolveColor('--pair-tint', vars);
+          // Une teinte qui laisse voir dessous (transparent) ne se calcule pas : elle échoue ici, lisiblement.
+          expect(fg ?? '', `${name} : couleur ${color} (${p.name})`).toMatch(HEX);
+          expect(bg ?? '', `${name} : fond ${background} (${p.name})`).toMatch(HEX);
+          const ratio = contrastRatio(fg as string, bg as string);
+          expect(ratio, `${name} ${fg} sur ${bg} (${p.name}) : ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(
+            TEXT,
+          );
         }
       });
 

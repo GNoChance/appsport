@@ -13,6 +13,7 @@ import { ConnectionPill } from '../../src/ui/ConnectionPill';
 import { SideNav } from '../../src/ui/SideNav';
 import { screenTransition } from '../../src/ui/screen-transition';
 import { activeTab, TAB_ITEMS, TabBar } from '../../src/ui/TabBar';
+import ui from '../../src/ui/ui.module.css';
 import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
 import { createFakeApi, createFakeSyncEngine } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
@@ -222,6 +223,59 @@ describe('TabBar', () => {
   });
 });
 
+// scroll-padding-bottom (shell.module.css) suffit à la tabulation et à Chromium ; WebKit l'ignore pour focus()
+// (retour au bouton d'origine, champ en erreur) et laisse le contrôle sous la barre (e2e/shell.spec.ts).
+describe('TabBar : un contrôle qui prend le focus sous la barre défile au-dessus (WCAG 2.2, 2.4.11)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** La barre, un bouton de la page et un bouton d'une feuille du bas ; leurs `scrollIntoView` espionnés. */
+  async function setup() {
+    await renderWithServices(
+      <>
+        <button type="button">Enregistrer</button>
+        <div role="dialog" aria-label="Supprimer ?">
+          <button type="button">Annuler</button>
+        </div>
+        <TabBar />
+      </>,
+      { path: '/' },
+    );
+    const scroll = vi.fn();
+    const save = screen.getByRole('button', { name: 'Enregistrer' });
+    const cancel = screen.getByRole('button', { name: 'Annuler' });
+    for (const el of [save, cancel, tab('Salles')]) el.scrollIntoView = scroll;
+    /** Ce que touche le centre du contrôle : la barre, le contrôle lui-même, la feuille par-dessus… */
+    const pointHits = (el: Element | null) => vi.spyOn(document, 'elementFromPoint').mockReturnValue(el);
+    return { save, cancel, scroll, pointHits };
+  }
+
+  it('la barre recouvre le centre du contrôle : il défile au plus près, juste au-dessus d’elle', async () => {
+    const { save, scroll, pointHits } = await setup();
+    pointHits(tab('Salles'));
+    act(() => save.focus());
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' });
+  });
+
+  it('contrôle visible (son centre le touche) ou hors de la fenêtre : rien ne défile', async () => {
+    const { save, scroll, pointHits } = await setup();
+    pointHits(save);
+    act(() => save.focus());
+    act(() => save.blur());
+    pointHits(null);
+    act(() => save.focus());
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it('feuille du bas posée par-dessus la barre, ou onglet de la barre elle-même : rien ne défile', async () => {
+    const { cancel, scroll, pointHits } = await setup();
+    pointHits(cancel);
+    act(() => cancel.focus());
+    pointHits(tab('Salles'));
+    act(() => tab('Salles').focus());
+    expect(scroll).not.toHaveBeenCalled();
+  });
+});
+
 describe('SideNav (≥ 900 px)', () => {
   it('mêmes entrées, même onglet actif', async () => {
     await renderWithServices(<SideNav />, { path: '/gyms/g-1' });
@@ -316,7 +370,17 @@ describe('coquille', () => {
     await renderApp({ path: '/profile/health' });
     await screen.findByRole('heading', { level: 1, name: 'Santé' });
     expect(screen.queryByRole('link', { name: 'Mon profil' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/profile');
+    const back = screen.getByRole('link', { name: 'Retour' });
+    expect(back.getAttribute('href')).toBe('/profile');
+    // La taille d'une cible ne se lit que dans la feuille : la classe posée, puis sa règle.
+    expect(ui.backButton).toBeTruthy();
+    expect(back.classList.contains(ui.backButton as string)).toBe(true);
+    const rule = declarationsOf(
+      parseCssBlocks(readFileSync(resolve(import.meta.dirname, '../../src/ui/ui.module.css'), 'utf8')),
+      '.backButton',
+    );
+    expect(rule?.get('width')).toBe('44px');
+    expect(rule?.get('height')).toBe('44px');
   });
 
   // L'admin passe par Profil : ni onglet « Administration », ni aucun lien /admin, quel que soit son libellé.

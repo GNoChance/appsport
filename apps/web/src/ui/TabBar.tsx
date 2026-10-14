@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { type CSSProperties, type ReactNode, type RefObject, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'wouter';
 import styles from './shell.module.css';
 
@@ -84,8 +84,10 @@ export function TabBar() {
   const [path] = useLocation();
   const active = activeTab(path);
   const index = TAB_ITEMS.findIndex((t) => t.href === active);
+  const bar = useRef<HTMLElement>(null);
+  useFocusAboveBar(bar);
   return (
-    <nav aria-label="Navigation principale" data-testid="tab-bar" className={styles.tabBar}>
+    <nav ref={bar} aria-label="Navigation principale" data-testid="tab-bar" className={styles.tabBar}>
       <span
         aria-hidden="true"
         data-tab-pill=""
@@ -107,4 +109,25 @@ export function TabBar() {
       ))}
     </nav>
   );
+}
+
+/**
+ * Le focus ne finit jamais sous la barre (WCAG 2.2, 2.4.11). Tabulation et Chromium s'arrêtent déjà au-dessus
+ * grâce à scroll-padding-bottom (shell.module.css), mais WebKit l'ignore pour focus() (retour au bouton
+ * d'origine, champ en erreur) : quand la barre recouvre le centre du contrôle qui prend le focus, il défile au
+ * plus près, ce qui respecte la marge. Une feuille du bas posée par-dessus prend le point : rien ne bouge.
+ */
+function useFocusAboveBar(bar: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const onFocus = (event: FocusEvent) => {
+      const nav = bar.current;
+      const target = event.target;
+      if (!nav || !(target instanceof Element) || nav.contains(target)) return;
+      const box = target.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      if (hit && nav.contains(hit)) target.scrollIntoView({ block: 'nearest' });
+    };
+    document.addEventListener('focusin', onFocus);
+    return () => document.removeEventListener('focusin', onFocus);
+  }, [bar]);
 }

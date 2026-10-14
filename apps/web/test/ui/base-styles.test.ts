@@ -11,7 +11,20 @@ const base = () => parseCssBlocks(read('ui.module.css'));
 const rootTokens = () => declarationsOf(tokens(), ':root');
 const themeTokens = (choice: string) => declarationsOf(tokens(), `:root[data-theme="${choice}"]`);
 const rule = (selector: string) => declarationsOf(base(), selector);
+const shell = (selector: string, media: string | null = null) =>
+  declarationsOf(parseCssBlocks(read('shell.module.css')), selector, media);
 const px = (value: string | undefined) => Number.parseFloat(value ?? '');
+/**
+ * Longueur en px d'une somme `calc(a + b + env(…))` de px et de rem, pour une taille de texte `rem` (16 par
+ * défaut, 32 à 200 %) ; env() compte pour 0 (l'encoche est vérifiée à part, des deux côtés de la comparaison).
+ */
+function lengthAt(value: string | undefined, rem: number): number {
+  const sum = (value ?? '').replace(/env\([^)]*\)/g, '');
+  expect(sum, `${value} : une somme de px et de rem`).not.toMatch(/\s[-*/]\s|max\(|min\(|var\(/);
+  const terms = [...sum.matchAll(/(\d+(?:\.\d+)?)(px|rem)\b/g)];
+  expect(terms.length, `${value} : au moins une longueur`).toBeGreaterThan(0);
+  return terms.reduce((total, [, n, unit]) => total + Number(n) * (unit === 'rem' ? rem : 1), 0);
+}
 /** Valeur sur une ligne, telle que l'écrit la maquette, quel que soit le découpage du formateur. */
 const flat = (value: string | undefined) =>
   (value ?? '').replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/ \)/g, ')');
@@ -126,5 +139,70 @@ describe('composants de base : tailles d’écran, gros texte, contraste élevé
     expect(onTrack?.get('forced-color-adjust')).toBe('none');
     expect(onTrack?.get('background')).toBe('Highlight');
     expect(forced('.switch[aria-checked="true"] .switchThumb')?.get('background')).toBe('HighlightText');
+  });
+});
+
+describe('coquille (shell.module.css) : cibles, place de la barre d’onglets, focus jamais caché', () => {
+  it('cibles d’au moins 44 px : onglet, rond de l’initiale (44 × 44), marque, entrée latérale', () => {
+    expect(px(shell('.tab')?.get('min-height'))).toBeGreaterThanOrEqual(44);
+    expect(px(shell('.avatar')?.get('width'))).toBe(44);
+    expect(px(shell('.avatar')?.get('height'))).toBe(44);
+    expect(px(shell('.brand')?.get('min-height'))).toBeGreaterThanOrEqual(44);
+    expect(px(shell('.sideItem')?.get('min-height'))).toBeGreaterThanOrEqual(44);
+  });
+
+  // La barre est fixe : sans cette place, le bas de la page (dernier contrôle, liens du pied) reste dessous.
+  it('la page garde sous elle la place de la barre, encoche comprise, même avec des libellés sur 3 lignes', () => {
+    const space = shell('.shell')?.get('padding-bottom');
+    expect(space).toContain('env(safe-area-inset-bottom');
+    const bar = shell('.tabBar');
+    const tab = shell('.tab');
+    expect(bar?.get('bottom')).toContain('env(safe-area-inset-bottom');
+    // Hauteur minimale, pas fixe : la barre grandit quand un libellé passe à la ligne au lieu de le laisser déborder.
+    expect(bar?.has('height')).toBe(false);
+    const icon = Number(/width="(\d+)"/.exec(read('TabBar.tsx'))?.[1]);
+    expect(icon).toBeGreaterThan(0);
+    for (const rem of [16, 32]) {
+      for (const lines of [1, 2, 3]) {
+        const label = lines * Number(tab?.get('line-height')) * lengthAt(tab?.get('font-size'), rem);
+        const content =
+          2 * px(bar?.get('padding')) + 2 * px(bar?.get('border')) + icon + px(tab?.get('gap')) + label;
+        const footprint = lengthAt(bar?.get('bottom'), rem) + Math.max(px(bar?.get('min-height')), content);
+        expect(
+          lengthAt(space, rem),
+          `libellés sur ${lines} ligne(s), texte à ${(rem / 16) * 100} % : la barre occupe ${footprint.toFixed(1)} px`,
+        ).toBeGreaterThan(footprint);
+      }
+    }
+  });
+
+  it('PC (≥ 900 px) : plus de barre, plus de place gardée en bas', () => {
+    expect(shell('.shell[data-wide]', '(min-width: 900px)')?.get('padding-bottom')).toBe('0');
+  });
+
+  // Tabulation, focus() d'un champ en erreur ou après une suppression : le défilement s'arrête au-dessus de la
+  // barre. Seulement quand elle est là (téléphone) : sans barre, rien n'est retenu.
+  it('focus jamais caché sous la barre (WCAG 2.2, 2.4.11) : la racine garde la même place en bas', () => {
+    const space = shell('.shell')?.get('padding-bottom');
+    expect(space).toBeTruthy();
+    expect(shell(':global(html):has(.tabBar)')?.get('scroll-padding-bottom')).toBe(space);
+    expect(shell(':global(html)')?.has('scroll-padding-bottom') ?? false).toBe(false);
+  });
+
+  // Gros texte ou 320 px : la pastille passe sous la marque au lieu de recouvrir l'initiale ou d'être coupée.
+  it('en-tête de l’accueil : passe à la ligne, la pastille et l’initiale restent au bout de la ligne', () => {
+    const header = shell('.header');
+    expect(header?.get('flex-wrap')).toBe('wrap');
+    expect(px(header?.get('row-gap'))).toBeGreaterThan(0);
+    expect(shell('.headerEnd')?.get('margin-inline-start')).toBe('auto');
+    expect(shell('.pill')?.get('white-space')).toBeUndefined();
+  });
+
+  it('libellés d’onglet : coupés dans leur colonne et centrés, jamais par-dessus l’onglet voisin', () => {
+    const tab = shell('.tab');
+    expect(tab?.get('overflow-wrap')).toBe('anywhere');
+    expect(tab?.get('hyphens')).toBe('auto');
+    expect(tab?.get('text-align')).toBe('center');
+    expect(px(shell('.tabBar')?.get('min-height'))).toBe(68);
   });
 });
