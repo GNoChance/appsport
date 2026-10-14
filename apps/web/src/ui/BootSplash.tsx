@@ -4,8 +4,11 @@ import styles from './shell.module.css';
 import { useReducedMotion } from './use-reduced-motion';
 
 const SHOWN_KEY = 'rune.boot-splash';
-/** Filet de sécurité : retiré même si la fin de son animation n'arrive jamais (onglet en arrière-plan). */
-const MAX_MS = 2000;
+/**
+ * Filet de sécurité : retiré même si la fin de son animation n'arrive jamais (onglet en arrière-plan). Le
+ * voile de shell.module.css s'efface avant (fin à 1,45 s).
+ */
+export const BOOT_SPLASH_MAX_MS = 2000;
 
 /** Repli quand le stockage de session est refusé (navigation privée, données bloquées) : une fois par chargement. */
 let shownThisPage = false;
@@ -41,7 +44,7 @@ export function BootSplash() {
   useEffect(() => {
     if (!playing) return;
     markShown();
-    const timer = setTimeout(() => setShow(false), MAX_MS);
+    const timer = setTimeout(() => setShow(false), BOOT_SPLASH_MAX_MS);
     return () => clearTimeout(timer);
   }, [playing]);
 
@@ -49,6 +52,7 @@ export function BootSplash() {
   return (
     <div
       aria-hidden="true"
+      data-testid="boot-splash"
       className={styles.splash}
       onAnimationEnd={(e) => {
         // Les animations du dessin remontent jusqu'ici : seule celle du voile le retire.

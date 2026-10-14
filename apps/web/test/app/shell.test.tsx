@@ -1,19 +1,39 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { defaultLoadSettings, type GymDetail } from '@rune/contracts';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Router } from 'wouter';
+import { App } from '../../src/App';
+import { ServicesProvider } from '../../src/app-services';
 import { type SwController, swControllerStore, type UpdateState } from '../../src/sw/register';
 import type { ConnectionState } from '../../src/sync/engine';
-import { BootSplash } from '../../src/ui/BootSplash';
+import { BOOT_SPLASH_MAX_MS, BootSplash } from '../../src/ui/BootSplash';
 import { ConnectionPill } from '../../src/ui/ConnectionPill';
 import { SideNav } from '../../src/ui/SideNav';
 import { screenTransition } from '../../src/ui/screen-transition';
 import { activeTab, TAB_ITEMS, TabBar } from '../../src/ui/TabBar';
-import { createFakeSyncEngine } from '../support/fake-api';
-import { newcomer } from '../support/onboarding';
-import { makeMe, renderApp, renderWithServices } from '../support/render';
+import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
+import { createFakeApi, createFakeSyncEngine } from '../support/fake-api';
+import { createTestLocalDb } from '../support/local-db';
+import { newcomer, seedPrimaryGym } from '../support/onboarding';
+import { createTestServices, makeMe, renderApp, renderWithServices } from '../support/render';
 import { until } from '../support/wait';
 
 const DESKTOP = '(min-width: 900px)';
 const REDUCED = '(prefers-reduced-motion: reduce)';
+const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+
+/** Feuille de la coquille, lue à plat (jetons, media queries d'un niveau). */
+const shellCss = () =>
+  parseCssBlocks(readFileSync(resolve(import.meta.dirname, '../../src/ui/shell.module.css'), 'utf8'));
+
+/** Durée et délai d'une déclaration `animation` (dans cet ordre), en millisecondes. */
+function animationTimes(animation: string | undefined): number[] {
+  return [...(animation ?? '').matchAll(/(\d+(?:\.\d+)?)(ms|s)\b/g)].map(
+    ([, n, unit]) => Number(n) * (unit === 's' ? 1000 : 1),
+  );
+}
 
 /** Réglages du téléphone simulés : les media queries listées répondent vrai, les autres faux. */
 function media(...matching: string[]) {
@@ -27,9 +47,67 @@ function media(...matching: string[]) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   swControllerStore.set(null);
   sessionStorage.clear();
+  window.scrollTo(0, 0);
 });
+
+/** Page défilée par la personne : position posée, puis l'événement `scroll` que le navigateur enverrait. */
+function scrollPage(y: number) {
+  act(() => {
+    window.scrollTo(0, y);
+    window.dispatchEvent(new Event('scroll'));
+  });
+}
+
+/**
+ * Espionne `Element.prototype.animate` et rend l'entrée jouée en dernier sur `<main>` : images clés et options
+ * (spec refonte §7 : avant depuis la droite, retour depuis la gauche, onglet en fondu ; fondu seul sous
+ * mouvement réduit).
+ */
+function spyEntrances() {
+  const animate = vi.spyOn(Element.prototype, 'animate');
+  return () => {
+    const main = screen.getByRole('main');
+    const i = animate.mock.contexts.lastIndexOf(main);
+    const call = animate.mock.calls[i];
+    return call ? { keyframes: call[0], options: call[1] } : null;
+  };
+}
+
+/** Salle g-1 « Basic Fit » rendue par GET /api/gyms/:id (fiche minimale). */
+const GYM_DETAIL: GymDetail = {
+  id: 'g-1',
+  name: 'Basic Fit',
+  city: 'Lyon',
+  loadSettings: defaultLoadSettings('gym'),
+  deletedAt: null,
+  equipment: [],
+  canEdit: false,
+  visibleMembers: [],
+  history: [],
+};
+
+/**
+ * L'appli entière, la main sur l'historique en mémoire : `go(to)` change d'adresse comme le bouton retour du
+ * navigateur (ou du téléphone), sans lien ; `location()` est l'adresse affichée.
+ */
+async function renderAppWithHistory(opts: Parameters<typeof createTestServices>[0]) {
+  const { services, memory } = await createTestServices(opts);
+  const view = render(
+    <Router hook={memory.hook} searchHook={memory.searchHook}>
+      <ServicesProvider services={services}>
+        <App />
+      </ServicesProvider>
+    </Router>,
+  );
+  return {
+    ...view,
+    location: () => memory.history.at(-1) ?? '',
+    go: (to: string) => act(() => memory.navigate(to)),
+  };
+}
 
 const mainNav = () => screen.getByRole('navigation', { name: 'Navigation principale' });
 const tab = (name: string) => within(mainNav()).getByRole('link', { name });
@@ -157,18 +235,30 @@ describe('SideNav (≥ 900 px)', () => {
 });
 
 describe('ConnectionPill', () => {
+  // Point vert seulement en ligne : jamais un point vert à côté de « Hors ligne ».
   it.each([
-    ['online', 'En ligne'],
-    ['offline', 'Hors ligne'],
-    ['unknown', 'Connexion…'],
-    ['unauthenticated', 'Session expirée'],
-    ['protocol_unsupported', 'Mise à jour nécessaire'],
-    ['account_deleted', 'Compte supprimé'],
-  ] as const)('%s → « %s »', async (state: ConnectionState, label) => {
+    ['online', 'En ligne', 'online'],
+    ['offline', 'Hors ligne', 'muted'],
+    ['unknown', 'Connexion…', 'muted'],
+    ['unauthenticated', 'Session expirée', 'warning'],
+    ['protocol_unsupported', 'Mise à jour nécessaire', 'warning'],
+    ['account_deleted', 'Compte supprimé', 'warning'],
+  ] as const)('%s → « %s », point %s', async (state: ConnectionState, label, tone) => {
     await renderWithServices(<ConnectionPill />, { sync: createFakeSyncEngine({ connection: state }) });
     const pill = screen.getByTestId('connection-status');
     expect(pill.getAttribute('data-state')).toBe(state);
     expect(pill.textContent).toBe(label);
+    expect(pill.querySelector('[aria-hidden="true"]')?.getAttribute('data-tone')).toBe(tone);
+  });
+
+  it('couleur du point : vert (succès) en ligne, avertissement quand il faut agir, gris sinon', () => {
+    const css = shellCss();
+    expect(declarationsOf(css, '.pillDot')?.get('background')).toBe('var(--text-muted)');
+    expect(declarationsOf(css, '.pillDot[data-tone="online"]')?.get('background')).toBe('var(--success)');
+    expect(declarationsOf(css, '.pillDot[data-tone="warning"]')?.get('background')).toBe(
+      'var(--warning-text)',
+    );
+    expect(declarationsOf(css, '.pillDot[data-tone="muted"]')).toBeNull();
   });
 
   it('hors ligne : « Hors ligne », jamais « En ligne », et suit le moteur sans rechargement', async () => {
@@ -229,11 +319,24 @@ describe('coquille', () => {
     expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/profile');
   });
 
-  it("l'onglet « Administration » n'existe plus dans la barre, même pour un admin", async () => {
-    media();
-    await renderApp({ path: '/', me: makeMe({ role: 'admin' }) });
+  // L'admin passe par Profil : ni onglet « Administration », ni aucun lien /admin, quel que soit son libellé.
+  it.each([
+    ['téléphone, barre d’onglets', [], 'tab-bar'],
+    ['≥ 900 px, navigation latérale', [DESKTOP], 'side-nav'],
+  ] as const)('admin, %s : les 4 onglets de TAB_ITEMS, aucun lien vers /admin', async (_, queries, nav) => {
+    media(...queries);
+    const view = await renderApp({ path: '/', me: makeMe({ role: 'admin' }) });
     await screen.findByText('Bonjour lea');
-    expect(within(mainNav()).queryByRole('link', { name: 'Administration' })).toBeNull();
+    expect(screen.getByTestId(nav)).toBeTruthy();
+    const hrefs = within(mainNav())
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('href'));
+    expect(hrefs).toEqual(TAB_ITEMS.map((t) => t.href));
+    const toAdmin = (href: string | null) => href?.toLowerCase().startsWith('/admin') ?? false;
+    expect(hrefs.filter(toAdmin)).toEqual([]);
+    expect([...view.container.querySelectorAll('a')].filter((a) => toAdmin(a.getAttribute('href')))).toEqual(
+      [],
+    );
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull();
   });
 
@@ -308,20 +411,110 @@ describe('coquille', () => {
     expect(banner.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("changement d'écran : la transition est posée selon l'historique (onglet, avant, retour)", async () => {
+  it("changement d'écran : onglet en fondu, avant depuis la droite, retour depuis la gauche", async () => {
     media();
+    const entrance = spyEntrances();
     const view = await renderApp({ path: '/' });
     await screen.findByText('Bonjour lea');
     const screenEl = () => view.container.querySelector('[data-screen-transition]');
     fireEvent.click(tab('Profil'));
     await screen.findByRole('heading', { level: 1, name: 'Profil' });
     expect(screenEl()?.getAttribute('data-screen-transition')).toBe('tab');
+    expect(entrance()).toEqual({ keyframes: { opacity: [0, 1] }, options: { duration: 300, easing: EASE } });
     fireEvent.click(screen.getByRole('link', { name: 'Santé' }));
     await screen.findByRole('heading', { level: 1, name: 'Santé' });
     expect(screenEl()?.getAttribute('data-screen-transition')).toBe('forward');
+    expect(entrance()).toEqual({
+      keyframes: { opacity: [0, 1], transform: ['translateX(48px)', 'none'] },
+      options: { duration: 380, easing: EASE },
+    });
     fireEvent.click(screen.getByRole('link', { name: 'Retour' }));
     await screen.findByRole('heading', { level: 1, name: 'Profil' });
     expect(screenEl()?.getAttribute('data-screen-transition')).toBe('back');
+    expect(entrance()).toEqual({
+      keyframes: { opacity: [0, 1], transform: ['translateX(-48px)', 'none'] },
+      options: { duration: 380, easing: EASE },
+    });
+  });
+
+  it('mouvement réduit : chaque changement d’écran est un fondu simple de 200 ms, sans balayage', async () => {
+    media(REDUCED);
+    const entrance = spyEntrances();
+    await renderApp({ path: '/' });
+    await screen.findByText('Bonjour lea');
+    const fade = { keyframes: { opacity: [0, 1] }, options: { duration: 200, easing: EASE } };
+    fireEvent.click(tab('Profil'));
+    await screen.findByRole('heading', { level: 1, name: 'Profil' });
+    expect(entrance()).toEqual(fade);
+    fireEvent.click(screen.getByRole('link', { name: 'Santé' }));
+    await screen.findByRole('heading', { level: 1, name: 'Santé' });
+    expect(entrance()).toEqual(fade);
+    fireEvent.click(screen.getByRole('link', { name: 'Retour' }));
+    await screen.findByRole('heading', { level: 1, name: 'Profil' });
+    expect(entrance()).toEqual(fade);
+  });
+
+  it('mouvement réduit : la pastille de la barre change d’onglet sans glisser', () => {
+    expect(declarationsOf(shellCss(), '.tabPill', REDUCED)?.get('transition')).toBe('none');
+  });
+
+  it("changement d'écran : onglet et écran suivant repartent du haut, le retour retrouve la position quittée", async () => {
+    media();
+    await renderApp({ path: '/' });
+    await screen.findByText('Bonjour lea');
+    scrollPage(900);
+    fireEvent.click(tab('Profil'));
+    await screen.findByRole('heading', { level: 1, name: 'Profil' });
+    expect(window.scrollY).toBe(0);
+    scrollPage(420);
+    fireEvent.click(screen.getByRole('link', { name: 'Santé' }));
+    await screen.findByRole('heading', { level: 1, name: 'Santé' });
+    expect(window.scrollY).toBe(0);
+    scrollPage(150);
+    fireEvent.click(screen.getByRole('link', { name: 'Retour' }));
+    await screen.findByRole('heading', { level: 1, name: 'Profil' });
+    expect(window.scrollY).toBe(420);
+    // Revenu en haut par l'onglet, puis de nouveau en avant et en arrière : la position retrouvée est la
+    // dernière quittée, pas une ancienne.
+    fireEvent.click(tab('Accueil'));
+    await screen.findByText('Bonjour lea');
+    expect(window.scrollY).toBe(0);
+    fireEvent.click(tab('Profil'));
+    await screen.findByRole('heading', { level: 1, name: 'Profil' });
+    fireEvent.click(screen.getByRole('link', { name: 'Santé' }));
+    await screen.findByRole('heading', { level: 1, name: 'Santé' });
+    fireEvent.click(screen.getByRole('link', { name: 'Retour' }));
+    await screen.findByRole('heading', { level: 1, name: 'Profil' });
+    expect(window.scrollY).toBe(0);
+  });
+
+  it('Retour vers un écran qui n’est ni le parent ni le précédent : entrée par la gauche, pile suivie', async () => {
+    media();
+    const db = createTestLocalDb();
+    await seedPrimaryGym(db);
+    const api = createFakeApi();
+    api.on('GET', '/api/gyms/:id', { status: 200, body: GYM_DETAIL });
+    const view = await renderAppWithHistory({ path: '/places', db, api });
+    const transition = () =>
+      view.container.querySelector('[data-screen-transition]')?.getAttribute('data-screen-transition');
+    fireEvent.click(await screen.findByRole('link', { name: 'Basic Fit' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Voir la salle' }));
+    expect(view.location()).toBe('/gyms/g-1');
+    expect(transition()).toBe('forward');
+    // Retour du navigateur vers le lieu : l'écran d'avant dans la pile.
+    view.go('/places/p-1');
+    expect(transition()).toBe('back');
+    fireEvent.click(await screen.findByRole('link', { name: 'Voir la salle' }));
+    expect(transition()).toBe('forward');
+    await screen.findByRole('heading', { level: 1, name: 'Basic Fit' });
+    // Retour de la salle vers la liste des lieux : ni son parent d'adresse, ni l'écran juste avant.
+    fireEvent.click(screen.getByRole('link', { name: 'Retour' }));
+    expect(view.location()).toBe('/places');
+    expect(transition()).toBe('back');
+    await screen.findByRole('heading', { level: 1, name: 'Lieux' });
+    // Pile repartie de la liste : le lieu est de nouveau un écran suivant.
+    fireEvent.click(await screen.findByRole('link', { name: 'Basic Fit' }));
+    expect(transition()).toBe('forward');
   });
 });
 
@@ -337,6 +530,14 @@ describe('screenTransition', () => {
     ['/profile/privacy', '/profile/health', ['/profile/health', '/profile/privacy'], 'back'],
     ['/places/p-1', '/places', [], 'back'],
     ['/places/p-1', '/gyms/g-1', ['/places/p-1'], 'forward'],
+    // Retour vers un écran déjà dans la pile, plus loin que le précédent.
+    ['/gyms/g-1', '/places', ['/places', '/places/p-1', '/gyms/g-1'], 'back'],
+    ['/admin/gyms', '/settings', ['/profile', '/settings', '/admin', '/admin/gyms'], 'back'],
+    // Racine de l'onglet depuis un écran plus profond, sans historique (lien direct, rechargement).
+    ['/settings', '/profile', ['/settings'], 'back'],
+    ['/gyms/g-1', '/places', ['/gyms/g-1'], 'back'],
+    // Un écran jamais visité, hors de l'adresse courante, reste un écran suivant.
+    ['/gyms/g-1', '/places/p-1', ['/gyms/g-1'], 'forward'],
   ] as const)('%s → %s', (from, to, history, expected) => {
     expect(screenTransition(from, to, history)).toBe(expected);
   });
@@ -349,23 +550,60 @@ describe('BootSplash', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('sinon : le logo se dessine par-dessus, décoratif, sans jamais prendre le toucher, puis se retire', () => {
+  it('sinon : le logo se dessine par-dessus, décoratif et muet, puis se retire à la fin du voile seulement', () => {
     media();
     const { container } = render(<BootSplash />);
-    const splash = container.firstElementChild as HTMLElement | null;
+    const splash = container.firstElementChild as HTMLElement;
     expect(splash).not.toBeNull();
-    expect(splash?.getAttribute('aria-hidden')).toBe('true');
-    expect(splash?.querySelector('svg')).not.toBeNull();
-    expect(splash?.textContent).toBe('');
-    if (!splash) return;
+    expect(splash.getAttribute('aria-hidden')).toBe('true');
+    expect(splash.getAttribute('data-testid')).toBe('boot-splash');
+    expect(splash.querySelector('svg')).not.toBeNull();
+    expect(splash.textContent).toBe('');
+    // Le dessin du cadre finit avant l'effacement : son `animationend` remonte, le voile reste.
+    const frame = splash.querySelector('path');
+    if (!frame) throw new Error('cadre du logo absent');
+    fireEvent.animationEnd(frame);
+    expect(container.firstElementChild).toBe(splash);
     fireEvent.animationEnd(splash);
     expect(container.innerHTML).toBe('');
+  });
+
+  it('filet de sécurité : retiré au bout de 2 s même si la fin de son animation n’arrive jamais', () => {
+    vi.useFakeTimers();
+    try {
+      media();
+      const { container } = render(<BootSplash />);
+      expect(container.firstElementChild).not.toBeNull();
+      act(() => vi.advanceTimersByTime(BOOT_SPLASH_MAX_MS - 1));
+      expect(container.firstElementChild).not.toBeNull();
+      act(() => vi.advanceTimersByTime(1));
+      expect(container.innerHTML).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('voile : ne prend jamais le toucher, dessin en 1,2 s au plus, effacé avant le filet de sécurité', () => {
+    expect(BOOT_SPLASH_MAX_MS).toBe(2000);
+    const css = shellCss();
+    const splash = declarationsOf(css, '.splash');
+    expect(splash?.get('pointer-events')).toBe('none');
+    expect(splash?.get('animation')).toMatch(/^splash-out\s.*\bforwards$/);
+    const [outDuration = 0, outDelay = 0] = animationTimes(splash?.get('animation'));
+    expect(outDuration).toBeGreaterThan(0);
+    expect(outDelay + outDuration).toBeLessThan(BOOT_SPLASH_MAX_MS);
+    const draw = declarationsOf(css, '.splashMark g > path:first-child')?.get('animation');
+    expect(draw).toMatch(/^splash-draw\s/);
+    const [drawDuration = 0, drawDelay = 0] = animationTimes(draw);
+    expect(drawDelay + drawDuration).toBeLessThanOrEqual(1200);
+    expect(outDelay).toBeGreaterThanOrEqual(drawDelay + drawDuration);
   });
 
   it('une seule fois par session : un second montage ne rend rien', () => {
     media();
     const first = render(<BootSplash />);
     const splash = first.container.firstElementChild;
+    expect(splash).not.toBeNull();
     if (splash) fireEvent.animationEnd(splash);
     first.unmount();
     const { container } = render(<BootSplash />);
