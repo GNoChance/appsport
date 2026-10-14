@@ -143,6 +143,11 @@ export function invitationLinkFrom(stdout: string): string {
   throw new DevError("admin:bootstrap n'a pas donné de lien d'invitation.");
 }
 
-export function portBusyMessage(port: number, role: 'serveur' | 'web'): string {
-  return `Le port ${port} (${role}) est déjà pris : arrête le programme qui l'utilise (un autre pnpm dev ?), puis relance.`;
+/** Port pris : le message dit aussi comment trouver le programme qui le tient (PowerShell sous Windows). */
+export function portBusyMessage(port: number, role: 'serveur' | 'web', platform: NodeJS.Platform): string {
+  const finder =
+    platform === 'win32'
+      ? `(PowerShell) : Get-Process -Id (Get-NetTCPConnection -LocalPort ${port} -State Listen).OwningProcess`
+      : `: lsof -nP -iTCP:${port} -sTCP:LISTEN`;
+  return `Le port ${port} (${role}) est déjà pris : arrête le programme qui l'utilise (un autre pnpm dev ?), puis relance. Pour le trouver ${finder}`;
 }

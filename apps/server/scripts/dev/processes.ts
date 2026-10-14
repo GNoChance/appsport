@@ -1,4 +1,4 @@
-import { type ChildProcess, execFile, spawn } from 'node:child_process';
+import { type ChildProcess, execFile, execFileSync, spawn } from 'node:child_process';
 import { createLinePrefixer } from './output';
 import type { SupervisedChild } from './supervisor';
 
@@ -97,4 +97,17 @@ export function killTree(child: DevChild): Promise<void> {
   return new Promise((resolve) => {
     execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve());
   });
+}
+
+/** Même arrêt forcé, sans rien attendre : pour une sortie anormale du script, où seul le synchrone s'exécute. */
+export function killTreeSync(child: DevChild): void {
+  const pid = child.pid;
+  if (pid === undefined) return;
+  try {
+    if (WINDOWS)
+      execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    else process.kill(-pid, 'SIGKILL');
+  } catch {
+    // Déjà arrêté.
+  }
 }

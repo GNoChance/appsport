@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type SupervisedChild, supervise } from '../../scripts/dev/supervisor';
+import { createEmergencyStop, type SupervisedChild, supervise } from '../../scripts/dev/supervisor';
 
 interface FakeChild extends SupervisedChild {
   exit(code: number | null): void;
@@ -99,5 +99,41 @@ describe('supervise', () => {
     expect(await h.run).toBe(0);
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(h.calls).toEqual(['interrupt serveur', 'interrupt web', 'kill serveur', 'kill web']);
+  });
+});
+
+describe('createEmergencyStop', () => {
+  it('à une sortie anormale, tue tout de suite les enfants encore en vie, pas ceux déjà sortis', async () => {
+    const killed: string[] = [];
+    const emergency = createEmergencyStop<FakeChild>((child) => killed.push(child.label));
+    const server = fakeChild('serveur');
+    const web = fakeChild('web');
+    emergency.track(server);
+    emergency.track(web);
+    web.exit(1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    emergency.killAll();
+    expect(killed).toEqual(['serveur']);
+  });
+
+  it("ne tue chaque enfant qu'une fois, même appelé de nouveau (exception puis sortie du processus)", () => {
+    const killed: string[] = [];
+    const emergency = createEmergencyStop<FakeChild>((child) => killed.push(child.label));
+    emergency.track(fakeChild('serveur'));
+    emergency.killAll();
+    emergency.killAll();
+    expect(killed).toEqual(['serveur']);
+  });
+
+  it("un arrêt qui échoue n'empêche pas d'arrêter les autres", () => {
+    const killed: string[] = [];
+    const emergency = createEmergencyStop<FakeChild>((child) => {
+      if (child.label === 'serveur') throw new Error('taskkill introuvable');
+      killed.push(child.label);
+    });
+    emergency.track(fakeChild('serveur'));
+    emergency.track(fakeChild('web'));
+    expect(() => emergency.killAll()).not.toThrow();
+    expect(killed).toEqual(['web']);
   });
 });

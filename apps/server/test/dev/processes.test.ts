@@ -1,7 +1,13 @@
 import { type AddressInfo, createServer } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isPortBusy } from '../../scripts/dev/ports';
-import { type DevChild, killTree, runCapture, spawnPrefixed } from '../../scripts/dev/processes';
+import {
+  type DevChild,
+  killTree,
+  killTreeSync,
+  runCapture,
+  spawnPrefixed,
+} from '../../scripts/dev/processes';
 
 // Processus réels : arrêt d'un arbre complet, sorties décodées sans couper les caractères.
 
@@ -59,7 +65,11 @@ afterEach(async () => {
   }
 });
 
-describe('killTree', () => {
+// killTreeSync : même arrêt, sans attendre, pour les sorties anormales du script (exception, process.exit).
+describe.each([
+  ['killTree', killTree],
+  ['killTreeSync', killTreeSync],
+] as const)('%s', (_, kill) => {
   it("arrête l'enfant et le petit-enfant qui tient un port", async () => {
     const port = await freePort();
     // L'enfant lance un petit-enfant qui écoute sur le port, puis attend sans fin. Sous Windows, Node met
@@ -77,7 +87,7 @@ describe('killTree', () => {
     grandchildren.push(Number(lines[0]?.replace('[arbre] ', '')));
     await waitUntil('port tenu par le petit-enfant', () => isPortBusy(port));
 
-    await killTree(child);
+    await kill(child);
 
     await child.exited;
     await waitUntil('port libéré', async () => !(await isPortBusy(port)));

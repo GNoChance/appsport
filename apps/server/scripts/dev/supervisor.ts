@@ -56,3 +56,29 @@ export async function supervise<C extends SupervisedChild>(
   }
   return code;
 }
+
+/**
+ * Filet des sorties anormales du script (exception non rattrapée, sortie standard fermée, `process.exit`) :
+ * les enfants encore en vie sont tués avec leur arbre, tout de suite et une seule fois chacun.
+ */
+export function createEmergencyStop<C extends SupervisedChild>(
+  killTreeSync: (child: C) => void,
+): { track(child: C): void; killAll(): void } {
+  const alive = new Set<C>();
+  return {
+    track(child) {
+      alive.add(child);
+      void child.exited.then(() => alive.delete(child));
+    },
+    killAll() {
+      for (const child of [...alive]) {
+        alive.delete(child);
+        try {
+          killTreeSync(child);
+        } catch {
+          // Les suivants sont arrêtés quand même.
+        }
+      }
+    },
+  };
+}

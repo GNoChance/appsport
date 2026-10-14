@@ -189,8 +189,14 @@ describe('invitationLinkFrom', () => {
 
 describe('portBusyMessage', () => {
   it('dit en français quel port est pris et comment en sortir', () => {
-    expect(portBusyMessage(3000, 'serveur')).toBe(
-      "Le port 3000 (serveur) est déjà pris : arrête le programme qui l'utilise (un autre pnpm dev ?), puis relance.",
+    expect(portBusyMessage(3000, 'serveur', 'linux')).toBe(
+      "Le port 3000 (serveur) est déjà pris : arrête le programme qui l'utilise (un autre pnpm dev ?), puis relance. Pour le trouver : lsof -nP -iTCP:3000 -sTCP:LISTEN",
+    );
+  });
+
+  it('sous Windows, donne la commande PowerShell qui montre le programme qui tient le port', () => {
+    expect(portBusyMessage(5173, 'web', 'win32')).toBe(
+      "Le port 5173 (web) est déjà pris : arrête le programme qui l'utilise (un autre pnpm dev ?), puis relance. Pour le trouver (PowerShell) : Get-Process -Id (Get-NetTCPConnection -LocalPort 5173 -State Listen).OwningProcess",
     );
   });
 });

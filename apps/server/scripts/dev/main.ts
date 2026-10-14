@@ -16,9 +16,17 @@ import {
   usersFromDbStats,
 } from './plan';
 import { isPortBusy } from './ports';
-import { type Command, type DevChild, interruptTree, killTree, runCapture, spawnPrefixed } from './processes';
+import {
+  type Command,
+  type DevChild,
+  interruptTree,
+  killTree,
+  killTreeSync,
+  runCapture,
+  spawnPrefixed,
+} from './processes';
 import { createServerWatch, parseServerStatus } from './server-status';
-import { supervise } from './supervisor';
+import { createEmergencyStop, supervise } from './supervisor';
 
 // `pnpm dev` : base et premier admin au premier lancement, puis le serveur (tsx watch) et le web (Vite)
 // ensemble, sorties préfixées ; Ctrl+C, l'échec du premier démarrage du serveur ou l'arrêt du web arrête tout.
@@ -34,6 +42,26 @@ const log = (line: string): void => {
 const fail = (line: string): void => {
   process.stderr.write(`[dev] ${line}\n`);
 };
+
+// Sortie anormale (exception non rattrapée, terminal fermé donc écriture en EPIPE, process.exit) : le serveur
+// et le web ne survivent pas au script en gardant leurs ports (sous POSIX, ils ont leurs propres groupes).
+const emergency = createEmergencyStop(killTreeSync);
+let crashed = false;
+function crash(error: unknown): void {
+  if (crashed) return;
+  crashed = true;
+  emergency.killAll();
+  try {
+    fail(`Arrêt imprévu : ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    // Sortie d'erreur fermée elle aussi.
+  }
+  process.exit(1);
+}
+process.on('uncaughtException', crash);
+process.stdout.on('error', crash);
+process.stderr.on('error', crash);
+process.on('exit', () => emergency.killAll());
 
 const serverRequire = createRequire(join(SERVER_DIR, 'package.json'));
 const TSX_LOADER = pathToFileURL(serverRequire.resolve('tsx')).href;
@@ -66,7 +94,7 @@ async function prepare(): Promise<{
     [settings.serverPort, 'serveur'],
     [settings.webPort, 'web'],
   ] as const) {
-    if (await isPortBusy(port)) throw new DevError(portBusyMessage(port, role));
+    if (await isPortBusy(port)) throw new DevError(portBusyMessage(port, role, process.platform));
   }
   if (settings.serverPort !== PROXY_PORT) {
     // Seulement avec la dérogation RUNE_DEV_ANY_PORT (tests) : sinon devSettings refuse ce port.
@@ -150,6 +178,7 @@ async function main(): Promise<number> {
       return false;
     },
   );
+  emergency.track(watcher);
   const server: DevChild = {
     ...watcher,
     // Échec au premier démarrage : rien ne le relancera sans modification, tout s'arrête.
@@ -167,6 +196,7 @@ async function main(): Promise<number> {
     cwd: WEB_DIR,
     env: { ...process.env, ...color },
   });
+  emergency.track(web);
   log(`Serveur : http://localhost:${settings.serverPort}  ·  Web : http://localhost:${settings.webPort}`);
   log(`Processus : serveur ${String(server.pid)}, web ${String(web.pid)}`);
   if (link) {
@@ -194,8 +224,5 @@ main().then(
     // Filet : rien ne doit retenir le processus une fois les enfants arrêtés.
     setTimeout(() => process.exit(code), 1000).unref();
   },
-  (error: unknown) => {
-    fail(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  },
+  (error: unknown) => crash(error),
 );

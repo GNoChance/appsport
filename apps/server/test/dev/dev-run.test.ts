@@ -392,6 +392,39 @@ describe('pnpm dev', () => {
     });
   }, 180_000);
 
+  it('sortie anormale du script (plus personne ne lit sa sortie) : le serveur et le web ne lui survivent pas', async () => {
+    const { proc, serverPort, webPort } = await startReady(join(tmp, 'donnees'));
+    const pids = childPids();
+    expect(pids).toHaveLength(2);
+    let code: number | null | 'toujours lancé' = 'toujours lancé';
+    void exitOf(proc).then((c) => {
+      code = c;
+    });
+
+    // Le lecteur de la sortie standard disparaît : la prochaine écriture du script échoue (EPIPE). Chaque
+    // requête fait écrire au serveur une ligne de journal, que le script relaie. La sortie d'erreur reste lue.
+    proc.stdout?.destroy();
+    const deadline = Date.now() + 20_000;
+    while (code === 'toujours lancé' && Date.now() < deadline) {
+      await fetch(`http://127.0.0.1:${serverPort}/api/health`).catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    expect(code).not.toBe('toujours lancé');
+    expect(code).not.toBe(0);
+    // Le script a traité l'erreur lui-même (arrêt de ses enfants, puis ce message), au lieu de mourir dessus.
+    expect(masked()).toMatch(/^\[dev\] Arrêt imprévu : .*EPIPE/m);
+    // Sous POSIX, les enfants ont leurs propres groupes : seul le script les arrête. Sous Windows, le job de
+    // Node les tuerait aussi avec lui ; les lignes suivantes y vérifient seulement que rien ne reste.
+    await waitFor('ports libérés', () => portsFree(serverPort, webPort), {
+      timeoutMs: 15_000,
+      scriptAlive: false,
+    });
+    await waitFor('enfants arrêtés', async () => !pids.some(isAlive), {
+      timeoutMs: 15_000,
+      scriptAlive: false,
+    });
+  }, 180_000);
+
   it('port déjà pris : message clair, sortie non nulle, aucun dossier créé', async () => {
     const dataDir = join(tmp, 'donnees');
     const [serverPort, webPort] = (await freePorts(2)) as [number, number];
