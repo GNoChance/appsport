@@ -42,8 +42,9 @@ function Chevron() {
 /**
  * Ligne de liste de 56 px : icône, libellé, valeur, badge. Avec `href`, un lien ; avec `onClick`, un
  * bouton (chevron dans les deux cas, sauf l'action dangereuse, isolée sans chevron comme « Se
- * déconnecter ») ; sans l'un ni l'autre, une ligne d'information. Le lien ou le bouton est nommé par le
- * libellé seul et décrit par la valeur et le badge.
+ * déconnecter ») ; avec les deux, un lien qui appelle `onClick` avant de naviguer ; sans l'un ni
+ * l'autre, une ligne d'information. Le lien ou le bouton est nommé par le libellé seul et décrit par
+ * la valeur et le badge.
  */
 export function ListRow(p: {
   icon?: ReactNode;
@@ -95,7 +96,7 @@ export function ListRow(p: {
   return (
     <li className={styles.listItem}>
       {p.href !== undefined ? (
-        <Link href={p.href} {...named}>
+        <Link href={p.href} onClick={p.onClick} {...named}>
           {content}
         </Link>
       ) : p.onClick !== undefined ? (

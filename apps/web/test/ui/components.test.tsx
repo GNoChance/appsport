@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { Router } from 'wouter';
+import { memoryLocation } from 'wouter/memory-location';
 import {
   Badge,
   Banner,
@@ -298,9 +300,36 @@ describe('SegmentedProgress', () => {
     const { container } = render(<SegmentedProgress step={3} total={9} />);
     expect(screen.getByText('Étape 3 sur 9')).toBeTruthy();
     expect(container.querySelectorAll('[data-segment]')).toHaveLength(9);
-    expect(container.querySelectorAll('[data-segment][data-done]')).toHaveLength(3);
+    const done = (c: Element) =>
+      [...c.querySelectorAll('[data-segment]')].map((s) => s.hasAttribute('data-done'));
+    // Les premiers segments sont faits, dans l'ordre (pas les derniers).
+    expect(done(container)).toEqual([true, true, true, false, false, false, false, false, false]);
     for (const segment of container.querySelectorAll('[data-segment]')) {
       expect(segment.closest('[aria-hidden="true"]')).not.toBeNull();
+    }
+  });
+
+  it('étape 0 et étape = total : la barre et le texte disent la même chose', () => {
+    const zero = render(<SegmentedProgress step={0} total={9} />);
+    expect(within(zero.container).getByText('Étape 0 sur 9')).toBeTruthy();
+    expect(zero.container.querySelectorAll('[data-segment][data-done]')).toHaveLength(0);
+    zero.unmount();
+    const full = render(<SegmentedProgress step={9} total={9} />);
+    expect(within(full.container).getByText('Étape 9 sur 9')).toBeTruthy();
+    expect(full.container.querySelectorAll('[data-segment][data-done]')).toHaveLength(9);
+  });
+
+  it('hors bornes ou non entière, l’étape est bornée et arrondie comme la barre (seule copie accessible)', () => {
+    for (const [step, shown] of [
+      [11, 9],
+      [-1, 0],
+      [2.6, 3],
+      [Number.NaN, 0],
+    ] as const) {
+      const { container, unmount } = render(<SegmentedProgress step={step} total={9} />);
+      expect(within(container).getByText(`Étape ${shown} sur 9`)).toBeTruthy();
+      expect(container.querySelectorAll('[data-segment][data-done]')).toHaveLength(shown);
+      unmount();
     }
   });
 });
@@ -370,6 +399,21 @@ describe('ListGroup et ListRow', () => {
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.queryByRole('button', { name: /Connexion/ })).toBeNull();
     expect(screen.getByText('En ligne')).toBeTruthy();
+  });
+
+  it('ligne lien avec onClick : le clic appelle onClick puis navigue', () => {
+    const memory = memoryLocation({ path: '/profil', record: true });
+    const markSeen = vi.fn();
+    render(
+      <Router hook={memory.hook}>
+        <ListGroup>
+          <ListRow label="Réglages" href="/settings" onClick={markSeen} />
+        </ListGroup>
+      </Router>,
+    );
+    fireEvent.click(screen.getByRole('link', { name: 'Réglages' }));
+    expect(markSeen).toHaveBeenCalledTimes(1);
+    expect(memory.history).toEqual(['/profil', '/settings']);
   });
 });
 

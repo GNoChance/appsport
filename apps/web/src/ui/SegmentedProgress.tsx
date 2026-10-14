@@ -3,10 +3,12 @@ import styles from './ui.module.css';
 
 /**
  * Barre de progression segmentée de l'onboarding : `total` segments, les `step` premiers faits, dans
- * le dégradé d'accent qui court sur toute la barre ; « Étape n sur total » dit la même chose en texte.
+ * le dégradé d'accent qui court sur toute la barre ; « Étape n sur total » dit la même chose en texte
+ * (seule copie accessible, la barre étant masquée) : l'étape y est bornée à [0, total] et arrondie comme
+ * pour la barre.
  */
 export function SegmentedProgress(p: { step: number; total: number }) {
-  const done = Math.min(Math.max(p.step, 0), p.total);
+  const done = Number.isFinite(p.step) ? Math.min(Math.max(Math.round(p.step), 0), p.total) : 0;
   return (
     <div className={styles.progress}>
       <div className={styles.segments} aria-hidden="true">
@@ -22,7 +24,7 @@ export function SegmentedProgress(p: { step: number; total: number }) {
         ))}
       </div>
       <p className={styles.progressText}>
-        Étape {p.step} sur {p.total}
+        Étape {done} sur {p.total}
       </p>
     </div>
   );
