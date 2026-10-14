@@ -46,8 +46,35 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   sessionStorage.clear();
 });
+
+/** Module neuf : son repli en mémoire (stockage de session refusé) ne passe pas d'un test à l'autre. */
+async function freshKillSwitch(): Promise<typeof applyKillSwitchIfNeeded> {
+  vi.resetModules();
+  return (await import('../../src/sw/kill-switch')).applyKillSwitchIfNeeded;
+}
+
+/**
+ * Stockage de session refusé (navigation privée, données bloquées) : lecture, écriture et retrait lèvent.
+ * Le global est remplacé : happy-dom garde les méthodes du stockage déjà lues, un espion posé sur
+ * `Storage.prototype` après un premier accès ne serait jamais appelé.
+ */
+function refuseSessionStorage(): void {
+  const refused = () => {
+    throw new DOMException('refusé', 'SecurityError');
+  };
+  vi.stubGlobal('sessionStorage', { getItem: refused, setItem: refused, removeItem: refused });
+}
+
+/** Page encore contrôlée par un SW qui a déjà tout retiré (la course de l'E2E kill-switch). */
+function controlledAfterCleanup() {
+  const f = createFakeSwContainer({ registrations: 0 });
+  f.setController(true);
+  const reload = vi.fn();
+  return { f, reload, env: { serviceWorker: f.container, caches: createFakeCacheStorage(), reload } };
+}
 
 describe('applyKillSwitchIfNeeded (R-PWA-6)', () => {
   it('swKill faux → false, rien touché', async () => {
@@ -106,24 +133,46 @@ describe('applyKillSwitchIfNeeded (R-PWA-6)', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('page contrôlée, stockage de session refusé → rechargée une fois quand même', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('refusé');
-    });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('refusé');
-    });
-    const f = createFakeSwContainer({ registrations: 0 });
-    f.setController(true);
-    const reload = vi.fn();
-    expect(
-      await applyKillSwitchIfNeeded(KILL, {
-        serviceWorker: f.container,
-        caches: createFakeCacheStorage(),
-        reload,
-      }),
-    ).toBe(true);
+  it('page contrôlée, stockage de session refusé → rechargée une fois quand même, jamais deux', async () => {
+    const apply = await freshKillSwitch();
+    refuseSessionStorage();
+    expect(() => sessionStorage.getItem('x')).toThrow();
+    const { reload, env } = controlledAfterCleanup();
+    expect(await apply(KILL, env)).toBe(true);
     expect(reload).toHaveBeenCalledTimes(1);
+    // Même chargement, toujours contrôlée : le repli en mémoire tient lieu de garde.
+    expect(await apply(KILL, env)).toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('interrupteur levé puis remis dans le même onglet → la page encore contrôlée se recharge de nouveau', async () => {
+    const { reload, env } = controlledAfterCleanup();
+    expect(await applyKillSwitchIfNeeded(KILL, env)).toBe(true);
+    // Incident clos (swKill faux), SW de nouveau enregistré, puis nouvel incident dans la même session.
+    expect(await applyKillSwitchIfNeeded(HEALTH, env)).toBe(false);
+    expect(await applyKillSwitchIfNeeded(KILL, env)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it('page rechargée et plus contrôlée → garde levée : contrôlée de nouveau plus tard, elle se recharge encore', async () => {
+    const { f, reload, env } = controlledAfterCleanup();
+    expect(await applyKillSwitchIfNeeded(KILL, env)).toBe(true);
+    f.setController(false);
+    expect(await applyKillSwitchIfNeeded(KILL, env)).toBe(false);
+    // Un SW enregistré entre-temps (sonde sans réponse au démarrage) reprend la page.
+    f.setController(true);
+    expect(await applyKillSwitchIfNeeded(KILL, env)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it('stockage de session refusé : interrupteur levé puis remis → rechargée de nouveau', async () => {
+    const apply = await freshKillSwitch();
+    refuseSessionStorage();
+    const { reload, env } = controlledAfterCleanup();
+    expect(await apply(KILL, env)).toBe(true);
+    expect(await apply(HEALTH, env)).toBe(false);
+    expect(await apply(KILL, env)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(2);
   });
 
   it('deuxième passage après le rechargement → plus rien à faire, pas de boucle', async () => {

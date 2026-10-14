@@ -614,6 +614,22 @@ describe('bootServiceWorker', () => {
     expect(f.controllerMessages).toEqual([]);
   });
 
+  it('incident clos (swKill faux) puis rouvert dans le même onglet → la page encore contrôlée se recharge les deux fois', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    // Le SW a déjà tout retiré à chaque incident ; la page reste contrôlée (la course de l'E2E kill-switch).
+    const f = createFakeSwContainer({ registrations: 0, controller: true });
+    try {
+      await boot(f, health(true));
+      expect(reload).toHaveBeenCalledTimes(1);
+      await boot(f, health(false));
+      expect(swControllerStore.get()).not.toBeNull();
+      await boot(f, health(true));
+      expect(reload).toHaveBeenCalledTimes(2);
+    } finally {
+      sessionStorage.clear();
+    }
+  });
+
   it('426 déjà reçu par la synchro au démarrage (avant la fin de la sonde) → contrôleur publié forced', async () => {
     sync = createFakeSyncEngine({ connection: 'protocol_unsupported' });
     const f = createFakeSwContainer({ controller: true });

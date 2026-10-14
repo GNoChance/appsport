@@ -38,14 +38,14 @@ export async function probeHealth(transport: SyncTransport): Promise<HealthRespo
   }
 }
 
-/** Rechargement de l'onglet déjà fait parce qu'il restait contrôlé (garde contre une boucle). */
+/** Rechargement de l'onglet déjà fait, pendant cet incident, parce qu'il restait contrôlé (garde contre une boucle). */
 const CONTROLLED_RELOAD_KEY = 'rune.kill-switch-reload';
 /** Repli quand le stockage de session est refusé : une fois par chargement de la page. */
 let controlledReloadDone = false;
 
 /**
- * Vrai la première fois seulement, dans cet onglet : le rechargement d'une page encore contrôlée ne se
- * répète pas, même si un navigateur gardait le SW désenregistré aux commandes après lui.
+ * Vrai la première fois seulement, dans cet onglet et pour cet incident : le rechargement d'une page encore
+ * contrôlée ne se répète pas, même si un navigateur gardait le SW désenregistré aux commandes après lui.
  */
 function firstControlledReload(): boolean {
   try {
@@ -56,6 +56,20 @@ function firstControlledReload(): boolean {
     if (controlledReloadDone) return false;
     controlledReloadDone = true;
     return true;
+  }
+}
+
+/**
+ * Garde levée quand l'incident est clos (`swKill` faux) ou que la page n'est plus contrôlée (aucune boucle
+ * possible) : un incident suivant, dans la même session de l'onglet ou de l'appli installée, peut de nouveau
+ * recharger une page restée contrôlée.
+ */
+function clearControlledReload(): void {
+  controlledReloadDone = false;
+  try {
+    sessionStorage.removeItem(CONTROLLED_RELOAD_KEY);
+  } catch {
+    // Stockage refusé : le repli en mémoire, remis à zéro, suffit.
   }
 }
 
@@ -82,14 +96,17 @@ async function anyDone(tasks: readonly (() => Promise<boolean>)[]): Promise<bool
  * caches `shell-*` et `illustrations-*` (ni le marqueur `rune-meta`, ni un cache inconnu, ni jamais
  * IndexedDB), puis recharge la page depuis le réseau. Recharge une seule fois : si quelque chose a été retiré,
  * ou si le SW a fait le ménage avant (T36) sans pouvoir recharger cette page, encore contrôlée par lui (une fois
- * par onglet). La page rechargée ne trouve plus rien et n'est plus contrôlée, ce qui évite la boucle. Rend
- * `true` si la page est rechargée.
+ * par incident et par onglet). La page rechargée ne trouve plus rien et n'est plus contrôlée, ce qui évite la
+ * boucle. Appelé aussi quand `swKill` est faux, pour clore l'incident. Rend `true` si la page est rechargée.
  */
 export async function applyKillSwitchIfNeeded(
   health: HealthResponse,
   env: KillSwitchEnv = {},
 ): Promise<boolean> {
-  if (!health.swKill) return false;
+  if (!health.swKill) {
+    clearControlledReload();
+    return false;
+  }
   const serviceWorker = env.serviceWorker ?? browserServiceWorker();
   const storage = env.caches ?? browserCaches();
   const reload = env.reload ?? (() => window.location.reload());
@@ -101,10 +118,15 @@ export async function applyKillSwitchIfNeeded(
     ? await anyDone(names.filter(doomedCache).map((n) => () => storage.delete(n)))
     : false;
 
-  // Le SW a pu tout retirer pendant la navigation, quand l'ancien document était parti et celui-ci pas encore
-  // prêt : son rechargement n'a visé aucune fenêtre. Servie par lui (contrôlée), la page resterait sur ce build.
-  if (!unregistered && !deleted && (serviceWorker?.controller == null || !firstControlledReload())) {
-    return false;
+  if (!unregistered && !deleted) {
+    // Plus contrôlée (la page rechargée, typiquement) : rien à faire, et la garde est levée.
+    if (serviceWorker?.controller == null) {
+      clearControlledReload();
+      return false;
+    }
+    // Le SW a pu tout retirer pendant la navigation, quand l'ancien document était parti et celui-ci pas encore
+    // prêt : son rechargement n'a visé aucune fenêtre. Servie par lui (contrôlée), la page resterait sur ce build.
+    if (!firstControlledReload()) return false;
   }
   // Trace pour le diagnostic sur téléphone (R-TST-4, P8) : sinon ce rechargement unique passe inaperçu.
   console.info("[rune] interrupteur d'urgence : service worker et caches retirés, rechargement");

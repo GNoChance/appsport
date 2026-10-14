@@ -418,9 +418,10 @@ async function startWorker(o: Parameters<typeof bootServiceWorker>[0], env: Kill
   } catch {
     // Sonde en échec : comme sans réponse, on enregistre.
   }
-  if (health?.swKill) {
+  // Toute réponse passe par l'interrupteur : `swKill` faux clôt l'incident et lève sa garde de rechargement.
+  if (health) {
     await applyKillSwitchIfNeeded(health, { ...env, serviceWorker: env.serviceWorker ?? o.container });
-    return;
+    if (health.swKill) return;
   }
   const container = o.container ?? browserServiceWorker();
   swControllerStore.set(registerServiceWorker({ db: o.db, sync: o.sync, container, reload: env.reload }));
