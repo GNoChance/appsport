@@ -9,6 +9,7 @@ export * from './api/profile';
 export * from './auth-constants';
 export * from './case';
 export * from './catalog';
+export * from './coach';
 export * from './constants';
 export * from './entity-rules';
 export * from './help-resources';

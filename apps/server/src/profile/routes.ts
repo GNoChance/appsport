@@ -1,4 +1,5 @@
 import {
+  type CoachId,
   type Experience,
   type Goal,
   ONBOARDING_STEPS,
@@ -24,6 +25,7 @@ interface ProfileState {
   sportCode: string | null;
   sportOtherLabel: string | null;
   cautiousMode: number;
+  coach: CoachId | null;
 }
 
 const EMPTY_PROFILE: ProfileState = {
@@ -34,6 +36,7 @@ const EMPTY_PROFILE: ProfileState = {
   sportCode: null,
   sportOtherLabel: null,
   cautiousMode: 0,
+  coach: null,
 };
 
 const stepIndex = (step: string | null): number =>
@@ -69,6 +72,7 @@ async function patchProfile(
     sportCode: patch.sportCode === undefined ? current.sportCode : patch.sportCode,
     sportOtherLabel: patch.sportOtherLabel === undefined ? current.sportOtherLabel : patch.sportOtherLabel,
     cautiousMode: patch.cautiousMode === undefined ? current.cautiousMode : patch.cautiousMode ? 1 : 0,
+    coach: patch.coach ?? current.coach,
   };
 
   const ageBand = ageBandOn(user.birthDate, parisDate(deps.clock.now()));
@@ -123,6 +127,10 @@ async function patchProfile(
   }
 }
 
+/**
+ * Termine l'onboarding (R-ONB-1). Le coach est la première étape de l'interface (spec refonte §8)
+ * sans être une étape serveur (`ONBOARDING_STEPS` inchangé) : sans coach, refus avant toute écriture.
+ */
 async function completeOnboarding(trx: DbExecutor, deps: AppDeps, userId: string): Promise<void> {
   const user = await trx
     .selectFrom('user')
@@ -132,10 +140,11 @@ async function completeOnboarding(trx: DbExecutor, deps: AppDeps, userId: string
   if (user.onboardingCompletedAt !== null) return;
   const profile = await trx
     .selectFrom('trainingProfile')
-    .select(['goal', 'experience', 'daysPerWeek', 'sessionMinutes'])
+    .select(['goal', 'experience', 'daysPerWeek', 'sessionMinutes', 'coach'])
     .where('id', '=', userId)
     .where('deletedAt', 'is', null)
     .executeTakeFirst();
+  if (!profile?.coach) throw invalid('coach');
   const primary = await trx
     .selectFrom('place')
     .select('id')

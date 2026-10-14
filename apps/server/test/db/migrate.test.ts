@@ -25,10 +25,14 @@ describe('migrate', () => {
   afterEach(() => close());
 
   it('applique une fois, puis ne fait plus rien', async () => {
-    expect(await migrate(db, MIGRATIONS, clock)).toEqual({ applied: ['0001_socle'], unknownNonBreaking: [] });
+    expect(await migrate(db, MIGRATIONS, clock)).toEqual({
+      applied: ['0001_socle', '0002_coach'],
+      unknownNonBreaking: [],
+    });
     expect(await migrate(db, MIGRATIONS, clock)).toEqual({ applied: [], unknownNonBreaking: [] });
     expect(await db.selectFrom('schemaMigrations').selectAll().execute()).toEqual([
       { id: '0001_socle', breaking: 0, appliedAt: '2026-10-06T10:00:00.000Z' },
+      { id: '0002_coach', breaking: 0, appliedAt: '2026-10-06T10:00:00.000Z' },
     ]);
   });
 
@@ -63,12 +67,12 @@ describe('migrate', () => {
 
   it('migrations inconnues non cassantes permises', async () => {
     await migrate(db, [], clock);
-    await sql`INSERT INTO schema_migrations (id, breaking, applied_at) VALUES ('0002_future', 0, 'x')`.execute(
+    await sql`INSERT INTO schema_migrations (id, breaking, applied_at) VALUES ('0099_future', 0, 'x')`.execute(
       db,
     );
     expect(await migrate(db, MIGRATIONS, clock)).toEqual({
-      applied: ['0001_socle'],
-      unknownNonBreaking: ['0002_future'],
+      applied: ['0001_socle', '0002_coach'],
+      unknownNonBreaking: ['0099_future'],
     });
   });
 });

@@ -1,7 +1,10 @@
 import type { TestContext } from './context';
 import { insertFixtureRow } from './factories';
 
-/** Profil muscle, aucune expérience, 3 j de 45 min, étape « health », lieu maison principal, puis fin de l'onboarding. */
+/**
+ * Coach « skald », profil muscle, aucune expérience, 3 j de 45 min, étape « health », lieu maison
+ * principal, puis fin de l'onboarding.
+ */
 export async function completeOnboarding(
   ctx: TestContext,
   user: { id: string; cookie: string },
@@ -10,6 +13,7 @@ export async function completeOnboarding(
     method: 'PATCH',
     cookie: user.cookie,
     json: {
+      coach: 'skald',
       goal: 'muscle',
       experience: 'none',
       daysPerWeek: 3,

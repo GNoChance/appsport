@@ -1,4 +1,4 @@
-import { type Experience, type Goal, snakeToCamel } from '@rune/contracts';
+import { type CoachId, type Experience, type Goal, snakeToCamel } from '@rune/contracts';
 import type { Generated, Kysely, Transaction } from 'kysely';
 
 /** Gabarit +SYNC des tables à propriétaire (09 §0). */
@@ -152,6 +152,8 @@ export interface TrainingProfileTable extends SyncColumns, SoftDelete {
   sportCode: string | null;
   sportOtherLabel: string | null;
   cautiousMode: Generated<number>;
+  /** Migration 0002_coach ; null tant que l'onboarding n'a pas passé l'étape du coach. */
+  coach: CoachId | null;
 }
 
 export interface HealthScreeningTable extends SyncColumns, SoftDelete {

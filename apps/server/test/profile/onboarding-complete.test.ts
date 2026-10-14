@@ -13,6 +13,7 @@ describe('POST /api/me/onboarding/complete', () => {
   it('409 avec la première étape incomplète (R-ONB-1)', async () => {
     ctx = await createTestContext({ now: '2026-10-06T10:00:00.000Z' });
     const u = await createUserAndLogin(ctx);
+    await patch(u.cookie, { coach: 'skald' });
     const res = await complete(u.cookie);
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: 'onboarding_incomplete', step: 'goal' });
@@ -41,6 +42,7 @@ describe('POST /api/me/onboarding/complete', () => {
     ctx = await createTestContext({ now: '2026-10-06T10:00:00.000Z' });
     const u = await createUserAndLogin(ctx);
     await patch(u.cookie, {
+      coach: 'skald',
       goal: 'muscle',
       experience: 'none',
       daysPerWeek: 3,
