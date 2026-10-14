@@ -21,10 +21,12 @@ function ChevronLeft() {
 
 /**
  * En-tête d'une page interne : bouton « Retour » de 44 × 44 (un lien vers `back`, ou un bouton qui
- * appelle `back`), puis le titre de niveau 1. Les onglets de premier niveau n'ont pas de Retour.
+ * appelle `back`), puis le titre de niveau 1 en 24 px. Sans Retour (onglets de premier niveau, écrans
+ * d'entrée), c'est un titre d'écran : 28 px, comme dans les maquettes (GUIDE, Type).
  */
 export function PageHeader(p: { title: string; back?: string | (() => void) }) {
   const { back } = p;
+  const titleClass = back ? styles.pageTitle : `${styles.pageTitle} ${styles.screenTitle}`;
   return (
     <header className={styles.pageHeader}>
       {typeof back === 'string' ? (
@@ -36,7 +38,7 @@ export function PageHeader(p: { title: string; back?: string | (() => void) }) {
           <ChevronLeft />
         </button>
       ) : null}
-      <h1 className={styles.pageTitle}>{p.title}</h1>
+      <h1 className={titleClass}>{p.title}</h1>
     </header>
   );
 }

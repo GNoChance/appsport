@@ -1019,6 +1019,15 @@ button.row:focus-visible {
   line-height: 1.2;
 }
 
+/*
+ * Titre d'écran, sans Retour (GUIDE, Type : 28/700 ; maquettes des onglets : 6 px au-dessus). Deux classes :
+ * passe devant `.page h1`.
+ */
+.pageTitle.screenTitle {
+  margin-top: 6px;
+  font-size: 1.75rem;
+}
+
 .healthWarning {
   font-size: 0.875rem;
   color: var(--text-muted);

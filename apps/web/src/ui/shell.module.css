@@ -74,6 +74,7 @@
   --rune-mark-frame: var(--accent);
 }
 
+/* À droite, avec ou sans la marque (sur PC, elle est dans la navigation latérale). */
 .headerEnd {
   display: flex;
   align-items: center;

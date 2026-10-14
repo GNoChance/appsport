@@ -30,7 +30,7 @@ export function AppShell(p: { children: ReactNode }) {
     <div className={shell.shell} data-wide={wide ? '' : undefined}>
       {wide ? <SideNav /> : null}
       <div className={shell.column}>
-        {activeTab(path) === '/' ? <HomeHeader /> : null}
+        {activeTab(path) === '/' ? <HomeHeader brand={!wide} /> : null}
         <div className={shell.bannerSlot}>
           <UpdateBanner />
         </div>
@@ -47,16 +47,20 @@ export function AppShell(p: { children: ReactNode }) {
 /**
  * En-tête de l'accueil (maquettes MixSombre / MixClair) : logo et RUNE vers l'accueil, pastille de connexion,
  * rond de l'initiale vers le Profil. Les pages internes ont leur Retour et leur titre (`PageHeader`).
+ * `brand` faux sur PC : la navigation latérale porte déjà la marque (une seule annonce, un seul arrêt de
+ * tabulation) ; pastille et initiale restent seules, à droite.
  */
-function HomeHeader() {
+function HomeHeader(p: { brand: boolean }) {
   const me = useMe();
   const dark = useColorScheme() === 'dark';
   return (
     <header className={shell.header}>
-      <Link href="/" className={shell.brand} aria-label="Rune">
-        <RuneMark glow={dark} />
-        <RuneWordmark />
-      </Link>
+      {p.brand ? (
+        <Link href="/" className={shell.brand} aria-label="Rune">
+          <RuneMark glow={dark} />
+          <RuneWordmark />
+        </Link>
+      ) : null}
       <div className={shell.headerEnd}>
         <ConnectionPill />
         {me ? (

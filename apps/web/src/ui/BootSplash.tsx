@@ -34,21 +34,30 @@ function markShown(): void {
  * Démarrage (spec refonte §7) : au premier affichage d'une session, le logo se dessine (moins de 1,2 s) puis
  * le voile s'efface. Il se pose par-dessus l'écran sans jamais le retarder ni prendre le toucher
  * (`pointer-events: none`), reste muet pour les lecteurs d'écran, et se retire à la fin de son animation.
- * Sous mouvement réduit, il ne rend rien.
+ * Sous mouvement réduit, il ne rend rien. Joué ou non, il est décidé une fois, au montage : couper le
+ * mouvement réduit plus tard ne le fait jamais jouer en pleine session, et le demander pendant le dessin le
+ * retire pour de bon.
  */
 export function BootSplash() {
   const reduced = useReducedMotion();
-  const [show, setShow] = useState(() => !alreadyShown());
-  const playing = show && !reduced;
+  const [show, setShow] = useState(() => !reduced && !alreadyShown());
+
+  // Premier affichage de la session passé, que le logo se soit dessiné ou non (mouvement réduit).
+  useEffect(() => {
+    markShown();
+  }, []);
 
   useEffect(() => {
-    if (!playing) return;
-    markShown();
+    if (!show) return;
+    if (reduced) {
+      setShow(false);
+      return;
+    }
     const timer = setTimeout(() => setShow(false), BOOT_SPLASH_MAX_MS);
     return () => clearTimeout(timer);
-  }, [playing]);
+  }, [show, reduced]);
 
-  if (!playing) return null;
+  if (!show || reduced) return null;
   return (
     <div
       aria-hidden="true"

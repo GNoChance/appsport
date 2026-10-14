@@ -560,6 +560,21 @@ describe('PageHeader', () => {
     expect(screen.queryByRole('button', { name: 'Retour' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Retour' })).toBeNull();
   });
+
+  it('sans Retour (onglet, écran) : titre d’écran 28 px, 6 px au-dessus ; avec Retour : titre de page interne 24 px', () => {
+    const { rerender } = render(<PageHeader title="Réglages" back="/profile" />);
+    const inner = screen.getByRole('heading', { level: 1, name: 'Réglages' });
+    expect(inner.classList.contains(cls('pageTitle'))).toBe(true);
+    expect(inner.classList.contains(cls('screenTitle'))).toBe(false);
+    expect(rule('.pageTitle')?.get('font-size')).toBe('1.5rem');
+    rerender(<PageHeader title="Progression" />);
+    const top = screen.getByRole('heading', { level: 1, name: 'Progression' });
+    expect(top.classList.contains(cls('pageTitle'))).toBe(true);
+    expect(top.classList.contains(cls('screenTitle'))).toBe(true);
+    // Deux classes : la règle l'emporte sur `.page h1` (une classe et un élément) quel que soit son rang.
+    expect(rule('.pageTitle.screenTitle')?.get('font-size')).toBe('1.75rem');
+    expect(rule('.pageTitle.screenTitle')?.get('margin-top')).toBe('6px');
+  });
 });
 
 describe('Banner', () => {

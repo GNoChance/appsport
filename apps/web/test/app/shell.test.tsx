@@ -46,6 +46,34 @@ function media(...matching: string[]) {
   }));
 }
 
+/** Comme `media`, mais le réglage change en cours de route : `set` prévient les écouteurs, comme le téléphone. */
+function liveMedia(...matching: string[]) {
+  const on = new Set(matching);
+  const listeners = new Map<string, Set<() => void>>();
+  const of = (query: string) => {
+    const known = listeners.get(query);
+    if (known) return known;
+    const created = new Set<() => void>();
+    listeners.set(query, created);
+    return created;
+  };
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: on.has(query),
+    media: query,
+    addEventListener: (_: string, fn: () => void) => of(query).add(fn),
+    removeEventListener: (_: string, fn: () => void) => of(query).delete(fn),
+  }));
+  return {
+    set(query: string, value: boolean) {
+      if (value) on.add(query);
+      else on.delete(query);
+      act(() => {
+        for (const fn of of(query)) fn();
+      });
+    },
+  };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -427,6 +455,19 @@ describe('coquille', () => {
     expect(screen.queryByTestId('tab-bar')).toBeNull();
   });
 
+  it('≥ 900 px, accueil : la marque une seule fois (navigation latérale), l’en-tête garde pastille et initiale à droite', async () => {
+    media(DESKTOP);
+    await renderApp({ path: '/' });
+    const header = await homeHeader();
+    expect(screen.getAllByRole('link', { name: 'Rune' })).toHaveLength(1);
+    expect(within(screen.getByTestId('side-nav')).getByRole('link', { name: 'Rune' })).toBeTruthy();
+    expect(within(header).queryByRole('link', { name: 'Rune' })).toBeNull();
+    expect(within(header).getByTestId('connection-status').textContent).toBe('En ligne');
+    expect(within(header).getByRole('link', { name: 'Mon profil' }).getAttribute('href')).toBe('/profile');
+    // Seuls à droite de l'en-tête, sans la marque pour les y pousser.
+    expect(declarationsOf(shellCss(), '.headerEnd')?.get('margin-inline-start')).toBe('auto');
+  });
+
   it('onboarding : ni barre d’onglets ni pastille', async () => {
     media();
     await renderApp({ path: '/onboarding', me: newcomer() });
@@ -671,6 +712,32 @@ describe('BootSplash', () => {
     if (splash) fireEvent.animationEnd(splash);
     first.unmount();
     const { container } = render(<BootSplash />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('mouvement réduit coupé en cours de session : rien ne se joue par-dessus l’écran', () => {
+    const phone = liveMedia(REDUCED);
+    const { container } = render(<BootSplash />);
+    expect(container.innerHTML).toBe('');
+    phone.set(REDUCED, false);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('premier montage sous mouvement réduit : la session est marquée, un montage plus tard sans lui ne rend rien', () => {
+    media(REDUCED);
+    render(<BootSplash />).unmount();
+    media();
+    const { container } = render(<BootSplash />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('mouvement réduit demandé pendant le dessin : retiré, et ne revient pas quand il est coupé', () => {
+    const phone = liveMedia();
+    const { container } = render(<BootSplash />);
+    expect(container.firstElementChild).not.toBeNull();
+    phone.set(REDUCED, true);
+    expect(container.innerHTML).toBe('');
+    phone.set(REDUCED, false);
     expect(container.innerHTML).toBe('');
   });
 });
