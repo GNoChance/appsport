@@ -1,4 +1,5 @@
-// Usage : node apps/web/scripts/svg-to-tsx.mjs
+// Usage : node apps/web/scripts/svg-to-tsx.mjs [--check]
+// `--check` n'écrit rien : il échoue si un fichier versionné diffère de ce que le script générerait.
 // Génère les composants React des avatars des coachs et des pierres de rang dans apps/web/src/ui/art/ (fichiers
 // versionnés) depuis les SVG de docs/brand/coachs/{ombre,skald,scribe}/ et docs/brand/rangs/ (avec mini/).
 // - attributs en camelCase (stroke-width → strokeWidth), aria-* et data-* gardés tels quels ;
@@ -11,7 +12,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -120,10 +121,12 @@ function renderElement(element, depth, file) {
   return `${pad}<${open}>\n${inner}\n${pad}</${element.name}>`;
 }
 
-/** Fonction qui dessine une variante : racine `<svg>` avec les props du composant, puis le dessin source. */
-function renderVariant(fnName, variant, path) {
-  const file = relative(repo, path).replaceAll('\\', '/');
-  const svg = parseSvg(readFileSync(path, 'utf8'), file);
+/**
+ * Fonction TSX qui dessine une variante depuis le texte d'un SVG : racine `<svg>` avec les props du composant,
+ * puis le dessin source. Lève une erreur nommant `file` pour tout élément, attribut ou valeur refusé.
+ */
+export function svgToJsx(source, file, { fnName, variant }) {
+  const svg = parseSvg(source, file);
   const rootAttrs = svg.attrs.filter(([key]) => !ROOT_DROPPED.has(key));
   const root = rootAttrs.map(([key, value]) => `${reactName(key, file)}=${reactValue(key, value, file)}`);
   const body = svg.children.map((child) => renderElement(child, 3, file)).join('\n');
@@ -138,6 +141,12 @@ function renderVariant(fnName, variant, path) {
     '  );',
     '}',
   ].join('\n');
+}
+
+/** Variante lue depuis un SVG du dépôt (docs/brand), nommée par son chemin relatif dans les erreurs. */
+function renderVariant(fnName, variant, path) {
+  const file = relative(repo, path).replaceAll('\\', '/');
+  return svgToJsx(readFileSync(path, 'utf8'), file, { fnName, variant });
 }
 
 const COACHES = [
@@ -210,17 +219,58 @@ function rankFile() {
   ].join('\n');
 }
 
-const outputs = [
-  ...COACHES.map((c) => [join(outDir, `${c.component}.tsx`), coachFile(c)]),
-  [join(outDir, 'RankStone.tsx'), rankFile()],
-];
-for (const [path, content] of outputs) writeFileSync(path, content);
+/** Fichiers à générer : [chemin, contenu avant mise en forme]. */
+function generate() {
+  return [
+    ...COACHES.map((c) => [join(outDir, `${c.component}.tsx`), coachFile(c)]),
+    [join(outDir, 'RankStone.tsx'), rankFile()],
+  ];
+}
+
+const shown = (path) => relative(repo, path).replaceAll('\\', '/');
 
 // Mise en forme du dépôt (biome), pour que `pnpm lint` accepte les fichiers tels quels.
-const require = createRequire(import.meta.url);
-const biome = join(dirname(require.resolve('@biomejs/biome/package.json')), 'bin', 'biome');
-execFileSync(process.execPath, [biome, 'format', '--write', ...outputs.map(([path]) => path)], {
-  cwd: repo,
-  stdio: 'inherit',
-});
-for (const [path] of outputs) console.log(`généré : ${relative(repo, path).replaceAll('\\', '/')}`);
+function biomeArgs(...args) {
+  const require = createRequire(import.meta.url);
+  const biome = join(dirname(require.resolve('@biomejs/biome/package.json')), 'bin', 'biome');
+  return [biome, ...args];
+}
+
+/** Écrit les fichiers générés puis les met en forme. */
+function write(outputs) {
+  for (const [path, content] of outputs) writeFileSync(path, content);
+  execFileSync(process.execPath, biomeArgs('format', '--write', ...outputs.map(([path]) => path)), {
+    cwd: repo,
+    stdio: 'inherit',
+  });
+  for (const [path] of outputs) console.log(`généré : ${shown(path)}`);
+}
+
+/** N'écrit rien : liste les fichiers versionnés qui diffèrent de la génération mise en forme. */
+function check(outputs) {
+  const stale = outputs.filter(([path, content]) => {
+    const formatted = execFileSync(
+      process.execPath,
+      biomeArgs('format', `--stdin-file-path=${shown(path)}`),
+      {
+        cwd: repo,
+        input: content,
+        encoding: 'utf8',
+      },
+    );
+    return formatted !== readFileSync(path, 'utf8');
+  });
+  for (const [path] of stale) console.error(`à régénérer : ${shown(path)}`);
+  if (stale.length > 0) process.exit(1);
+  console.log(`à jour : ${outputs.length} fichiers générés`);
+}
+
+// Lancé en script (et non importé par un test) : génère, ou vérifie avec --check.
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase()
+) {
+  const outputs = generate();
+  if (process.argv.includes('--check')) check(outputs);
+  else write(outputs);
+}

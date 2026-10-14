@@ -15,12 +15,41 @@ import {
   SystemPanel,
   useReducedMotion,
 } from '../../src/ui';
+import type { CoachMode, ColorScheme, Rank } from '../../src/ui/art/art-types';
+import type { CoachId } from '../../src/ui/art/coach-id';
+import artStyles from '../../src/ui/art.module.css';
+import { applyTheme } from '../../src/ui/theme/theme';
+import { artIdPrefix } from '../../src/ui/use-art-id';
+import voiceStyles from '../../src/ui/voice.module.css';
 import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
 
 const UI = resolve(import.meta.dirname, '../../src/ui');
 const read = (path: string) => readFileSync(resolve(UI, path), 'utf8');
 const REDUCE = '(prefers-reduced-motion: reduce)';
 const DARK = '(prefers-color-scheme: dark)';
+
+/** Classe générée d'un module CSS ; son absence est une erreur, jamais un « undefined » qui passerait. */
+function moduleClass(styles: Readonly<Record<string, string>>, file: string, name: string): string {
+  const generated = styles[name];
+  if (!generated) throw new Error(`classe .${name} absente de ${file}`);
+  return generated;
+}
+const artClass = (name: string) => moduleClass(artStyles, 'art.module.css', name);
+const voiceClass = (name: string) => moduleClass(voiceStyles, 'voice.module.css', name);
+
+const allIds = (root: ParentNode) => [...root.querySelectorAll('[id]')].map((el) => el.id);
+
+/**
+ * Dessin autonome : ids sans caractère spécial (deux-points, guillemets), et chaque `url(#…)` vise un id du
+ * même `<svg>`, jamais celui d'un autre dessin de la page. Rend le nombre d'ids et de références vus.
+ */
+function expectSelfContained(svg: Element): { ids: number; refs: number } {
+  const ids = new Set(allIds(svg));
+  for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
+  const refs = [...svg.outerHTML.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]);
+  for (const ref of refs) expect(ids.has(ref ?? ''), ref).toBe(true);
+  return { ids: ids.size, refs: refs.length };
+}
 
 /** Réglages du téléphone simulés : les media queries listées répondent vrai, les autres faux. */
 function phoneSettings(...matching: string[]) {
@@ -282,14 +311,56 @@ describe('RankBadge (pierres runiques, spec refonte §9)', () => {
     expect(screen.getByRole('img', { name: 'Rang S' }).getAttribute('data-variant')).toBe('S-mini');
   });
 
-  it('verrouillé : toujours visible et nommé, mais atténué', () => {
-    render(<RankBadge rank="A" size={32} locked />);
-    const badge = screen.getByRole('img', { name: 'Rang A' });
-    expect(badge.getAttribute('data-locked')).toBe('true');
+  it('verrouillé : toujours visible et nommé, mais atténué par la classe .locked', () => {
+    render(
+      <>
+        <RankBadge rank="A" size={32} locked />
+        <RankBadge rank="B" size={32} />
+      </>,
+    );
+    const locked = screen.getByRole('img', { name: 'Rang A' });
+    const reached = screen.getByRole('img', { name: 'Rang B' });
+    expect(locked.classList.contains(artClass('locked'))).toBe(true);
+    expect(reached.classList.contains(artClass('locked'))).toBe(false);
     const muted = declarationsOf(parseCssBlocks(read('art.module.css')), '.locked');
     expect(Number(muted?.get('opacity'))).toBeGreaterThan(0.3);
     expect(Number(muted?.get('opacity'))).toBeLessThan(1);
   });
+
+  it('deux pierres du même rang et sa mini sur la même page : aucun id en double', () => {
+    const { container } = render(
+      <>
+        <RankBadge rank="B" size={48} />
+        <RankBadge rank="B" size={48} />
+        <RankBadge rank="B" size={24} mini />
+      </>,
+    );
+    const ids = allIds(container);
+    expect(ids.length).toBeGreaterThan(3);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  const STONES = (['E', 'D', 'C', 'B', 'A', 'S'] as const satisfies readonly Rank[]).flatMap((rank) =>
+    [false, true].map((mini) => ({ rank, mini })),
+  );
+
+  it.each(STONES)(
+    'rang $rank (mini : $mini), deux fois sur la page : chaque url(#…) reste dans sa pierre',
+    ({ rank, mini }) => {
+      const { container } = render(
+        <>
+          <RankBadge rank={rank} size={48} mini={mini} />
+          <RankBadge rank={rank} size={48} mini={mini} />
+        </>,
+      );
+      const svgs = container.querySelectorAll(':scope > svg');
+      expect(svgs).toHaveLength(2);
+      for (const svg of svgs) {
+        expect(svg.getAttribute('data-variant')).toBe(mini ? `${rank}-mini` : rank);
+        expect(expectSelfContained(svg).ids).toBeGreaterThan(0);
+      }
+    },
+  );
 });
 
 describe('CountUp (les compteurs défilent, spec refonte §7)', () => {
@@ -351,9 +422,20 @@ describe('useReducedMotion', () => {
   });
 });
 
-describe('CoachAvatar (spec refonte §8 : avatars générés, identifiants préfixés par instance)', () => {
-  const allIds = (root: ParentNode) => [...root.querySelectorAll('[id]')].map((el) => el.id);
+describe('artIdPrefix : préfixe des dessins tiré de useId()', () => {
+  it('chaque format d’id de React (:r0:, «r1», _r_2_) donne un préfixe en [A-Za-z0-9_-], distinct', () => {
+    const reactIds = [':r0:', '«r1»', '_r_2_', ':R3a:', 'r«4»:'];
+    const prefixes = reactIds.map((reactId) => artIdPrefix('coach-skald', reactId));
+    for (const prefix of prefixes) {
+      expect(prefix).toMatch(/^[A-Za-z0-9_-]+$/);
+      expect(prefix.startsWith('coach-skald-')).toBe(true);
+    }
+    expect(new Set(prefixes).size).toBe(reactIds.length);
+    expect(artIdPrefix('rank-B', ':r0:')).not.toBe(artIdPrefix('rank-C', ':r0:'));
+  });
+});
 
+describe('CoachAvatar (spec refonte §8 : avatars générés, identifiants préfixés par instance)', () => {
   it('deux avatars sur la même page n’ont aucun id en double', () => {
     const { container } = render(
       <>
@@ -376,13 +458,40 @@ describe('CoachAvatar (spec refonte §8 : avatars générés, identifiants préf
       </>,
     );
     for (const svg of container.querySelectorAll('svg')) {
-      const ids = new Set(allIds(svg));
-      for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
-      const refs = [...svg.outerHTML.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]);
-      expect(refs.length).toBeGreaterThan(0);
-      for (const ref of refs) expect(ids.has(ref ?? ''), ref).toBe(true);
+      expect(expectSelfContained(svg).refs).toBeGreaterThan(0);
     }
   });
+
+  const AVATARS = (['ombre', 'skald', 'scribe'] as const satisfies readonly CoachId[]).flatMap((coach) =>
+    (['training', 'nutrition'] as const satisfies readonly CoachMode[]).flatMap((mode) =>
+      (['dark', 'light'] as const satisfies readonly ColorScheme[]).map((scheme) => ({
+        coach,
+        mode,
+        scheme,
+      })),
+    ),
+  );
+
+  it.each(AVATARS)(
+    '$coach $mode $scheme, deux fois sur la page : chaque url(#…) reste dans son avatar',
+    ({ coach, mode, scheme }) => {
+      document.documentElement.setAttribute('data-theme', scheme === 'dark' ? 'sombre' : 'clair');
+      const { container } = render(
+        <>
+          <CoachAvatar coach={coach} mode={mode} size={64} />
+          <CoachAvatar coach={coach} mode={mode} size={64} />
+        </>,
+      );
+      const svgs = container.querySelectorAll('svg');
+      expect(svgs).toHaveLength(2);
+      for (const svg of svgs) {
+        expect(svg.getAttribute('data-variant')).toBe(`${mode}-${scheme}`);
+        const seen = expectSelfContained(svg);
+        expect(seen.ids).toBeGreaterThan(0);
+        expect(seen.refs).toBeGreaterThan(0);
+      }
+    },
+  );
 
   it('nommé par le coach, et le mode nutrition se dit aussi', () => {
     render(
@@ -410,6 +519,31 @@ describe('CoachAvatar (spec refonte §8 : avatars générés, identifiants préf
     phoneSettings(DARK);
     render(<CoachAvatar coach="ombre" size={40} />);
     expect(screen.getByRole('img').getAttribute('data-variant')).toBe('training-dark');
+  });
+
+  it('Auto avec un téléphone en clair : version claire', () => {
+    phoneSettings();
+    render(<CoachAvatar coach="ombre" size={40} />);
+    expect(screen.getByRole('img').getAttribute('data-variant')).toBe('training-light');
+  });
+
+  it('Carnet reste clair même avec un téléphone en sombre', () => {
+    phoneSettings(DARK);
+    document.documentElement.setAttribute('data-theme', 'carnet');
+    render(<CoachAvatar coach="scribe" mode="nutrition" size={40} />);
+    expect(screen.getByRole('img').getAttribute('data-variant')).toBe('nutrition-light');
+  });
+
+  it('thème changé pendant que l’avatar est affiché : il suit sans être remonté', () => {
+    phoneSettings();
+    act(() => applyTheme('clair'));
+    render(<CoachAvatar coach="skald" size={40} />);
+    const before = screen.getByRole('img');
+    expect(before.getAttribute('data-variant')).toBe('training-light');
+    act(() => applyTheme('nuit'));
+    expect(screen.getByRole('img').getAttribute('data-variant')).toBe('training-dark');
+    act(() => applyTheme('auto'));
+    expect(screen.getByRole('img').getAttribute('data-variant')).toBe('training-light');
   });
 
   it('groupes animables gardés : yeux du Skald, visière de l’Ombre, lueur et plume du Scribe', () => {
@@ -474,6 +608,28 @@ describe('CoachBubble (textes écrits à l’avance, étiquetés, jamais « en t
     expect(brief?.get('animation-fill-mode')).toBe('forwards');
   });
 
+  it('avatar tu aux lecteurs d’écran : le nom est déjà écrit dans la bulle', () => {
+    render(
+      <CoachBubble coach="scribe" label="Aujourd'hui">
+        Un plan simple pour commencer.
+      </CoachBubble>,
+    );
+    expect(screen.queryByRole('img', { name: 'Le Scribe' })).toBeNull();
+    const avatar = screen.getByRole('img', { name: 'Le Scribe', hidden: true });
+    expect(avatar.closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('texte entier dès le premier rendu : ni frappe simulée, ni indicateur « en train d’écrire »', () => {
+    const { container } = render(
+      <CoachBubble coach="skald" label="Message d'accueil">
+        Bienvenue.
+      </CoachBubble>,
+    );
+    expect(screen.getByText('Bienvenue.')).toBeTruthy();
+    expect(container.querySelector('[aria-busy], [aria-live], [role="status"], [role="log"]')).toBeNull();
+    expect(container.textContent).not.toMatch(/écri(t|re)|…/i);
+  });
+
   it('mode nutrition : le nom le dit', () => {
     render(
       <CoachBubble coach="ombre" label="Aperçu" mode="nutrition">
@@ -527,8 +683,12 @@ describe('SystemPanel (la voix du Système)', () => {
     );
     const a = screen.getByRole('group', { name: 'A' });
     const b = screen.getByRole('group', { name: 'B' });
-    expect(a.getAttribute('data-tone')).toBe('default');
-    expect(b.getAttribute('data-tone')).toBe('success');
+    expect(a.classList.contains(voiceClass('panel'))).toBe(true);
+    expect(b.classList.contains(voiceClass('panel'))).toBe(true);
+    expect(a.classList.contains(voiceClass('success'))).toBe(false);
+    expect(b.classList.contains(voiceClass('success'))).toBe(true);
+    const success = declarationsOf(parseCssBlocks(read('voice.module.css')), '.success');
+    expect(success?.get('--panel-tone')).toBe('var(--success)');
   });
 
   it('titre dans la police des titres du thème (Newsreader en Carnet), étiquette en police d’affichage', () => {
@@ -583,7 +743,8 @@ describe('art généré (svg-to-tsx.mjs, CSP default-src self)', () => {
       </>,
     );
     expect(container.querySelector('style')).toBeNull();
-    expect(container.querySelector('[style*="{"]')).toBeNull();
+    // Aucun attribut style du tout : la CSP (style-src sans 'unsafe-inline') les refuserait.
+    expect(container.querySelector('[style]')).toBeNull();
   });
 });
 
@@ -606,9 +767,43 @@ describe('mouvement (motion.css et animations de repos)', () => {
       expect(reduced, selector).not.toBeNull();
     }
     expect(declarationsOf(motion(), '.pop', REDUCE)?.get('animation')).toBe('none');
-    // Cascade : aucun retard sous mouvement réduit, et un simple fondu sans déplacement.
-    expect(declarationsOf(motion(), '.stagger > *', REDUCE)?.get('animation-delay')).toBe('0ms');
+    // Un simple fondu sans déplacement.
     expect(declarationsOf(motion(), '.enter-up', REDUCE)?.get('animation-name')).toBe('rune-fade');
+  });
+
+  it('cascade sous mouvement réduit : chaque retard annulé par une règle au moins aussi spécifique', () => {
+    const blocks = motion();
+    // `.stagger > :nth-child(n)` vaut (0,2,0) comme les retards ; `.stagger > *` (0,1,0) ne les annule pas.
+    expect(declarationsOf(blocks, '.stagger > :nth-child(n)', REDUCE)?.get('animation-delay')).toBe('0ms');
+    /** Spécificité (classes et pseudo-classes) ; aucun id ni type dans ces sélecteurs. */
+    const specificity = (selector: string) =>
+      (selector.replace(/::[\w-]+/g, '').match(/[.:][\w-]+/g) ?? []).length;
+    /** Sélecteurs de la cascade qui visent chaque enfant, sans en laisser aucun. */
+    const everyChild = new Set(['.stagger > *', '.stagger > :nth-child(n)']);
+    const delays = blocks
+      .map((block, index) => ({ block, index }))
+      .filter(
+        ({ block }) =>
+          block.media === null &&
+          block.selector.startsWith('.stagger >') &&
+          (block.declarations.get('animation-delay') ?? '0ms') !== '0ms',
+      );
+    expect(delays.length).toBeGreaterThanOrEqual(7);
+    const cancels = blocks
+      .map((block, index) => ({ block, index }))
+      .filter(
+        ({ block }) =>
+          block.media === REDUCE &&
+          everyChild.has(block.selector) &&
+          block.declarations.get('animation-delay') === '0ms',
+      );
+    for (const delay of delays) {
+      const wins = cancels.some(({ block, index }) => {
+        const [mine, theirs] = [specificity(block.selector), specificity(delay.block.selector)];
+        return mine > theirs || (mine === theirs && index > delay.index);
+      });
+      expect(wins, delay.block.selector).toBe(true);
+    }
   });
 
   it('la cascade retarde chaque élément selon son rang', () => {
@@ -652,12 +847,14 @@ describe('avatars sans animation : rien n’est animé par défaut', () => {
   it('animated absent : pas de classe d’animation de repos', () => {
     render(<CoachAvatar coach="skald" size={40} />);
     const wrapper = screen.getByRole('img').parentElement;
-    expect(wrapper?.getAttribute('data-animated')).toBe('false');
+    expect(wrapper?.classList.contains(artClass('avatar'))).toBe(true);
+    expect(wrapper?.classList.contains(artClass('animated'))).toBe(false);
   });
 
-  it('animated : la classe d’animation de repos est posée', async () => {
+  it('animated : la classe d’animation de repos est posée', () => {
     render(<CoachAvatar coach="skald" size={40} animated />);
-    await act(async () => {});
-    expect(screen.getByRole('img').parentElement?.getAttribute('data-animated')).toBe('true');
+    const wrapper = screen.getByRole('img').parentElement;
+    expect(wrapper?.classList.contains(artClass('avatar'))).toBe(true);
+    expect(wrapper?.classList.contains(artClass('animated'))).toBe(true);
   });
 });
