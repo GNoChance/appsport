@@ -1,8 +1,8 @@
+import type { CoachId } from '@rune/contracts';
 import type { ArtSvgProps, CoachMode } from './art/art-types';
 import { CoachOmbre } from './art/CoachOmbre';
 import { CoachScribe } from './art/CoachScribe';
 import { CoachSkald } from './art/CoachSkald';
-import type { CoachId } from './art/coach-id';
 import styles from './art.module.css';
 import { useArtId } from './use-art-id';
 import { useColorScheme } from './use-color-scheme';

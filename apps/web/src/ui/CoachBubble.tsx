@@ -1,6 +1,6 @@
+import type { CoachId } from '@rune/contracts';
 import type { ReactNode } from 'react';
 import type { CoachMode } from './art/art-types';
-import type { CoachId } from './art/coach-id';
 import { COACH_NAMES, CoachAvatar } from './CoachAvatar';
 import styles from './voice.module.css';
 

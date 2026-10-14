@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { CoachId } from '@rune/contracts';
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -16,7 +17,6 @@ import {
   useReducedMotion,
 } from '../../src/ui';
 import type { CoachMode, ColorScheme, Rank } from '../../src/ui/art/art-types';
-import type { CoachId } from '../../src/ui/art/coach-id';
 import artStyles from '../../src/ui/art.module.css';
 import { applyTheme } from '../../src/ui/theme/theme';
 import { artIdPrefix } from '../../src/ui/use-art-id';
