@@ -1,5 +1,14 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { type AddressInfo, createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -55,11 +64,46 @@ const inheritedDevVariable = (key: string): boolean =>
   key.startsWith('RUNE_') ||
   ['NODE_ENV', 'APP_ORIGIN', 'HOST', 'PORT'].includes(key);
 
-/** Environnement du test sans les variables de Vitest (que Vite lirait) ni celles de Rune du terminal. */
+/** Dossier personnel du script pendant le test : `os.homedir()` le lit dans HOME (POSIX) ou USERPROFILE (Windows). */
+const fakeHome = (): string => join(tmp, 'home');
+
+/**
+ * Environnement du test sans les variables de Vitest (que Vite lirait) ni celles de Rune du terminal. Le dossier
+ * personnel est isolé dans le dossier temporaire : une écriture sous `homedir()` y reste et le test la voit.
+ */
 function devEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const key of Object.keys(env)) if (inheritedDevVariable(key)) delete env[key];
-  return { ...env, ...extra };
+  return { ...env, HOME: fakeHome(), USERPROFILE: fakeHome(), ...extra };
+}
+
+/** Fichiers et dossiers écrits sous le dossier personnel isolé (aucun si le dossier n'existe pas). */
+const homeEntries = (): string[] =>
+  existsSync(fakeHome()) ? readdirSync(fakeHome(), { recursive: true, encoding: 'utf8' }) : [];
+
+/**
+ * Fichiers du dossier temporaire (base SQLite exclue) qui contiennent ce texte. Seuls leurs chemins sont
+ * rendus : le texte cherché, un code d'invitation, n'apparaît jamais dans un message d'échec.
+ */
+function filesContaining(text: string): string[] {
+  const needle = Buffer.from(text, 'utf8');
+  return readdirSync(tmp, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.startsWith('rune.db'))
+    .map((entry) => join(entry.parentPath, entry.name))
+    .filter((path) => readFileSync(path).includes(needle));
+}
+
+/** Occupe un port sur la première adresse qui accepte l'écoute (::1 peut manquer sans IPv6). */
+async function occupy(port: number, hosts: readonly string[]): Promise<Server> {
+  for (const host of hosts) {
+    const server = createServer();
+    const listening = await new Promise<boolean>((resolve) => {
+      server.once('error', () => resolve(false));
+      server.listen(port, host, () => resolve(true));
+    });
+    if (listening) return server;
+  }
+  throw new Error(`Impossible d'occuper le port ${port} sur ${hosts.join(', ')}`);
 }
 
 /** PID du serveur (tsx watch) et du web (Vite), affichés par le script sur une ligne [dev]. */
@@ -233,7 +277,14 @@ afterEach(async () => {
   const b = blocker;
   blocker = null;
   if (b?.listening) await new Promise<void>((resolve) => b.close(() => resolve()));
-  rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  let written: string[];
+  try {
+    written = homeEntries();
+  } finally {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+  // Rien sous le dossier personnel : RUNE_DATA_DIR est toujours donné, aucun outil n'a à y écrire.
+  expect(written, 'écritures sous le dossier personnel').toEqual([]);
 });
 
 describe('pnpm dev', () => {
@@ -249,7 +300,9 @@ describe('pnpm dev', () => {
     expect(masked()).toMatch(/^\[web\] /m);
     // Le lien vise le web (port de Vite), pas le serveur, et ne s'affiche qu'une fois, sans la ligne
     // « Code » de admin:bootstrap. Il n'est vérifié que par des booléens et des comptes.
-    expect(new RegExp(`http://localhost:${webPort}/invite#`).test(output)).toBe(true);
+    // Le code n'est gardé que dans une variable, jamais affiché.
+    const code = new RegExp(`http://localhost:${webPort}/invite#(\\S+)`).exec(output)?.[1];
+    expect(code !== undefined).toBe(true);
     expect(output.match(/invite#/g)?.length ?? 0).toBe(1);
     expect(/Code : /.test(output)).toBe(false);
     const pids = childPids();
@@ -266,6 +319,9 @@ describe('pnpm dev', () => {
       scriptAlive: false,
     });
     expect(gitStatus()).toBe(before);
+    // Le lien reste dans la console : aucun fichier du dossier temporaire (données, dossier personnel isolé)
+    // ne contient le code. Seuls des chemins s'affichent en cas d'échec.
+    expect(filesContaining(code ?? '')).toEqual([]);
   }, 180_000);
 
   it("relance : ni init ni base refaite ; plus de lien d'invitation une fois le compte créé", async () => {
@@ -302,8 +358,14 @@ describe('pnpm dev', () => {
       });
     };
 
+    const linkCode = (): string | undefined =>
+      new RegExp(`http://localhost:${webPort}/invite#(\\S+)`).exec(output)?.[1];
+    const linkCount = (): number => output.match(/invite#/g)?.length ?? 0;
+
     await launch();
     expect(has('Base initialisée'), masked()).toBe(true);
+    const firstCode = linkCode();
+    expect(firstCode !== undefined && linkCount() === 1, masked()).toBe(true);
     await stop();
     const db = statSync(dbPath);
 
@@ -313,8 +375,10 @@ describe('pnpm dev', () => {
     const again = statSync(dbPath);
     expect(again.ino).toBe(db.ino);
     expect(again.birthtimeMs).toBe(db.birthtimeMs);
-    const code = new RegExp(`http://localhost:${webPort}/invite#(\\S+)`).exec(output)?.[1];
-    expect(code !== undefined, masked()).toBe(true);
+    const code = linkCode();
+    // Un nouveau lien, affiché une seule fois : pas celui du premier lancement (révoqué).
+    expect(code !== undefined && linkCount() === 1, masked()).toBe(true);
+    expect(code === firstCode, masked()).toBe(false);
     const accepted = await fetch(`http://127.0.0.1:${serverPort}/api/invitations/accept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: `http://localhost:${webPort}` },
@@ -425,22 +489,31 @@ describe('pnpm dev', () => {
     });
   }, 180_000);
 
-  it('port déjà pris : message clair, sortie non nulle, aucun dossier créé', async () => {
-    const dataDir = join(tmp, 'donnees');
-    const [serverPort, webPort] = (await freePorts(2)) as [number, number];
-    blocker = createServer();
-    await new Promise<void>((resolve) => blocker?.listen(serverPort, '127.0.0.1', () => resolve()));
-    const proc = startDev({
-      RUNE_DATA_DIR: dataDir,
-      PORT: String(serverPort),
-      RUNE_DEV_ANY_PORT: '1',
-      RUNE_DEV_WEB_PORT: String(webPort),
-    });
-    const code = await exitOf(proc);
-    expect(code).not.toBe(0);
-    expect(output).toContain(`Le port ${serverPort} (serveur) est déjà pris`);
-    expect(existsSync(dataDir)).toBe(false);
-  }, 60_000);
+  // Le port du web est occupé sur ::1 quand la machine l'a : Vite écoute sur `localhost`, souvent ::1.
+  it.each([
+    { role: 'serveur', hosts: ['127.0.0.1'] },
+    { role: 'web', hosts: ['::1', '127.0.0.1'] },
+  ] as const)(
+    'port du $role déjà pris : message clair, sortie non nulle, aucun dossier créé',
+    async ({ role, hosts }) => {
+      const dataDir = join(tmp, 'donnees');
+      const [serverPort, webPort] = (await freePorts(2)) as [number, number];
+      const busyPort = role === 'serveur' ? serverPort : webPort;
+      blocker = await occupy(busyPort, hosts);
+      const proc = startDev({
+        RUNE_DATA_DIR: dataDir,
+        PORT: String(serverPort),
+        RUNE_DEV_ANY_PORT: '1',
+        RUNE_DEV_WEB_PORT: String(webPort),
+      });
+      const code = await exitOf(proc);
+      expect(code).not.toBe(0);
+      expect(masked()).toContain(`Le port ${busyPort} (${role}) est déjà pris`);
+      // Refusé avant tout : ni dossier ni base, donc ni init ni lien d'invitation émis puis révoqué.
+      expect(existsSync(dataDir)).toBe(false);
+    },
+    60_000,
+  );
 
   it.each([
     ['sans le repère .rune-dev', true, 'pas de repère .rune-dev'],
