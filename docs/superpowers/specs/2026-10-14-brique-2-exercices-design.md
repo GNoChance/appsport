@@ -1,6 +1,6 @@
 # Brique 2 · Exercices : spec de conception
 
-> **Statut :** version 2 du 2026-10-14, après relecture par quatre relecteurs (vie privée, cohérence, expérience, testabilité). À valider par le propriétaire.
+> **Statut :** version 3 du 2026-10-14, après relecture par quatre relecteurs (vie privée, cohérence, expérience, testabilité) et une vérification des corrections. À valider par le propriétaire.
 > **Base :** la section [04-exercices](2026-10-06-appsport-design/04-exercices.md) de la spec principale reste l'autorité pour tout ce que ce document ne remplace pas explicitement : schéma des fiches, taxonomie, chaînes, fonctions partagées, chargeur, export, diffusion hors ligne, illustrations et crédits. Ce document fixe les décisions du cadrage du 2026-10-14, les écrans, et ce qui s'ajoute ou change.
 > **Refonte :** les écrans suivent la [spec de la refonte](2026-10-13-refonte-rune-design.md) : jetons, 5 thèmes, boîte à outils, feuilles du bas, mouvement, voix du Système.
 
@@ -42,7 +42,7 @@ Les relectrices sont des **membres** du cercle, invitées comme tout le monde (e
 | `catalog_reviewer` | INTEGER 0/1, défaut 0 | accès à la relecture des exercices |
 | `health_professional` | INTEGER 0/1, défaut 0 | la validation de ce compte compte comme feu vert santé |
 
-- **Drapeau effectif** : un compte est *relecteur* si `catalog_reviewer` = 1 ou `role` = admin ; il est *relecteur santé* si `health_professional` = 1 et qu'il est relecteur.
+- **Drapeau effectif** : un compte est *relecteur* si `catalog_reviewer` = 1 ou `role` = admin. Il est *relecteur santé* si `health_professional` = 1 ET `catalog_reviewer` = 1 ET `role` = member : un admin n'est jamais relecteur santé, même si le drapeau a été coché par un autre admin ou avant une promotion.
 - `role` reste `admin | member` (contrainte CHECK de 0001 inchangée). Migration non cassante : deux `ADD COLUMN … NOT NULL DEFAULT 0 CHECK (… IN (0,1))`.
 - **Catégorie** : C0 admin, comme `role` (spec 03 et 09). Ni le drapeau ni son changement ne sont des données de santé ; c'est une qualification professionnelle déclarée. Base légale : l'accord de la personne, recueilli par l'admin avant de cocher. La personne voit ses propres drapeaux (`/api/me`, Profil › Relecture des exercices) ; ils sont dans son export (colonnes non secrètes de `user`) et effacés avec son compte. La fiche de traitement, la page Confidentialité, 02 R-ROLE-3 et 03 §5 et §13.4 sont mis à jour.
 - **Visibilité** : les autres membres ne voient jamais ces drapeaux. Les autres relectrices ne voient pas qui est relectrice santé : elles voient l'état agrégé « feu vert santé : à jour / manquant / à refaire », sans auteur. Seul l'admin voit qui a donné un feu vert santé.
@@ -73,14 +73,14 @@ Les relectrices sont des **membres** du cercle, invitées comme tout le monde (e
 
   Une transition (`draft → reviewed`, `reviewed → published`…) ne change pas le contenu : elle ne périme donc aucun feu vert.
 - **On valide** une fiche au statut `reviewed` ou `published` seulement (refus `not_reviewable` sinon).
-- **Différentiel** (« ce qui a changé depuis ta validation ») : liste triée des clés de contenu dont la valeur diffère entre la révision de la dernière validation de l'appelant et la fiche courante. `null` si l'appelant n'a jamais validé cette fiche ; `[]` si rien n'a changé. Pour l'admin, le différentiel est calculé depuis le dernier feu vert santé. L'écran montre, pour chaque clé, l'ancienne et la nouvelle valeur.
+- **Différentiel** (« ce qui a changé depuis ta validation ») : liste triée des clés de contenu dont la valeur diffère entre la révision de la dernière validation de l'appelant et la fiche courante. `null` si l'appelant n'a jamais validé cette fiche ; `[]` si rien n'a changé. Pour l'admin, le différentiel est calculé depuis la dernière validation santé qui remplit encore les conditions 1 et 2 (`null` s'il n'y en a pas). L'écran montre, pour chaque clé, l'ancienne et la nouvelle valeur.
 
 ### 3.3 Commentaires
 
-Table `exercise_comment` (STRICT, classe H, C0, `exported: false` dans l'export du catalogue) :
+Table `exercise_comment` (STRICT, classe H, C0 ; déclaration `entityRules` au §6) :
 - `id` TEXT PK ; `exercise_id` → `exercise.id` ; `author_id` → `user.id` ON DELETE SET NULL (affiché « Ancien relecteur ») ; `part` TEXT ; `body` TEXT ; `revision` INTEGER (la `base_revision` envoyée) ; `created_at` ; `resolved_at` NULL ; `resolved_by` → `user.id` ON DELETE SET NULL.
 - `part` ∈ `general`, `name`, `muscles`, `equipment`, `level`, `not_for_minors`, `stressed_joints`, `instructions`, `key_points`, `mistakes`, `safety`, `breathing`, `setup`, `variants`, `illustrations`. Hors liste : 400.
-- `body` : 1 à 1000 caractères après retrait des caractères de contrôle et des caractères d'inversion de sens (U+202A à U+202E, U+2066 à U+2069). Affiché en **texte brut** : ni Markdown, ni HTML, ni lien automatique.
+- `body` : 1 à 1000 caractères après retrait des caractères de contrôle sauf le retour à la ligne (`\n` gardé, `\r\n` ramené à `\n`) et des caractères d'inversion de sens (U+202A à U+202E, U+2066 à U+2069). Affiché en **texte brut** : ni Markdown, ni HTML, ni lien automatique.
 - Un commentaire envoyé sur une révision dépassée est **accepté** (un avis reste utile) et garde sa révision. Tout commentaire ouvert bloque la publication, quelle que soit sa révision.
 - On ne modifie ni ne supprime un commentaire ; « Traité » est idempotent (200, `resolved_at` non réécrit). On peut commenter une fiche de n'importe quel statut sauf `retired`.
 - Ordre d'affichage : ordre de la liste `part`, puis ouverts avant traités, puis `created_at`, puis `id`.
@@ -104,6 +104,7 @@ Les transitions de 04 §8 restent ; voici leurs blocages, dans cet ordre fixe (t
 | Code | Message affiché | S'applique à |
 |---|---|---|
 | `incomplete` | Des champs obligatoires sont vides. | `draft → reviewed` |
+| `invalid_sheet` | La fiche ne passe pas la validation complète (04 §13, critère 1). | `draft → reviewed`, et `PUT` sur une fiche `reviewed` ou `published` |
 | `review_unchecked` | Coche « Consignes et sécurité vérifiées ». | `draft → reviewed` |
 | `minors_unconfirmed` | Confirme le réglage « Déconseillé aux mineurs ». | `draft → reviewed` |
 | `open_comments` | N commentaires ne sont pas traités. | `reviewed → published` |
@@ -113,20 +114,22 @@ Les transitions de 04 §8 restent ; voici leurs blocages, dans cet ordre fixe (t
 | `chain_break` | Retirer cette fiche couperait sa chaîne. | `→ retired` |
 | `catalog_full` | Le catalogue a atteint 300 fiches. | `retired → reviewed` |
 
-- Refus : **422** `{error: 'transition_blocked', blockers: [codes dans l'ordre ci-dessus]}`. Ces codes, ainsi que `revision_conflict`, `transition_blocked`, `self_health_flag` et `not_reviewable`, s'ajoutent à `ApiErrorCode`.
+- Refus : **422** `{error: 'transition_blocked', blockers: [codes dans l'ordre ci-dessus]}` (un `PUT` refusé par `invalid_sheet` répond de même). Les codes de blocage forment une énumération à part, `PublishBlocker`, dans `packages/contracts` ; ils ne sont jamais renvoyés comme `error`.
+- Codes ajoutés à `ApiErrorCode`, avec leur statut : `revision_conflict` 409, `transition_blocked` 422, `not_reviewable` 409, `self_health_flag` 403.
 - **Modifier une fiche `published`** : elle reste publiée (les programmes y renvoient) et les téléphones reçoivent le nouveau contenu. Si elle est sensible et que son feu vert n'est plus à jour, elle entre dans la file « À revalider » et l'admin voit le bandeau « Publiée, feu vert santé à refaire ». Le même cas s'applique à une fiche publiée qui devient sensible après une modification (passage du niveau 1 au niveau 2, par exemple).
 - **Fiches retirées servies** : `GET /api/catalog` ne sert une fiche `retired` que si elle a été publiée un jour (`published_at` non nul). Un brouillon retiré ne quitte jamais le serveur.
 - **Chargeur** (04 §10) : une fiche absente de la base n'est insérée que si son statut est `draft`, sauf pour amorcer une base vide (installation neuve). Dans ce cas, les commentaires, validations et révisions, qui ne sont pas exportés, sont perdus ; les fiches gardent leur statut.
 
 ### 3.7 Version du catalogue
 
-Tout enregistrement ou transition qui touche une fiche `published`, ou qui en fait entrer une dans `published` ou `retired`, recalcule `catalog_version` dans la même transaction et reconstruit depuis la base le bloc servi par `GET /api/catalog` (la base fait foi, 04 §2). Un commentaire, une validation, ou une écriture sur une fiche `draft` ou `reviewed` ne la change pas.
+Tout enregistrement ou transition d'une fiche recalcule `catalog_version` dans la même transaction et reconstruit depuis la base le bloc servi par `GET /api/catalog` (la base fait foi, 04 §2). La version étant une empreinte du contenu servi (fiches `published`, fiches `retired` déjà publiées, manifeste, modèles), elle ne change que si ce contenu change : une écriture sur un brouillon la laisse identique. Un commentaire ou une validation ne déclenche aucun recalcul.
 
 ### 3.8 Files de relecture
 
 | File | Prédicat |
 |---|---|
-| `to_review` | `status` = `draft` ou `reviewed`, et l'appelant n'a pas validé le contenu courant |
+| `to_review` | `status` = `reviewed`, et l'appelant n'a pas validé le contenu courant |
+| `drafts` (« Brouillons à commenter ») | `status` = `draft` ; consultable et commentable, jamais compté par la carte d'accueil |
 | `health_pending` | `status` = `reviewed`, `isSensitive`, et pas de feu vert santé à jour |
 | `revalidate` | `status` = `published`, `isSensitive`, et pas de feu vert santé à jour |
 | `mine` | au moins un commentaire **ouvert** écrit par l'appelant |
@@ -149,7 +152,7 @@ Tout enregistrement ou transition qui touche une fiche `published`, ou qui en fa
 
 - `MeResponse` porte `catalogReviewer` et `healthProfessional` du compte courant ; `MemberSummary` (admin) porte les deux drapeaux.
 - Rien de cette section ne passe par la synchro, `GET /api/catalog`, l'export du catalogue ni le coach.
-- **Export personnel** (spec 03) : il contient en plus les commentaires écrits par la personne et ses validations (fiche, révision, date).
+- **Export personnel** (spec 03) : il contient en plus les commentaires écrits par la personne (`author_id`) et ses validations (`reviewer_id` : fiche, révision, date), par un traitement explicite dans `buildExport` comme pour `gym_history`. C'est une exception déclarée à P-CAT-3 (le C0 n'est pas exporté d'ordinaire), notée dans la spec 03 et la fiche de traitement. Les révisions ne sont pas exportées : elles ne contiennent aucune donnée de la personne.
 - **Suppression de compte** : les quatre clés vers `user` sont en SET NULL ; aucune ligne de ces tables ne garde l'identifiant ; les trois tables sont ajoutées aux jeux de données de `delete.test`.
 - Pas de notification ni d'e-mail ; la carte d'accueil (§4.4) en tient lieu.
 
@@ -166,7 +169,7 @@ Tout enregistrement ou transition qui touche une fiche `published`, ou qui en fa
 - **Liste d'un groupe** (`/exercises/group/:code`) : vignette (première illustration, ou pictogramme neutre du groupe avec `alt=""`), nom, muscles principaux, matériel de la première option faisable (ou de la première option sans lieu), niveau en 3 barres avec le texte « Niveau 1 sur 3, débutant » (visible ou réservé aux lecteurs d'écran). Tri par niveau, puis par nom avec `Intl.Collator('fr', {sensitivity: 'base'})`, puis par `id`.
 - **Recherche** : le filtre « faisable » s'applique aussi aux résultats. Sans résultat : « Aucun exercice ne correspond. » et, si des fiches sont masquées, « N exercices masqués par le filtre Faisable · Les voir ». En profil prudent : « Certains exercices sont masqués par le mode prudent. ». Filtre coupé, un exercice non faisable porte la mention écrite « Pas faisable : <lieu> ».
 - **Ce qu'on voit** : interrupteur activé = `isUsable` (04 §6) avec le matériel du lieu principal ; interrupteur coupé ou sans lieu = `published` et non (`cautious` et `not_for_minors`).
-- **Catalogue pas encore téléchargé** : en ligne, « Le catalogue arrive… » ; hors ligne, « Connecte-toi une fois pour récupérer les exercices. » (voix du Système), à la place des tuiles.
+- **Catalogue pas encore téléchargé** : en ligne, « Le catalogue arrive… » ; hors ligne, « Connecte-toi une fois pour récupérer les exercices. » (voix du Système), à la place du contenu de toute page `/exercises…` (accueil de l'onglet, groupe, fiche ouverte par URL).
 - Cibles tactiles d'au moins 44 × 44 px : tuiles, lignes, interrupteur, onglets de la fiche, liens de variantes, pastilles de filtre, boutons de la relecture.
 
 ### 4.2 Fiche (`/exercises/:id`)
@@ -178,7 +181,7 @@ Tout enregistrement ou transition qui touche une fiche `published`, ou qui en fa
 - **Erreurs** : chaque `mistakes` en « ✕ erreur » puis « ✓ correction », avec les préfixes réservés aux lecteurs d'écran « Erreur : » et « Correction : ».
 - **Variantes** : voisins de chaîne plus facile et plus dur **filtrés par `usableChainSteps`** (un voisin non utilisable n'est pas affiché), `easier_tip` et `harder_tip`, puis jusqu'à 5 remplaçants (`substitutes`). Leur `maxLevel` vient du niveau d'expérience du profil d'entraînement (`maxExerciseLevel`, 04 §3.5 ; 2 si inconnu). Le matériel est celui du lieu principal, ou tout le matériel sans lieu.
 - **Fiche non utilisable ouverte par son URL** (profil prudent et `not_for_minors`) : bandeau « Cet exercice n'est pas proposé avec tes réglages actuels. » et lien vers les remplaçants ; le contenu n'est pas affiché. Une fiche simplement infaisable dans le lieu s'affiche normalement, avec la mention « Pas faisable : <lieu> ».
-- **Fiche retirée** (depuis l'historique) : bandeau « Cet exercice n'est plus proposé. », contenu en lecture, lien « Voir des exercices proches ».
+- **Fiche retirée** (depuis l'historique) : bandeau « Cet exercice n'est plus proposé. », contenu en lecture, lien « Voir des exercices proches » vers ses remplaçants ; s'il n'y en a aucun, le lien est remplacé par « Aucun exercice proche pour l'instant. ».
 - Hors ligne : tout s'affiche dès que le catalogue et les illustrations sont en local (04 §11).
 
 ### 4.3 Groupes musculaires et Progression
@@ -203,22 +206,22 @@ Tout enregistrement ou transition qui touche une fiche `published`, ou qui en fa
 
 ### 4.4 Arrivée des relectrices
 
-- **Carte d'accueil** réservée aux relecteurs : « Relecture : N fiches t'attendent » (N = taille de `to_review` pour l'appelant), qui ouvre la relecture. Elle disparaît quand N = 0.
+- **Carte d'accueil** réservée aux relecteurs : « Relecture : N fiches t'attendent » (N = taille de `to_review` pour l'appelant, plus `health_pending` et `revalidate` pour une relectrice santé), qui ouvre la relecture. Elle ne s'affiche qu'en ligne, après une réponse réussie, sans cache ; hors ligne ou si l'appel échoue, elle est absente. Elle disparaît quand N = 0.
 - **Entrée permanente** : Profil, groupe « Cercle », ligne « Relecture des exercices » (avec Administration pour l'admin). Garde web : `/review…` répond comme une page introuvable pour un non-relecteur, comme `/admin`.
 - **Premier passage** : une feuille du bas « Comment relire », rappelable depuis Aide, explique en une phrase chacun : *version* (chaque modification crée une nouvelle version), *sensible*, *feu vert santé*, *à revalider*, *prête à publier*. L'écran marche aussi sur ordinateur.
 
 ### 4.5 Écran de relecture (`/review/exercises`)
 
 - **Liste** : avancement par lot (§3.8) ; filtres « À relire », « Feu vert santé », « À revalider », « Mes commentaires » avec compteurs ; une ligne par fiche avec ses pastilles (sensible et articulation, commentaires ouverts, validée par toi, à revalider, prête à publier). Pour l'admin seulement, en plus : filtres par type de mouvement et « sans illustration », compteur « N fiches à exporter », compteur des fichiers « à remplacer avant publication », bouton « Exporter le catalogue ».
-- **Fiche** : aperçu identique à la vue membre, plus les valeurs qui décident de la sensibilité écrites en clair (niveau, « Déconseillé aux mineurs : oui/non », articulations sollicitées). Bouton « Commenter » sur chaque partie ; le libellé de chaque onglet porte le nombre de commentaires ouverts (« Erreurs · 1 commentaire »). Le commentaire se rédige dans une feuille du bas avec le compteur « n / 1000 ». Le brouillon reste gardé sur l'appareil jusqu'à l'envoi, et une coupure réseau ne le perd pas.
+- **Fiche** : aperçu identique à la vue membre, plus les valeurs qui décident de la sensibilité écrites en clair (niveau, « Déconseillé aux mineurs : oui/non », articulations sollicitées). Bouton « Commenter » sur chaque partie ; le libellé de chaque onglet porte le nombre de commentaires ouverts (« Erreurs · 1 commentaire »). Le commentaire se rédige dans une feuille du bas avec le compteur « n / 1000 ». Le brouillon est gardé sur l'appareil jusqu'à l'envoi (une clé locale par compte et par fiche), pour qu'une coupure réseau ne le perde pas ; il est effacé à l'envoi, à la déconnexion et à la suppression du compte. C'est la seule donnée de relecture stockée sur l'appareil.
 - **Valider** : feuille du bas de confirmation qui rappelle la version validée ; ensuite, « Fiche suivante » (selon le filtre actif). File vide : « Ta file est vide. Merci ! ».
 - **Admin** : en plus, « Modifier » (formulaire de 04 §8, choix des illustrations compris) et « Publier ». « Publier » reste désactivé tant qu'un blocage existe, avec les messages du §3.6 écrits dessous. Sur un 409, l'écran affiche « La fiche a changé depuis que tu l'as ouverte. », la version courante, et la saisie à reporter.
 
 ## 5. Production du contenu
 
-1. **Étape 0** (04 §8) : guide de style `docs/catalog/style-guide.md` (dont la limite de 120 caractères par entrée de sécurité), glossaire `data/glossary.json`, puis **deux fiches étalons** écrites à la main et relues par les trois relecteurs.
+1. **Étape 0** (04 §8) : guide de style `docs/catalog/style-guide.md` (dont la limite de 120 caractères par entrée de sécurité), glossaire `data/glossary.json`, puis **deux fiches étalons** écrites à la main et relues par l'admin et les relectrices.
 2. **Squelettes du lot A provisoire** (D11, §2), validés par le propriétaire.
-3. **Pilote** : l'API Claude rédige 5 fiches variées (au moins une sensible, une sans matériel, une machine, une à chaîne) ; les trois relecteurs les relisent ; le prompt et le glossaire sont ajustés (`prompt_version` + 1). Avant le pilote, le modèle par défaut et son coût sont revérifiés et notés dans `scripts/exercises/NOTES.md`.
+3. **Pilote** : l'API Claude rédige 5 fiches variées (au moins une sensible, une sans matériel, une machine, une à chaîne) ; l'admin et les relectrices les relisent ; le prompt et le glossaire sont ajustés (`prompt_version` + 1). Avant le pilote, le modèle par défaut et son coût sont revérifiés et notés dans `scripts/exercises/NOTES.md`.
 4. **Suite** (brique 3 et après) : rédaction et relecture du lot A définitif, puis du lot B, puis des lots d'extension.
 5. **Charge** : 8 à 10 minutes par fiche (04 §7), 15 à 20 heures pour le cœur, réparties entre les relecteurs ; toutes les fiches sensibles passent par la relectrice santé.
 6. **Clé API** : workspace Anthropic de développement, distinct de celui du coach. Aucune donnée personnelle envoyée.
@@ -228,7 +231,7 @@ Tout enregistrement ou transition qui touche une fiche `published`, ou qui en fa
 
 - `user` : `catalog_reviewer`, `health_professional` (C0 admin, migration non cassante).
 - `exercise` : `batch` (colonne éditoriale).
-- Nouvelles tables `exercise_comment`, `exercise_validation`, `exercise_revision` : STRICT, classe H, C0, `onUserDelete: set_null`, déclarées dans `entityRules` ; hors export du catalogue ; lignes de la personne dans son export personnel (§3.9).
+- Nouvelles tables `exercise_comment`, `exercise_validation`, `exercise_revision` : STRICT, déclarées dans `entityRules` avec classe H, catégorie C0, `ownerColumn: null`, `exported: false` (l'export personnel des commentaires et validations passe par le traitement explicite du §3.9), `onUserDelete: set_null`. Aucune n'est dans l'export du catalogue.
 - Événement de sécurité `reviewer_flags_changed`.
 - Constantes : `SENSITIVE_JOINTS`, `MUSCLE_GROUPS`, `CATALOG_MAX_SHEETS`, `PUBLISH_BLOCKERS_ORDER`.
 - Fonctions pures, testées une seule fois et appelées par le serveur et l'écran : `contentOf`, `isSensitive`, `healthGreenLight`, `transitionBlockers`, `contentDiff`, `reviewQueues`.
@@ -238,8 +241,8 @@ Tout enregistrement ou transition qui touche une fiche `published`, ou qui en fa
 Les critères de 04 §13 restent exigés, sauf le 9 qui devient : « `GET /api/catalog` ne renvoie ni `draft`, ni `reviewed`, ni brouillon retiré, ni colonne éditoriale (dont `batch`) ; `/review/exercises` et `/api/review/*` refusent un membre ». S'ajoutent :
 
 1. **Droits, par énumération** : un test parcourt toutes les routes enregistrées commençant par `/api/admin/` et attend 403 pour une relectrice et pour un membre ; il parcourt toutes celles de `/api/review/` et attend 403 pour un membre, 401 sans session. Retirer `catalog_reviewer`, ou rétrograder un admin, coupe l'accès dès la requête suivante. Une relectrice qui marque traité le commentaire d'une autre reçoit 403.
-2. **Isolation avec repères** : le test crée d'abord un commentaire, une validation, une révision et des drapeaux contenant des chaînes repères, puis vérifie qu'aucun repère n'apparaît dans `GET /api/catalog`, le pull de synchro d'un autre membre, l'export du catalogue, l'export personnel d'un autre membre et les réponses destinées à une autre relectrice (pour le drapeau santé et l'auteur des feux verts). `pull-leak.test` couvre les trois tables.
-3. **Feu vert** : tableau de cas de `isSensitive` (niveau 2, niveau 3, `not_for_minors`, chacune des 4 articulations, fiche non sensible). Publier une fiche sensible sans feu vert est refusé (`health_validation_missing`, 422). Valider sur la version N, puis passer `draft → reviewed → published` : accepté. Feu vert donné par l'auteur de la dernière modification : non compté. Drapeau retiré après la validation : non compté. Compte supprimé : non compté.
+2. **Isolation avec repères** : le test crée d'abord un commentaire (`body` repère), une révision (`content` repère), une validation et des drapeaux, puis vérifie qu'aucun repère textuel, ni aucune clé `healthProfessional`, `health`, `reviewer_id` ou `catalogReviewer` d'un autre compte, n'apparaît dans `GET /api/catalog`, le pull de synchro d'un autre membre, l'export du catalogue, l'export personnel d'un autre membre et les réponses destinées à une autre relectrice (pour le drapeau santé et l'auteur des feux verts). `pull-leak.test` couvre les trois tables.
+3. **Feu vert** : tableau de cas de `isSensitive` (niveau 2, niveau 3, `not_for_minors`, chacune des 4 articulations, fiche non sensible). Publier une fiche sensible sans feu vert est refusé (`health_validation_missing`, 422). Valider la version N au statut `reviewed`, puis `reviewed → draft → reviewed → published` sans modifier le contenu : accepté. Valider un `draft` : 409 `not_reviewable`. Un admin dont `health_professional` vaut 1 : sa validation n'est pas un feu vert santé. Feu vert donné par l'auteur de la dernière modification : non compté. Drapeau retiré après la validation : non compté. Compte supprimé : non compté.
 4. **Admin et drapeau santé** : l'admin ne peut pas cocher `health_professional` sur lui-même (`self_health_flag`) ; tout changement de drapeau exige le mot de passe et écrit `reviewer_flags_changed`.
 5. **Blocages** : chaque code du §3.6 a son test ; la liste `blockers` respecte l'ordre fixe ; une base périmée donne 409 sans liste de blocages.
 6. **Péremption et différentiel** : modifier le contenu après un feu vert le périme ; le différentiel renvoie exactement les clés de contenu changées (`null` sans validation, `[]` sans changement) ; une fiche publiée modifiée reste servie avec le nouveau contenu, `catalog_version` change, et elle entre dans `revalidate`. Une fiche publiée de niveau 1 passée au niveau 2 entre dans `revalidate`.
