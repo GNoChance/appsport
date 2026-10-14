@@ -160,7 +160,7 @@ describe('ChoiceCard et ChoiceGroup', () => {
     ).toBeTruthy();
   });
 
-  it('description et describedBy ensemble : la carte est décrite par les deux, dans cet ordre', () => {
+  it('description et describedBy ensemble : la carte désactivée garde les deux, description d’abord', () => {
     render(
       <>
         <p id="raison">Ton objectif demande une salle.</p>
@@ -177,12 +177,11 @@ describe('ChoiceCard et ChoiceGroup', () => {
         />
       </>,
     );
-    expect(
-      screen.getByRole('radio', {
-        name: 'À la maison',
-        description: 'Poids du corps et haltères Ton objectif demande une salle.',
-      }),
-    ).toBeTruthy();
+    const radio = screen.getByRole('radio', {
+      name: 'À la maison',
+      description: 'Poids du corps et haltères Ton objectif demande une salle.',
+    });
+    expect((radio as HTMLInputElement).disabled).toBe(true);
   });
 
   it('choix multiple : case à cocher ; onChange au clic, sur la case comme sur la carte', () => {
@@ -337,33 +336,35 @@ describe('Switch', () => {
     expect(sw.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('aria-checked vient du parent : un nouveau checked sans clic est annoncé', () => {
-    const { rerender } = render(<Switch id="s" label="Rappels" checked={false} onChange={() => {}} />);
-    const sw = screen.getByRole('switch', { name: 'Rappels' });
-    expect(sw.getAttribute('aria-checked')).toBe('false');
-    rerender(<Switch id="s" label="Rappels" checked onChange={() => {}} />);
-    expect(sw.getAttribute('aria-checked')).toBe('true');
-    rerender(<Switch id="s" label="Rappels" checked={false} onChange={() => {}} />);
-    expect(sw.getAttribute('aria-checked')).toBe('false');
-  });
-
-  it('parent qui refuse le changement (enregistrement refusé) : aria-checked reste l’état réel', () => {
+  it('aria-checked vient du parent : un checked changé sans clic est annoncé', () => {
     const onChange = vi.fn();
-    function Refuse() {
-      const [on] = useState(false);
-      return <Switch id="r" label="Profil visible" checked={on} onChange={onChange} />;
-    }
-    render(<Refuse />);
-    const sw = screen.getByRole('switch', { name: 'Profil visible' });
+    const { rerender } = render(<Switch id="p" label="Partager" checked={false} onChange={onChange} />);
+    const sw = screen.getByRole('switch', { name: 'Partager' });
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    rerender(<Switch id="p" label="Partager" checked onChange={onChange} />);
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    rerender(<Switch id="p" label="Partager" checked={false} onChange={onChange} />);
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('parent qui refuse le changement : onChange demande true, aria-checked reste l’état réel', () => {
+    const onChange = vi.fn();
+    render(<Switch id="r" label="Synchroniser" checked={false} onChange={onChange} />);
+    const sw = screen.getByRole('switch', { name: 'Synchroniser' });
     fireEvent.click(sw);
-    expect(onChange).toHaveBeenLastCalledWith(true);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(true);
     expect(sw.getAttribute('aria-checked')).toBe('false');
     fireEvent.click(sw);
     expect(onChange).toHaveBeenLastCalledWith(true);
     expect(sw.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('bouton natif de type button sans tabindex forcé (clavier laissé au navigateur) ; cible de 44 px', () => {
+  // Espace et Entrée viennent du <button> natif ; happy-dom ne simule pas l'activation au clavier, ce
+  // test prouve donc seulement la nature du contrôle. La vérification clavier ira dans un E2E quand un
+  // écran rendra un Switch.
+  it('bouton natif de type button, sans tabindex forcé ; clic ; cible d’au moins 44 px', () => {
     const onChange = vi.fn();
     render(<Switch id="v" label="Visible" checked onChange={onChange} />);
     const sw = screen.getByRole('switch', { name: 'Visible', checked: true });
