@@ -1,0 +1,339 @@
+/*
+ * Coquille des écrans connectés (spec refonte §5, maquettes MixSombre / MixClair) : en-tête de l'accueil,
+ * pastille de connexion, barre d'onglets flottante (téléphone), navigation latérale (≥ 900 px), voile du
+ * démarrage. Couleurs : jetons de theme/tokens.css seulement, donc juste dans les 5 thèmes.
+ */
+
+/* Téléphone : la page garde sous elle la place de la barre flottante (68 px, 16 px au-dessus et en dessous). */
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: clip;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+}
+
+.column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 18px;
+  padding-inline-start: max(18px, var(--page-inset-start));
+}
+
+/* En-tête de l'accueil : marque à gauche, pastille et initiale à droite. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 18px 18px 0;
+  padding-inline-start: max(18px, var(--page-inset-start));
+}
+
+/* Logo et mot RUNE : en clair, cadre du logo à l'accent et rune à l'encre (GUIDE). */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  color: var(--text);
+  font-size: 1.0625rem;
+  text-decoration: none;
+  --rune-mark-frame: var(--accent);
+}
+
+.headerEnd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Rond de 36 px de l'initiale, dans une cible de 44 × 44. */
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  text-decoration: none;
+}
+
+.avatar > span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+/* Pastille de connexion : point de 7 px, texte secondaire en 13 px. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pillDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.pillDot[data-tone="online"] {
+  background: var(--success);
+}
+
+.pillDot[data-tone="warning"] {
+  background: var(--warning-text);
+}
+
+/* Bandeau de mise à jour sous l'en-tête, aux marges de la page ; rien quand il n'y a pas de version. */
+.bannerSlot {
+  width: 100%;
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 18px 18px 0;
+  padding-inline-start: max(18px, var(--page-inset-start));
+}
+
+.bannerSlot:empty {
+  display: none;
+}
+
+/*
+ * Barre d'onglets en pilule (68 px, rayon 24, 4 colonnes) posée au-dessus du contenu, sous les feuilles du bas
+ * (z-index 100). Fond de la carte presque opaque et flou derrière ; ombre portée des maquettes en clair.
+ */
+.tabBar {
+  position: fixed;
+  left: 14px;
+  right: 14px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 50;
+  max-width: 560px;
+  height: 68px;
+  margin: 0 auto;
+  padding: 7px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow:
+    0 2px 6px rgb(16 21 31 / 0.08),
+    0 12px 30px rgb(16 21 31 / 0.1);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Pastille de l'onglet actif : une colonne de large, elle glisse jusqu'à l'onglet n° --tab-index. */
+.tabPill {
+  position: absolute;
+  left: 7px;
+  top: 7px;
+  bottom: 7px;
+  width: calc((100% - 26px) / 4);
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  transform: translateX(calc(var(--tab-index, 0) * (100% + 4px)));
+  transition: transform var(--dur-screen) var(--ease);
+}
+
+.tabPill[hidden] {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 17px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.tab[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tab:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Navigation latérale (≥ 900 px) : marque en haut, entrées de 48 px, l'active teintée d'accent. */
+.sideNav {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-4);
+  border-inline-end: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.sideNav .brand {
+  padding-inline: 10px;
+}
+
+.sideList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sideItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  color: var(--text-muted);
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.sideItem[aria-current="page"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .sideItem:hover:not([aria-current="page"]) {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    color: var(--text);
+  }
+}
+
+/* PC : navigation latérale à gauche, contenu centré limité à 960 px, plus de place gardée en bas. */
+@media (min-width: 900px) {
+  .shell[data-wide] {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    padding-bottom: 0;
+  }
+
+  .shell[data-wide] .main,
+  .shell[data-wide] .header,
+  .shell[data-wide] .bannerSlot {
+    max-width: 960px;
+  }
+}
+
+/* Couleurs forcées (contraste élevé) : les teintes disparaissent, l'onglet actif garde un cadre. */
+@media (forced-colors: active) {
+  .tab[aria-current="page"],
+  .sideItem[aria-current="page"] {
+    outline: 2px solid LinkText;
+    outline-offset: -2px;
+  }
+}
+
+/*
+ * Démarrage : voile du fond du thème par-dessus tout, qui ne prend jamais le toucher. Le cadre du logo se
+ * dessine (900 ms), la rune et les repères apparaissent, puis le voile s'efface (fin à 1,45 s).
+ * Longueur du cadre brisé dans le viewBox 512 : 1 288 unités, d'où le tiret de 1 300.
+ */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  pointer-events: none;
+  animation: splash-out 300ms var(--ease) 1150ms forwards;
+}
+
+.splashMark {
+  display: flex;
+  color: var(--text);
+  --rune-mark-frame: var(--accent);
+}
+
+.splashMark g > path:first-child {
+  stroke-dasharray: 1300;
+  animation: splash-draw 900ms var(--ease) 100ms backwards;
+}
+
+.splashMark g > path:nth-child(2) {
+  animation: splash-fade 300ms var(--ease) 700ms backwards;
+}
+
+.splashMark svg > path {
+  animation: splash-fade 400ms var(--ease) 650ms backwards;
+}
+
+@keyframes splash-draw {
+  from {
+    stroke-dashoffset: 1300;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes splash-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes splash-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* Mouvement réduit : la pastille change d'onglet sans glisser (le démarrage, lui, ne s'affiche pas). */
+@media (prefers-reduced-motion: reduce) {
+  .tabPill {
+    transition: none;
+  }
+}

@@ -11,9 +11,30 @@ import {
 } from './register';
 import styles from './UpdateBanner.module.css';
 
+function DownloadIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
+
 /**
- * Bandeau « Nouvelle version disponible » (R-PWA-2). Non fermable (`dismissible` faux, après un 426,
- * R-PWA-5) : pas de « Plus tard », et la consigne pour reprendre la synchronisation.
+ * Bandeau « Nouvelle version disponible » (R-PWA-2), sous l'en-tête (maquette E06) : icône, titre, puis les
+ * actions côte à côte. Non fermable (`dismissible` faux, après un 426, R-PWA-5) : pas de « Plus tard », et la
+ * consigne pour reprendre la synchronisation.
  */
 export function UpdateBannerView(p: {
   show: boolean;
@@ -29,10 +50,15 @@ export function UpdateBannerView(p: {
       data-dismissible={String(p.dismissible)}
       className={p.dismissible ? styles.banner : `${styles.banner} ${styles.forced}`}
     >
-      <p className={styles.text}>
-        <strong>Nouvelle version disponible</strong>
-        {p.dismissible ? null : <span>Mets à jour l'appli pour reprendre la synchronisation.</span>}
-      </p>
+      <div className={styles.head}>
+        <span aria-hidden="true" className={styles.icon}>
+          <DownloadIcon />
+        </span>
+        <p className={styles.text}>
+          <strong>Nouvelle version disponible</strong>
+          {p.dismissible ? null : <span>Mets à jour l'appli pour reprendre la synchronisation.</span>}
+        </p>
+      </div>
       <div className={styles.actions}>
         <Button onClick={p.onUpdate}>Mettre à jour</Button>
         {p.dismissible ? (

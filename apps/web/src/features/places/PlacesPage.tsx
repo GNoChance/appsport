@@ -77,7 +77,7 @@ export function PlacesPage() {
   }
 
   return (
-    <Page title="Lieux" back="/profile">
+    <Page title="Lieux">
       {places.length > 0 ? (
         <ul ref={listRef} className={styles.places}>
           {places.map((place) => (
@@ -191,12 +191,7 @@ function PlaceItem(p: { place: PlaceView; others: PlaceView[]; minor: boolean; o
   return (
     <li className={styles.place}>
       <div className={styles.placeHead}>
-        <Link
-          id={nameId}
-          data-place={place.id}
-          href={`/profile/places/${place.id}`}
-          className={styles.placeName}
-        >
+        <Link id={nameId} data-place={place.id} href={`/places/${place.id}`} className={styles.placeName}>
           {place.name}
         </Link>
         {place.isPrimary ? <span className={styles.badge}>Principal</span> : null}

@@ -1,38 +1,71 @@
-import type { ReactNode } from 'react';
-import { Link } from 'wouter';
+import { type ReactNode, useRef } from 'react';
+import { Link, useLocation } from 'wouter';
 import { useMe } from '../app-services';
-import { ConnectionStatus } from '../features/status/ConnectionStatus';
-import { PendingCounter, RejectedCounter } from '../features/status/PendingCounter';
 import { UpdateBanner } from '../sw/UpdateBanner';
+import { ConnectionPill } from './ConnectionPill';
+import { RuneMark, RuneWordmark } from './Logo';
+import { SideNav } from './SideNav';
+import { useScreenEntrance, useScreenTransition } from './screen-transition';
+import shell from './shell.module.css';
+import { activeTab, TabBar } from './TabBar';
 import styles from './ui.module.css';
+import { useColorScheme } from './use-color-scheme';
+import { useMediaQuery } from './use-media-query';
+
+/** Largeur à partir de laquelle la barre d'onglets laisse la place à la navigation latérale (spec refonte §5). */
+export const WIDE_QUERY = '(min-width: 900px)';
 
 /**
- * Cadre des écrans connectés : bandeau de mise à jour (R-PWA-2), navigation, zone d'état (connexion,
- * éléments en attente et refusés, R-SYN-34), liens vers les pages publiques.
+ * Cadre des écrans connectés (spec refonte §5) : en-tête de l'accueil, bandeau de mise à jour juste dessous
+ * (R-PWA-2), l'écran qui entre selon la navigation (avant, retour, onglet), la barre d'onglets flottante sur
+ * téléphone ou la navigation latérale à partir de 900 px. Les compteurs de synchro sont dans Réglages.
  */
 export function AppShell(p: { children: ReactNode }) {
-  const me = useMe();
+  const [path] = useLocation();
+  const wide = useMediaQuery(WIDE_QUERY);
+  const transition = useScreenTransition(path);
+  const screen = useRef<HTMLElement>(null);
+  useScreenEntrance(screen, path, transition);
   return (
-    <div className={styles.shell}>
-      <UpdateBanner />
-      <header className={styles.header}>
-        <Link href="/" className={styles.brand}>
-          Rune
-        </Link>
-        <nav aria-label="Navigation principale" className={styles.nav}>
-          <Link href="/">Accueil</Link>
-          <Link href="/profile">Profil</Link>
-          {me?.role === 'admin' ? <Link href="/admin/members">Administration</Link> : null}
-        </nav>
-        <div className={styles.status}>
-          <ConnectionStatus />
-          <PendingCounter />
-          <RejectedCounter />
+    <div className={shell.shell} data-wide={wide ? '' : undefined}>
+      {wide ? <SideNav /> : null}
+      <div className={shell.column}>
+        {activeTab(path) === '/' ? <HomeHeader /> : null}
+        <div className={shell.bannerSlot}>
+          <UpdateBanner />
         </div>
-      </header>
-      <main className={styles.main}>{p.children}</main>
-      <PublicLinks />
+        <main ref={screen} className={shell.main} data-screen-transition={transition}>
+          {p.children}
+        </main>
+        <PublicLinks />
+      </div>
+      {wide ? null : <TabBar />}
     </div>
+  );
+}
+
+/**
+ * En-tête de l'accueil (maquettes MixSombre / MixClair) : logo et RUNE vers l'accueil, pastille de connexion,
+ * rond de l'initiale vers le Profil. Les pages internes ont leur Retour et leur titre (`PageHeader`).
+ */
+function HomeHeader() {
+  const me = useMe();
+  const dark = useColorScheme() === 'dark';
+  return (
+    <header className={shell.header}>
+      <Link href="/" className={shell.brand} aria-label="Rune">
+        <RuneMark glow={dark} />
+        <RuneWordmark />
+      </Link>
+      <div className={shell.headerEnd}>
+        <ConnectionPill />
+        {me ? (
+          <Link href="/profile" aria-label="Mon profil" className={shell.avatar}>
+            <span aria-hidden="true">{me.username.charAt(0).toUpperCase()}</span>
+          </Link>
+        ) : null}
+      </div>
+    </header>
   );
 }
 

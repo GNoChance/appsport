@@ -63,7 +63,8 @@ async function renderRejections(seed: (db: AppDb) => Promise<void>) {
   return view;
 }
 
-const counter = () => screen.getByTestId('rejected-counter').getAttribute('data-count');
+/** Refus comptés par le moteur : la source du compteur « N refusé(s) » (Réglages › Synchronisation). */
+const counter = () => String(engine?.getState().rejected);
 const item = (text: string) => {
   const li = screen.getByText(text).closest('li');
   if (!li) throw new Error(`aucun élément pour ${text}`);
@@ -140,7 +141,7 @@ describe('RejectionsPage (R-SYN-18)', () => {
     expect(await screen.findByText('quota_exceeded')).toBeTruthy();
   });
 
-  it("« Ignorer » r-1 → op patch { dismissedAt }, élément retiré, rejected-counter '1'", async () => {
+  it('« Ignorer » r-1 → op patch { dismissedAt }, élément retiré, 1 refus compté', async () => {
     const { db } = await renderRejections(async (db) => {
       await seedMirror(db, 'sync_rejection', [rejection('r-1', 'op-1')]);
       await db.deadletter.put(dead('op-7', 'parent_rejected'));

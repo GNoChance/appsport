@@ -123,7 +123,7 @@ export function GymPage(p: { params: { id: string } }) {
 
   if (!state.loaded) {
     return failure ? (
-      <Page title="Salle" back="/profile/places">
+      <Page title="Salle" back="/places">
         {failure}
       </Page>
     ) : null;
@@ -134,7 +134,7 @@ export function GymPage(p: { params: { id: string } }) {
   const deleted = detail.deletedAt !== null;
 
   return (
-    <Page title={detail.name} back="/profile/places">
+    <Page title={detail.name} back="/places">
       {offline ? <Banner tone="info">{OFFLINE_GYM_TEXT}</Banner> : null}
       {failure}
       {editing && editable ? (

@@ -18,7 +18,7 @@ export function PlaceDetail(p: { params: { id: string } }) {
   if (place === undefined) return null;
   if (place === null) {
     return (
-      <Page title="Lieu" back="/profile/places">
+      <Page title="Lieu" back="/places">
         <p>Lieu introuvable.</p>
       </Page>
     );
@@ -59,7 +59,7 @@ function HomeDetail(p: { place: PlaceView }) {
   }
 
   return (
-    <Page title={p.place.name} back="/profile/places">
+    <Page title={p.place.name} back="/places">
       <p className={styles.meta}>{placeMeta(p.place)}</p>
       <section aria-labelledby={titleId} className={styles.section}>
         <h2 id={titleId}>Matériel</h2>
@@ -80,7 +80,7 @@ function HomeDetail(p: { place: PlaceView }) {
 function GymPlaceDetail(p: { place: PlaceView }) {
   const titleId = useId();
   return (
-    <Page title={p.place.name} back="/profile/places">
+    <Page title={p.place.name} back="/places">
       <p className={styles.meta}>{placeMeta(p.place)}</p>
       <section aria-labelledby={titleId} className={styles.section}>
         <h2 id={titleId}>Matériel</h2>

@@ -43,7 +43,7 @@ test('feuille du bas : ses actions reçoivent le toucher, même par-dessus des c
   await page.goto(`${server.url}/login`);
   await loginViaUi(page, 'camille');
   await page.waitForURL((url) => url.pathname === '/');
-  await page.goto(`${server.url}/profile/places`);
+  await page.goto(`${server.url}/places`);
 
   await page.getByRole('button', { name: 'Ajouter une maison', exact: true }).click();
   const homeCreate = page.getByRole('region', { name: 'Ajouter une maison', exact: true });

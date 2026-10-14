@@ -47,6 +47,17 @@ const ROWS: Row[] = [
   ['/help/', true, null, 'offline', RENDER],
   ['/login/', true, makeMe(), 'online', to('/')],
   ['/onboarding/', true, makeMe(), 'online', to('/')],
+  // Lieux passés sous l'onglet Salles : l'ancienne adresse mène au même chemin sous /places, sans boucle.
+  ['/profile/places', true, makeMe(), 'online', to('/places')],
+  ['/profile/places/', true, makeMe(), 'online', to('/places')],
+  ['/profile/places/p-2', true, makeMe(), 'online', to('/places/p-2')],
+  ['/Profile/Places/P-2', true, makeMe(), 'online', to('/places/P-2')],
+  ['/places', true, makeMe(), 'online', RENDER],
+  ['/places/p-2', true, makeMe(), 'online', RENDER],
+  ['/profile/placesx', true, makeMe(), 'online', RENDER],
+  ['/profile/places', true, null, 'online', to('/login')],
+  ['/profile/places', true, makeMe({ mustChangePassword: true }), 'online', to('/profile')],
+  ['/profile/places', true, notOnboarded(), 'online', to('/onboarding')],
 ];
 
 describe('resolveGuard', () => {
@@ -77,14 +88,18 @@ describe('App', () => {
     await until(() => location() === '/login');
   });
 
-  it("lien 'Administration' pour un admin seulement", async () => {
+  it("plus d'onglet 'Administration' (l'admin passe par Profil) ; /admin/members reste servi à un admin", async () => {
     const first = await renderApp({ path: '/', me: admin() });
-    const link = await screen.findByRole('link', { name: 'Administration' });
-    expect(link.getAttribute('href')).toBe('/admin/members');
-    first.unmount();
-    await renderApp({ path: '/', me: makeMe() });
     await screen.findByText('Bonjour lea');
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull();
+    first.unmount();
+    await renderApp({ path: '/admin/members', me: admin() });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Membres' })).toBeTruthy();
+  });
+
+  it('/profile/places/p-2 → /places/p-2', async () => {
+    const { location } = await renderApp({ path: '/profile/places/p-2' });
+    await until(() => location() === '/places/p-2');
   });
 
   it('rappel annuel du mot de passe pour un admin', async () => {

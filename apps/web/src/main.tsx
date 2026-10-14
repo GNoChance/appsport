@@ -17,6 +17,7 @@ import { bootServiceWorker } from './sw/register';
 import { getSwStatus } from './sw/sw-client';
 import { createSyncEngine } from './sync/engine';
 import { browserTransport } from './sync/transport';
+import { BootSplash } from './ui/BootSplash';
 import { applyTheme, readThemeChoice } from './ui/theme/theme';
 
 // Thème gardé sur l'appareil, posé avant tout rendu (spec refonte §4) ; Auto suit la media query CSS.
@@ -58,6 +59,8 @@ createRoot(root).render(
         <App />
       </ServicesProvider>
     </Router>
+    {/* Logo qui se dessine au premier affichage de la session, par-dessus l'écran sans le retarder. */}
+    <BootSplash />
   </StrictMode>,
 );
 

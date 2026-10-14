@@ -432,7 +432,7 @@ describe('ProfilePage › liens et route', () => {
   it('liens Lieux, Santé, Confidentialité et Réglages', async () => {
     await renderProfile();
     const href = (name: string) => screen.getByRole('link', { name }).getAttribute('href');
-    expect(href('Lieux')).toBe('/profile/places');
+    expect(href('Lieux')).toBe('/places');
     expect(href('Santé')).toBe('/profile/health');
     expect(href('Confidentialité')).toBe('/profile/privacy');
     expect(href('Réglages')).toBe('/settings');

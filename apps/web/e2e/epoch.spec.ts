@@ -145,7 +145,6 @@ test('époque : restauration, nouvelle époque et pull complet sans perte de ses
       .poll(async () => String(await metaValue(page, 'watermark')), SYNC_TIMEOUT)
       .toMatch(new RegExp(`^${epoch2}:`));
     await expect.poll(() => mirroredDaysPerWeek(page), SYNC_TIMEOUT).toBe(3);
-    await expect(page.getByTestId('pending-counter')).toHaveAttribute('data-count', '0');
     expect(await idbGetAll(page, 'outbox')).toEqual([]);
     expect(replays, 'renvoi de retrait (T26) : aucun accord retiré').toEqual([]);
     expect(denied, 'aucune session perdue').toEqual([]);

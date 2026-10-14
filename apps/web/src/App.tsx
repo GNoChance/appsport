@@ -18,6 +18,7 @@ import { HealthReconsentGate } from './features/privacy/HealthReconsentGate';
 import { HealthSection } from './features/privacy/HealthSection';
 import { PrivacySettingsPage } from './features/privacy/PrivacySettingsPage';
 import { ProfilePage } from './features/profile/ProfilePage';
+import { ProgressionPage } from './features/progression/ProgressionPage';
 import { CreditsPage } from './features/public/CreditsPage';
 import { HelpPage } from './features/public/HelpPage';
 import { NotFound } from './features/public/NotFound';
@@ -52,12 +53,19 @@ const isAdminPath = (path: string) => {
   return p === '/admin' || p.startsWith('/admin/');
 };
 
+/**
+ * Anciennes adresses des lieux, passés sous l'onglet Salles : `/profile/places…` mène au même chemin sous
+ * `/places` (la suite, un identifiant par exemple, est gardée telle quelle).
+ */
+const MOVED_PLACES = /^\/profile\/places(\/.*)?$/i;
+
 /** Chemin sans barre finale (`/privacy/` → `/privacy`), `/` gardé. */
 export const normalizePath = (path: string): string => path.replace(/\/+$/, '') || '/';
 
 /**
  * Garde des routes, dans l'ordre : chemin public ; base locale pas encore lue ; session absente ou
- * refusée par le serveur ; mot de passe à changer (R-MDP-1) ; onboarding ; rôle admin (R-ROLE-1).
+ * refusée par le serveur ; mot de passe à changer (R-MDP-1) ; onboarding ; rôle admin (R-ROLE-1) ; anciennes
+ * adresses des lieux.
  */
 export function resolveGuard(i: {
   path: string;
@@ -79,6 +87,8 @@ export function resolveGuard(i: {
   if (!onboarded && path !== '/onboarding') return { kind: 'redirect', to: '/onboarding' };
   if (onboarded && path === '/onboarding') return { kind: 'redirect', to: '/' };
   if (isAdminPath(path) && i.me.role !== 'admin') return { kind: 'not_found' };
+  const moved = MOVED_PLACES.exec(path);
+  if (moved) return { kind: 'redirect', to: `/places${moved[1] ?? ''}` };
   return { kind: 'render' };
 }
 
@@ -100,9 +110,10 @@ function ConnectedRoutes() {
   return (
     <Switch>
       <Route path="/" component={HomePage} />
+      <Route path="/progression" component={ProgressionPage} />
+      <Route path="/places" component={PlacesPage} />
+      <Route path="/places/:id" component={PlaceDetail} />
       <Route path="/profile" component={ProfilePage} />
-      <Route path="/profile/places" component={PlacesPage} />
-      <Route path="/profile/places/:id" component={PlaceDetail} />
       <Route path="/profile/health" component={HealthSection} />
       <Route path="/profile/privacy" component={PrivacySettingsPage} />
       <Route path="/settings" component={SettingsPage} />

@@ -391,7 +391,7 @@ function TrainingSection(p: { me: MeResponse }) {
 }
 
 const LINKS: readonly { href: string; label: string }[] = [
-  { href: '/profile/places', label: 'Lieux' },
+  { href: '/places', label: 'Lieux' },
   { href: '/profile/health', label: 'Santé' },
   { href: '/profile/privacy', label: 'Confidentialité' },
   { href: '/settings', label: 'Réglages' },

@@ -250,12 +250,14 @@ describe('cadres (AppShell, PublicShell)', () => {
     expect(shown.getAttribute('data-dismissible')).toBe('false');
   });
 
-  it('AppShell : le bandeau en premier', async () => {
+  it("AppShell : le bandeau sous l'en-tête de l'accueil, avant le contenu de l'écran", async () => {
     swControllerStore.set(fakeController({ available: true, forced: false }));
     await renderApp({ path: '/' });
     const shown = await screen.findByTestId('update-banner');
-    expect(shown.parentElement?.firstElementChild).toBe(shown);
-    expect(shown.parentElement?.querySelector('header')).not.toBeNull();
+    const header = screen.getByRole('link', { name: 'Mon profil' }).closest('header');
+    const main = screen.getByRole('main');
+    expect(header?.compareDocumentPosition(shown)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(shown.compareDocumentPosition(main)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   // Membre onboardé, hors séance, version en attente : seul le cadre décide. (Un membre en onboarding

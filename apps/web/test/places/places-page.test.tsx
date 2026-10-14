@@ -98,7 +98,7 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
     expect(place('Basic Fit').queryByText('Principal')).toBeNull();
     expect(place('Basic Fit').getByText('Salle · Lyon')).toBeTruthy();
     expect(place('Garage').getByText('Maison')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Garage' }).getAttribute('href')).toBe('/profile/places/p-2');
+    expect(screen.getByRole('link', { name: 'Garage' }).getAttribute('href')).toBe('/places/p-2');
   });
 
   it('« Définir comme principal » → PATCH { isPrimary: true } ; absent sur le principal', async () => {
@@ -455,10 +455,10 @@ describe('PlaceDetail', () => {
 });
 
 describe('routes des lieux', () => {
-  it('/profile/places et /profile/places/:id dans la coquille', async () => {
+  it('/places et /places/:id dans la coquille', async () => {
     const db = createTestLocalDb();
     await seedPlaces(db);
-    await renderApp({ path: '/profile/places', db });
+    await renderApp({ path: '/places', db });
     expect(await screen.findByRole('heading', { level: 1, name: 'Lieux' })).toBeTruthy();
     fireEvent.click(screen.getByRole('link', { name: 'Garage' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Garage' })).toBeTruthy();

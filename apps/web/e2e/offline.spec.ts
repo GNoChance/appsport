@@ -15,7 +15,10 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
   newContext,
 }) => {
   const page = await setupOnboardedAdmin(server, context);
+  // Pastille de connexion : dans l'en-tête de l'accueil seulement (spec refonte §5).
   const connection = page.getByTestId('connection-status');
+  const tab = (name: string) =>
+    page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('link', { name, exact: true });
   const username = page.getByLabel('Pseudo', { exact: true });
   const saveUsername = page.getByRole('button', { name: 'Enregistrer le pseudo', exact: true });
   // Refus de classe E : l'alerte annoncée (`role="alert"`) du formulaire du pseudo, pas un texte quelconque.
@@ -28,17 +31,18 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
     // programmée), l'outbox est vide (pas de cycle à 60 s) et l'événement `offline` n'en lance pas ;
     // seul le cycle déclenché ici peut faire passer l'état à 'offline' dans les 5 s.
     await expect(connection).toHaveAttribute('data-state', 'online');
-    await expect(page.getByTestId('pending-counter')).toHaveAttribute('data-count', '0');
+    expect(await idbGetAll(page, 'outbox')).toEqual([]);
     await context.setOffline(true);
     await triggerForeground(page);
     await expect(connection).toHaveAttribute('data-state', 'offline', { timeout: 5_000 });
-    await page.getByRole('link', { name: 'Profil', exact: true }).click();
+    await tab('Profil').click();
     await expect(username).toHaveValue('camille');
     // Classe E (API en ligne) : refusée hors ligne avec « Nécessite le réseau ».
     await username.fill('camille-sans-reseau');
     await saveUsername.click();
     await expect(usernameAlert).toHaveText('Nécessite le réseau');
     await context.setOffline(false);
+    await tab('Accueil').click();
     await expect(connection).toHaveAttribute('data-state', 'online', { timeout: 15_000 });
   });
 
@@ -59,6 +63,7 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
     // Accélère seulement le retour : les échecs du trou noir ont déjà programmé une reprise (2 s, 4 s…)
     // qui suffirait à repasser 'online'. La preuve du déclencheur est à l'étape précédente.
     await triggerForeground(page);
+    await tab('Accueil').click();
     await expect(connection).toHaveAttribute('data-state', 'online', { timeout: 15_000 });
   });
 
@@ -69,6 +74,7 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
     await loginViaUi(other, 'camille');
     await expect(other).toHaveURL(`${server.url}/`);
 
+    await tab('Profil').click();
     await username.fill('camille2');
     const [renamed] = await Promise.all([
       page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith('/api/me')),

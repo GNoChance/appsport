@@ -1,7 +1,10 @@
-import { useSyncState } from '../../app-services';
 import type { ConnectionState } from '../../sync/engine';
-import styles from './status.module.css';
 
+/**
+ * Libellés de l'état de connexion tel que le moteur de synchro l'a constaté (résultat des appels et sonde
+ * `/api/health`, R-SYN-30), jamais `navigator.onLine`. Affichés par la pastille de l'en-tête (`ConnectionPill`),
+ * qui lit la même source que les écrans qui répondent « Nécessite le réseau » : `useSyncState().connection`.
+ */
 export const CONNECTION_LABELS: Record<ConnectionState, string> = {
   online: 'En ligne',
   offline: 'Hors ligne',
@@ -11,15 +14,14 @@ export const CONNECTION_LABELS: Record<ConnectionState, string> = {
   account_deleted: 'Compte supprimé',
 };
 
-/**
- * État de connexion tel que le moteur de synchro l'a constaté (résultat des appels et sonde
- * `/api/health`, R-SYN-30) ; annoncé poliment quand il change.
- */
-export function ConnectionStatus() {
-  const { connection } = useSyncState();
-  return (
-    <span data-testid="connection-status" data-state={connection} role="status" className={styles.connection}>
-      {CONNECTION_LABELS[connection]}
-    </span>
-  );
-}
+/** Ton du point de la pastille : vert en ligne, avertissement quand il faut agir, gris sinon. */
+export type ConnectionTone = 'online' | 'warning' | 'muted';
+
+export const CONNECTION_TONES: Record<ConnectionState, ConnectionTone> = {
+  online: 'online',
+  offline: 'muted',
+  unknown: 'muted',
+  unauthenticated: 'warning',
+  protocol_unsupported: 'warning',
+  account_deleted: 'warning',
+};

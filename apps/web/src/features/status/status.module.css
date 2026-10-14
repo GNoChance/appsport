@@ -42,11 +42,7 @@
   justify-self: start;
 }
 
-/* Compteurs de la zone d'état (R-SYN-34). */
-.connection {
-  font-weight: 600;
-}
-
+/* Compteurs de synchro (R-SYN-34). */
 .counter:empty {
   display: none;
 }

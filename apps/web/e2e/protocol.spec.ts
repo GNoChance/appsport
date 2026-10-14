@@ -52,13 +52,8 @@ test("426 : file d'envoi gardée, bandeau non fermable, mise à jour vers B puis
     await triggerForeground(page);
     await expect(connection).toHaveAttribute('data-state', 'online', { timeout: 15_000 });
     await expect.poll(outboxIds, { timeout: 15_000 }).toEqual([]);
-    await expect(page.getByTestId('pending-counter')).toHaveAttribute('data-count', '0');
     // L'opération factice vise une ligne sync_rejection inexistante : le serveur la refuse.
     const deadletter = await deadletterIds();
     expect(deadletter).toEqual([op.opId]);
-    await expect(page.getByTestId('rejected-counter')).toHaveAttribute(
-      'data-count',
-      String(deadletter.length),
-    );
   });
 });
