@@ -88,36 +88,40 @@ describe('décor de page (spec refonte §4 : lignes et marge du Carnet, fond nui
   });
 });
 
-describe('composants de base : lisibles à toutes les tailles et en contraste élevé', () => {
-  it('bouton block : pleine largeur sur téléphone seulement, largeur propre au-delà (spec refonte §6)', () => {
+describe('composants de base : tailles d’écran, gros texte, contraste élevé (spec refonte §6)', () => {
+  it('bouton block : pleine largeur sur téléphone, largeur propre (240 px au moins) au-delà', () => {
     expect(rule('.block')?.get('width')).toBe('100%');
     const wide = declarationsOf(base(), '.block', '(min-width: 600px)');
     expect(wide?.get('width')).toBe('auto');
-    expect(px(wide?.get('min-width'))).toBeGreaterThanOrEqual(240);
+    expect(wide?.get('min-width')).toBe('240px');
   });
 
-  it('champ en lecture seule : l’attribut readonly seul, pas :read-only (qui prend aussi désactivé, case, radio)', () => {
-    expect(rule('.field input:read-only')).toBeNull();
-    expect(rule('.field input[readonly]')?.get('border-style')).toBe('dashed');
+  it('champ en lecture seule : visé par l’attribut readonly, pas par :read-only (désactivé, case, curseur)', () => {
+    const readonly = rule('.field input[readonly]');
+    expect(readonly?.get('border-style')).toBe('dashed');
+    expect(readonly?.get('color')).toBe('var(--text-muted)');
+    expect(read('ui.module.css')).not.toMatch(/:read-only/);
   });
 
-  it('valeur d’une ligne de liste : elle passe à la ligne au lieu d’être coupée par des points de suspension', () => {
+  it('valeur d’une ligne de liste : passe à la ligne au lieu d’être coupée par des points de suspension', () => {
     const value = rule('.rowValue');
+    expect(value?.get('white-space')).toBeUndefined();
     expect(value?.get('text-overflow')).toBeUndefined();
-    expect(value?.get('white-space')).not.toBe('nowrap');
+    expect(value?.get('overflow')).toBeUndefined();
     expect(value?.get('overflow-wrap')).toBe('anywhere');
+    expect(rule('.row')?.get('min-height')).toBe('56px');
   });
 
-  it('interrupteur en couleurs forcées : piste bordée, bouton et état activé dessinés en couleurs système', () => {
-    const media = '(forced-colors: active)';
-    expect(declarationsOf(base(), '.switchTrack', media)?.get('border')).toBe('1px solid ButtonText');
-    const thumb = declarationsOf(base(), '.switchThumb', media);
-    expect(thumb?.get('forced-color-adjust')).toBe('none');
-    expect(thumb?.get('background')).toBe('ButtonText');
-    const on = declarationsOf(base(), '.switch[aria-checked="true"] .switchTrack', media);
-    expect(on?.get('forced-color-adjust')).toBe('none');
-    expect(on?.get('background')).toBe('Highlight');
-    const onThumb = declarationsOf(base(), '.switch[aria-checked="true"] .switchThumb', media);
-    expect(onThumb?.get('background')).toBe('HighlightText');
+  it('interrupteur en couleurs forcées : rail cerné, bouton dessiné, rail plein quand il est activé', () => {
+    const forced = (selector: string) => declarationsOf(base(), selector, '(forced-colors: active)');
+    expect(forced('.switchTrack')?.get('border')).toBe('1px solid ButtonText');
+    // Bordure prise sur le rembourrage (border-box) : le bouton de 24 px tient toujours dans le rail.
+    expect(forced('.switchTrack')?.get('padding')).toBe('2px');
+    expect(forced('.switchThumb')?.get('forced-color-adjust')).toBe('none');
+    expect(forced('.switchThumb')?.get('background')).toBe('ButtonText');
+    const onTrack = forced('.switch[aria-checked="true"] .switchTrack');
+    expect(onTrack?.get('forced-color-adjust')).toBe('none');
+    expect(onTrack?.get('background')).toBe('Highlight');
+    expect(forced('.switch[aria-checked="true"] .switchThumb')?.get('background')).toBe('HighlightText');
   });
 });

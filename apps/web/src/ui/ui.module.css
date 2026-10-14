@@ -721,6 +721,7 @@
 /* Couleurs forcées (contraste élevé Windows) : les fonds disparaissent, on redessine piste et bouton. */
 @media (forced-colors: active) {
   .switchTrack {
+    padding: 2px;
     border: 1px solid ButtonText;
   }
 
