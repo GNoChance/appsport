@@ -19,33 +19,43 @@ const ART = { ombre: CoachOmbre, skald: CoachSkald, scribe: CoachScribe } as con
 /**
  * Avatar d'un coach, nommé (« Le Skald », « Le Skald, mode nutrition »), en version claire ou sombre selon le
  * thème effectif. `animated` : animation de repos discrète (respiration, clignement, visière), éteinte sous
- * mouvement réduit. Le dessin est entier dès le premier rendu : l'animation ne cache jamais rien.
+ * mouvement réduit ; `true` boucle (grand avatar de présentation), `'brief'` joue deux cycles puis se pose
+ * (avatar à côté d'un texte). Le dessin est entier dès le premier rendu : l'animation ne cache jamais rien.
+ * `decorative` : à côté du nom écrit du coach, l'avatar est caché aux lecteurs d'écran, sans rôle ni nom,
+ * pour que le nom ne soit pas lu deux fois.
  */
 export function CoachAvatar({
   coach,
   mode = 'training',
   size,
   animated = false,
+  decorative = false,
 }: {
   coach: CoachId;
   mode?: CoachMode;
   size: number;
-  animated?: boolean;
+  animated?: boolean | 'brief';
+  decorative?: boolean;
 }) {
   const idPrefix = useArtId(`coach-${coach}`);
   const scheme = useColorScheme();
   const Art = ART[coach];
   const name = mode === 'nutrition' ? `${COACH_NAMES[coach]}, mode nutrition` : COACH_NAMES[coach];
   const svg: ArtSvgProps = {
-    role: 'img',
-    'aria-label': name,
+    ...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': name }),
     width: size,
     height: size,
     className: styles.art,
   };
   return (
     <span
-      className={[styles.avatar, animated ? styles.animated : null].filter(Boolean).join(' ')}
+      className={[
+        styles.avatar,
+        animated ? styles.animated : null,
+        animated === 'brief' ? styles.brief : null,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       data-animated={animated}
     >
       <Art mode={mode} scheme={scheme} idPrefix={idPrefix} {...svg} />

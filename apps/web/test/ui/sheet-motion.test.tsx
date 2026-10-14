@@ -108,7 +108,8 @@ describe('BottomSheet (spec refonte §6 : poignée, fond assombri, focus piégé
     render(<LogoutScreen />);
     fireEvent.click(screen.getByRole('button', { name: 'Ouvrir' }));
     const first = screen.getByRole('button', { name: 'Cet appareil' });
-    const last = screen.getByRole('button', { name: 'Tous mes appareils' });
+    // Sans actions, la feuille porte son propre bouton « Fermer », dernier élément atteignable.
+    const last = screen.getByRole('button', { name: 'Fermer' });
     last.focus();
     fireEvent.keyDown(document, { key: 'Tab' });
     expect(document.activeElement).toBe(first);
@@ -136,7 +137,7 @@ describe('BottomSheet (spec refonte §6 : poignée, fond assombri, focus piégé
           </button>
           <BottomSheet open={open} title="Se déconnecter" onClose={() => setOpen(false)}>
             <button type="button" onClick={() => setOpen(false)}>
-              Fermer
+              Terminer
             </button>
           </BottomSheet>
         </>
@@ -146,8 +147,69 @@ describe('BottomSheet (spec refonte §6 : poignée, fond assombri, focus piégé
     const trigger = screen.getByRole('button', { name: 'Ouvrir' });
     trigger.focus();
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole('button', { name: 'Fermer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Terminer' }));
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Titre' }));
+  });
+
+  it('sans actions : un bouton « Fermer » intégré la ferme au toucher, le focus revient au déclencheur', () => {
+    const onClose = vi.fn();
+    render(<LogoutScreen onClose={onClose} />);
+    const trigger = screen.getByRole('button', { name: 'Ouvrir' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Fermer' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('avec actions : pas de bouton « Fermer » ajouté, les actions de l’appelant suffisent', () => {
+    render(
+      <BottomSheet open title="Se déconnecter" onClose={() => {}} actions={<Button>Annuler</Button>}>
+        <p>Texte</p>
+      </BottomSheet>,
+    );
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).queryByRole('button', { name: 'Fermer' })).toBeNull();
+    expect(within(sheet).getByRole('button', { name: 'Annuler' })).toBeTruthy();
+  });
+
+  it('actions={null} : l’appelant renonce au bouton « Fermer » (il offre sa propre sortie)', () => {
+    render(
+      <BottomSheet open title="Choisir" onClose={() => {}} actions={null}>
+        <button type="button">Choix</button>
+      </BottomSheet>,
+    );
+    expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Fermer' })).toBeNull();
+  });
+
+  it('un champ qui prend le focus à l’ouverture (autoFocus) le garde, et le focus revient au déclencheur', () => {
+    function Screen() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Renommer
+          </button>
+          <BottomSheet open={open} title="Renommer" onClose={() => setOpen(false)}>
+            <label>
+              Nom
+              {/* biome-ignore lint/a11y/noAutofocus: cas éprouvé, un champ qui prend le focus à l'ouverture */}
+              <input autoFocus />
+            </label>
+          </BottomSheet>
+        </>
+      );
+    }
+    render(<Screen />);
+    const trigger = screen.getByRole('button', { name: 'Renommer' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const input = screen.getByRole('textbox', { name: 'Nom' });
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 });
 
@@ -205,18 +267,50 @@ describe('RankBadge (pierres runiques, spec refonte §9)', () => {
 });
 
 describe('CountUp (les compteurs défilent, spec refonte §7)', () => {
+  /** Chiffre affiché (caché aux lecteurs d'écran) et texte lu par les lecteurs d'écran. */
+  const visibleOf = (root: HTMLElement) => root.querySelector('[aria-hidden="true"]')?.textContent;
+  const spokenOf = (root: HTMLElement) => {
+    const copy = root.cloneNode(true) as HTMLElement;
+    for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+    return copy.textContent;
+  };
+
   it('mouvement réduit : affiche directement la valeur dès le premier rendu', () => {
     phoneSettings(REDUCE);
     expect(renderToString(<CountUp to={3} />)).toContain('3');
-    render(<CountUp to={3} />);
-    expect(screen.getByText('3')).toBeTruthy();
+    const { container } = render(<CountUp to={3} />);
+    expect(visibleOf(container)).toBe('3');
+    expect(spokenOf(container)).toBe('3');
   });
 
   it('sinon : part de 0 et arrive à la valeur', async () => {
     phoneSettings();
     expect(renderToString(<CountUp to={3} />)).toContain('0');
-    render(<CountUp to={3} duration={50} />);
-    await waitFor(() => expect(screen.getByText('3')).toBeTruthy());
+    const { container } = render(<CountUp to={3} duration={50} />);
+    await waitFor(() => expect(visibleOf(container)).toBe('3'));
+  });
+
+  it('pendant le défilement, le lecteur d’écran lit déjà la valeur finale, jamais un chiffre de passage', () => {
+    phoneSettings();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const { container } = render(<CountUp to={12} />);
+    expect(visibleOf(container)).toBe('0');
+    expect(spokenOf(container)).toBe('12');
+  });
+
+  it('durée nulle ou négative : la valeur tout de suite, ni NaN ni boucle sans fin', () => {
+    phoneSettings();
+    const frames = vi.fn(() => 1);
+    vi.stubGlobal('requestAnimationFrame', frames);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    for (const duration of [0, -100, Number.NaN]) {
+      const { container, unmount } = render(<CountUp to={7} duration={duration} />);
+      expect(visibleOf(container), String(duration)).toBe('7');
+      expect(container.textContent, String(duration)).not.toContain('NaN');
+      unmount();
+    }
+    expect(frames).not.toHaveBeenCalled();
   });
 });
 
@@ -307,6 +401,17 @@ describe('CoachAvatar (spec refonte §8 : avatars générés, identifiants préf
   });
 });
 
+describe('CoachAvatar décoratif (à côté d’un nom écrit)', () => {
+  it('decorative : caché aux lecteurs d’écran, sans rôle ni nom, pour ne pas lire le nom deux fois', () => {
+    const { container } = render(<CoachAvatar coach="skald" size={40} decorative />);
+    const svg = container.querySelector('svg');
+    expect(svg?.getAttribute('aria-hidden')).toBe('true');
+    expect(svg?.hasAttribute('role')).toBe(false);
+    expect(svg?.hasAttribute('aria-label')).toBe(false);
+    expect(screen.queryByRole('img', { hidden: true })).toBeNull();
+  });
+});
+
 describe('CoachBubble (textes écrits à l’avance, étiquetés, jamais « en train d’écrire »)', () => {
   it('avatar de 40 px, nom du coach, étiquette et texte', () => {
     render(
@@ -317,8 +422,30 @@ describe('CoachBubble (textes écrits à l’avance, étiquetés, jamais « en t
     expect(screen.getByText('Le Scribe')).toBeTruthy();
     expect(screen.getByText("Aujourd'hui")).toBeTruthy();
     expect(screen.getByText('Un plan simple pour commencer.')).toBeTruthy();
-    const avatar = screen.getByRole('img', { name: 'Le Scribe', hidden: true });
-    expect(avatar.getAttribute('width')).toBe('40');
+    // L'avatar est décoratif : le nom est écrit dans la bulle, il n'est lu qu'une fois.
+    expect(screen.queryByRole('img', { hidden: true })).toBeNull();
+    const avatar = document.querySelector('svg');
+    expect(avatar?.getAttribute('aria-hidden')).toBe('true');
+    expect(avatar?.getAttribute('width')).toBe('40');
+  });
+
+  it('animation de repos bornée : quelques cycles puis l’avatar se pose (WCAG 2.2.2)', async () => {
+    phoneSettings();
+    const { container } = render(
+      <CoachBubble coach="skald" label="Aperçu">
+        Texte.
+      </CoachBubble>,
+    );
+    await act(async () => {});
+    const wrapper = container.querySelector('[data-animated]');
+    expect(wrapper?.getAttribute('data-animated')).toBe('brief');
+    const art = parseCssBlocks(read('art.module.css'));
+    const brief = declarationsOf(art, '.animated.brief [data-g]');
+    const count = Number(brief?.get('animation-iteration-count'));
+    expect(count).toBeGreaterThanOrEqual(1);
+    expect(count).toBeLessThanOrEqual(3);
+    // Pas de retour brusque à la fin : la dernière image reste posée.
+    expect(brief?.get('animation-fill-mode')).toBe('forwards');
   });
 
   it('mode nutrition : le nom le dit', () => {
@@ -332,16 +459,35 @@ describe('CoachBubble (textes écrits à l’avance, étiquetés, jamais « en t
 });
 
 describe('SystemPanel (la voix du Système)', () => {
-  it('section nommée par son titre, étiquette « [ SYSTÈME ] »', () => {
+  it('groupe nommé par son titre (pas un repère de page), étiquette « [ SYSTÈME ] »', () => {
     render(
       <SystemPanel title="Éveil terminé.">
         <p>Ta progression commence au rang E.</p>
       </SystemPanel>,
     );
-    const panel = screen.getByRole('region', { name: 'Éveil terminé.' });
-    expect(within(panel).getByText('[ SYSTÈME ]')).toBeTruthy();
-    expect(within(panel).getByRole('heading', { name: 'Éveil terminé.' })).toBeTruthy();
+    expect(screen.queryByRole('region')).toBeNull();
+    const panel = screen.getByRole('group', { name: 'Éveil terminé.' });
+    const label = panel.querySelector('[data-system-label]') as HTMLElement;
+    expect(label.textContent).toBe('[ SYSTÈME ]');
+    expect(within(panel).getByRole('heading', { name: 'Éveil terminé.', level: 2 })).toBeTruthy();
     expect(within(panel).getByText('Ta progression commence au rang E.')).toBeTruthy();
+  });
+
+  it('crochets tus : le lecteur d’écran lit « SYSTÈME », pas la ponctuation', () => {
+    render(<SystemPanel title="T">x</SystemPanel>);
+    const label = screen.getByRole('group').querySelector('[data-system-label]') as HTMLElement;
+    const copy = label.cloneNode(true) as HTMLElement;
+    for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+    expect(copy.textContent?.trim()).toBe('SYSTÈME');
+  });
+
+  it('headingLevel : le titre suit le plan de la page (h3 dans une feuille ou une section en h2)', () => {
+    render(
+      <SystemPanel title="Quête remplie." headingLevel={3}>
+        x
+      </SystemPanel>,
+    );
+    expect(screen.getByRole('heading', { name: 'Quête remplie.', level: 3 })).toBeTruthy();
   });
 
   it('ton succès distinct du ton par défaut', () => {
@@ -353,8 +499,8 @@ describe('SystemPanel (la voix du Système)', () => {
         </SystemPanel>
       </>,
     );
-    const a = screen.getByRole('region', { name: 'A' });
-    const b = screen.getByRole('region', { name: 'B' });
+    const a = screen.getByRole('group', { name: 'A' });
+    const b = screen.getByRole('group', { name: 'B' });
     expect(a.getAttribute('data-tone')).toBe('default');
     expect(b.getAttribute('data-tone')).toBe('success');
   });

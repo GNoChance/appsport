@@ -155,6 +155,15 @@
   }
 }
 
+/*
+ * Animation brève (bulle du coach, à côté du texte) : deux cycles, puis l'avatar se pose sur sa dernière image,
+ * sans retour brusque. Seul le grand avatar de présentation boucle (WCAG 2.2.2).
+ */
+.animated.brief [data-g] {
+  animation-iteration-count: 2;
+  animation-fill-mode: forwards;
+}
+
 /* Mouvement réduit (spec refonte §7) : avatars immobiles, dessinés en entier. */
 @media (prefers-reduced-motion: reduce) {
   .animated [data-g] {

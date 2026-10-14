@@ -7,7 +7,8 @@ import styles from './voice.module.css';
 /**
  * Bulle du coach : avatar animé de 40 px et texte écrit à l'avance, étiqueté « Aujourd'hui », « Aperçu » ou
  * « Message d'accueil » (spec refonte §8). Le texte est là d'emblée : ni frappe simulée, ni « en train
- * d'écrire ». L'avatar est tu (le nom est écrit dans la bulle).
+ * d'écrire ». L'avatar est décoratif (le nom est écrit dans la bulle) et son animation de repos est brève :
+ * quelques cycles, puis il se pose à côté du texte.
  */
 export function CoachBubble(p: {
   coach: CoachId;
@@ -19,8 +20,8 @@ export function CoachBubble(p: {
   const name = mode === 'nutrition' ? `${COACH_NAMES[p.coach]} · Nutrition` : COACH_NAMES[p.coach];
   return (
     <div className={styles.bubbleRow} data-mode={mode}>
-      <span className={styles.bubbleAvatar} aria-hidden="true">
-        <CoachAvatar coach={p.coach} mode={mode} size={40} animated />
+      <span className={styles.bubbleAvatar}>
+        <CoachAvatar coach={p.coach} mode={mode} size={40} animated="brief" decorative />
       </span>
       <div className={styles.bubble}>
         <div className={styles.bubbleHead}>

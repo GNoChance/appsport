@@ -1,21 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
+import styles from './ui.module.css';
 import { useReducedMotion } from './use-reduced-motion';
 
 /** Courbe de sortie proche de cubic-bezier(.2,.8,.2,1) : vite au départ, posée à l'arrivée. */
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
 
 /**
- * Compteur qui défile jusqu'à `to` (spec refonte §7), en entiers. Sous mouvement réduit, affiche
- * directement `to` dès le premier rendu. Une nouvelle valeur repart de celle affichée.
+ * Compteur qui défile jusqu'à `to` (spec refonte §7), en entiers. Sous mouvement réduit, ou avec une durée
+ * nulle, négative ou non finie, affiche directement `to` dès le premier rendu. Une nouvelle valeur repart de
+ * celle affichée. Les chiffres de passage sont cachés aux lecteurs d'écran, qui lisent toujours `to` : aucune
+ * information ne passe uniquement par l'animation, et une région live n'annonce pas chaque image.
  */
 export function CountUp({ to, duration = 900 }: { to: number; duration?: number }) {
   const reduced = useReducedMotion();
-  const [shown, setShown] = useState(() => (reduced ? to : 0));
+  const instant = reduced || !Number.isFinite(duration) || duration <= 0;
+  const [shown, setShown] = useState(() => (instant ? to : 0));
   const current = useRef(shown);
   current.current = shown;
 
   useEffect(() => {
-    if (reduced || typeof requestAnimationFrame !== 'function') {
+    if (instant || typeof requestAnimationFrame !== 'function') {
       setShown(to);
       return;
     }
@@ -31,7 +35,12 @@ export function CountUp({ to, duration = 900 }: { to: number; duration?: number 
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [to, duration, reduced]);
+  }, [to, duration, instant]);
 
-  return <>{shown}</>;
+  return (
+    <>
+      <span aria-hidden="true">{shown}</span>
+      <span className={styles.visuallyHidden}>{to}</span>
+    </>
+  );
 }
