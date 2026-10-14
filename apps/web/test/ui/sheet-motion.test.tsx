@@ -615,8 +615,11 @@ describe('CoachBubble (textes écrits à l’avance, étiquetés, jamais « en t
       </CoachBubble>,
     );
     expect(screen.queryByRole('img', { name: 'Le Scribe' })).toBeNull();
-    const avatar = screen.getByRole('img', { name: 'Le Scribe', hidden: true });
-    expect(avatar.closest('[aria-hidden="true"]')).not.toBeNull();
+    // Avatar décoratif (T4-F16) : ni rôle ni nom, même dans l'arbre caché, et tu par aria-hidden.
+    expect(screen.queryByRole('img', { name: 'Le Scribe', hidden: true })).toBeNull();
+    const avatar = document.querySelector('svg');
+    expect(avatar).not.toBeNull();
+    expect(avatar?.closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it('texte entier dès le premier rendu : ni frappe simulée, ni indicateur « en train d’écrire »', () => {
