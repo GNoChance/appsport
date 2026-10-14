@@ -503,7 +503,11 @@ describe('ListGroup et ListRow', () => {
 
   it('ligne lien avec onClick : le clic lance onClick puis navigue, sans devenir un bouton', () => {
     const memory = memoryLocation({ path: '/profile', record: true });
-    const markSeen = vi.fn();
+    /** Adresses déjà visitées au moment où onClick tourne. */
+    const seenFrom: string[][] = [];
+    const markSeen = vi.fn(() => {
+      seenFrom.push([...(memory.history ?? [])]);
+    });
     render(
       <Router hook={memory.hook}>
         <ListGroup>
@@ -513,6 +517,7 @@ describe('ListGroup et ListRow', () => {
     );
     fireEvent.click(screen.getByRole('link', { name: 'Réglages' }));
     expect(markSeen).toHaveBeenCalledTimes(1);
+    expect(seenFrom).toEqual([['/profile']]);
     expect(memory.history).toEqual(['/profile', '/settings']);
     expect(screen.queryByRole('button')).toBeNull();
   });
