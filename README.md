@@ -10,7 +10,12 @@ Rune est une application web installable (PWA) de suivi de musculation, auto-hé
 
 > Rune portait un autre nom de code pendant le cadrage. Tout s'appelle désormais Rune : le dépôt, les paquets (`@rune/…`), le serveur et les scripts. Seuls `docs/superpowers/` et `docs/research/` gardent l'ancien nom, par historique : y lire « rune » partout où un identifiant porte l'ancien nom.
 
-> **Statut : brique 1 (socle) codée, refonte visuelle en cours.** Le socle est fait et relu : comptes sur invitation, onboarding, PWA hors ligne, synchronisation, administration, déploiement, sauvegardes et procédures. Il reçoit en ce moment sa refonte aux couleurs de Rune : thèmes, nouvelle navigation, choix du coach, onglet Progression. **Pas de mise en production avant la fin des cinq briques.** Les spécifications sont dans [`docs/superpowers/specs/`](docs/superpowers/specs/) : la [spec principale](docs/superpowers/specs/2026-10-06-appsport-design.md) et la [spec de la refonte](docs/superpowers/specs/2026-10-13-refonte-rune-design.md).
+> **Statut au 14 octobre 2026 : brique 1 (socle) codée, refonte visuelle à mi-parcours, brique 2 spécifiée.** Le socle est fait et relu : comptes sur invitation, onboarding, PWA hors ligne, synchronisation, administration, déploiement, sauvegardes et procédures.
+>
+> - **Refonte aux couleurs de Rune** : renommage complet, thèmes et polices, logo et icônes, boîte à outils, feuilles du bas, avatars des coachs, rangs en pierre, coquille avec la barre d'onglets, coach côté serveur, décisions de confidentialité et commande `pnpm dev` sont codés, relus et fusionnés. Restent les écrans (choix du coach, onboarding, accueil et Progression, espace Profil, salles, administration, pages d'accès) et la relecture finale.
+> - **Brique 2 (exercices)** : [spec](docs/superpowers/specs/2026-10-14-brique-2-exercices-design.md) et [plan d'implémentation](docs/superpowers/plans/2026-10-14-brique-2-exercices.md) validés ; le code commence après la refonte.
+>
+> **Pas de mise en production avant la fin des cinq briques.** Les spécifications sont dans [`docs/superpowers/specs/`](docs/superpowers/specs/) : la [spec principale](docs/superpowers/specs/2026-10-06-appsport-design.md), la [spec de la refonte](docs/superpowers/specs/2026-10-13-refonte-rune-design.md) et la [spec de la brique 2](docs/superpowers/specs/2026-10-14-brique-2-exercices-design.md).
 
 ## Ce que fera l'app
 
@@ -55,14 +60,14 @@ Les fichiers du logo sont dans [`docs/brand/`](docs/brand/).
 
 ## Feuille de route
 
-| # | Brique | Contenu |
-|---|--------|---------|
-| 0 | Vision et architecture | Choix techniques, hébergement, modèle de données |
-| 1 | Socle | Comptes sur invitation, onboarding, PWA, déploiement, puis la refonte Rune : thèmes, navigation, choix du coach, Progression en avant-goût |
-| 2 | Exercices | Fiches débutant rédigées en français (brouillon IA, relecture humaine), illustrations, recherche par matériel |
-| 3 | Programmes et séances | Modèles de programmes, séance en cours, historique, records, progression RPG |
-| 4 | Coach IA | Conversation avec le coach choisi, conseils personnalisés, ajustement des programmes |
-| 5 | Nutrition | Repères du jour, idées de repas, sans gluten et végétarien, pas du jour |
+| # | Brique | Contenu | État |
+|---|--------|---------|------|
+| 0 | Vision et architecture | Choix techniques, hébergement, modèle de données | Fait |
+| 1 | Socle | Comptes sur invitation, onboarding, PWA, déploiement, puis la refonte Rune : thèmes, navigation, choix du coach, Progression en avant-goût | Socle fait ; refonte à mi-parcours |
+| 2 | Exercices | Un cœur d'environ 120 fiches débutant puis des lots jusqu'à 300, rédigées en français (brouillon IA, relecture à plusieurs avec feu vert santé sur les exercices sensibles), illustrations, onglet Exercices par groupe musculaire | Spec et plan validés |
+| 3 | Programmes et séances | Modèles de programmes, séance en cours, historique, records, progression RPG | À venir |
+| 4 | Coach IA | Conversation avec le coach choisi, conseils personnalisés, ajustement des programmes | À venir |
+| 5 | Nutrition | Repères du jour, idées de repas, sans gluten et végétarien, pas du jour | À venir |
 
 Chaque brique suit le même cycle : spécification, plan d'implémentation, puis code relu. La mise en production vient après la brique 5.
 
