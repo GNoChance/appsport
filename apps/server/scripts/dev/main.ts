@@ -14,11 +14,12 @@ import {
   usersFromDbStats,
 } from './plan';
 import { isPortBusy } from './ports';
-import { type Command, interruptTree, killTree, runCapture, spawnPrefixed } from './processes';
+import { type Command, type DevChild, interruptTree, killTree, runCapture, spawnPrefixed } from './processes';
+import { createServerWatch, parseServerStatus } from './server-status';
 import { supervise } from './supervisor';
 
 // `pnpm dev` : base et premier admin au premier lancement, puis le serveur (tsx watch) et le web (Vite)
-// ensemble, sorties préfixées ; Ctrl+C ou l'arrêt de l'un arrête tout.
+// ensemble, sorties préfixées ; Ctrl+C, l'échec du premier démarrage du serveur ou l'arrêt du web arrête tout.
 
 const SERVER_DIR = fileURLToPath(new URL('../../', import.meta.url));
 const REPO_ROOT = join(SERVER_DIR, '..', '..');
@@ -112,11 +113,42 @@ async function main(): Promise<number> {
 
   const color: NodeJS.ProcessEnv =
     process.stdout.isTTY && process.env.FORCE_COLOR === undefined ? { FORCE_COLOR: '1' } : {};
-  const server = spawnPrefixed('serveur', {
-    args: [TSX_CLI, 'watch', '--clear-screen=false', 'src/main.ts'],
-    cwd: SERVER_DIR,
-    env: { ...serverEnv, ...color },
-  });
+  // `tsx watch` survit à l'arrêt du serveur : les lignes de service de `server-entry.ts` disent s'il a démarré.
+  const failedAtStart = Promise.withResolvers<number>();
+  const watchServer = createServerWatch();
+  const watcher = spawnPrefixed(
+    'serveur',
+    {
+      args: [TSX_CLI, 'watch', '--clear-screen=false', 'scripts/dev/server-entry.ts'],
+      cwd: SERVER_DIR,
+      env: { ...serverEnv, ...color },
+    },
+    (line) => {
+      const status = parseServerStatus(line);
+      if (status === null) return true;
+      const event = watchServer(status);
+      if (event === 'failed-at-start' && status.kind === 'exit') failedAtStart.resolve(status.code);
+      if (event === 'crashed') {
+        log(
+          "Le serveur s'est arrêté en erreur : il redémarrera à la prochaine modification. Le web reste lancé.",
+        );
+      }
+      if (event === 'restarted') log('Le serveur est reparti.');
+      return false;
+    },
+  );
+  const server: DevChild = {
+    ...watcher,
+    // Échec au premier démarrage : rien ne le relancera sans modification, tout s'arrête.
+    exited: Promise.race([
+      watcher.exited,
+      failedAtStart.promise.then(async (code) => {
+        fail("Le serveur n'a pas pu démarrer : il faut corriger l'erreur ci-dessus, puis relancer pnpm dev.");
+        await killTree(watcher);
+        return code;
+      }),
+    ]),
+  };
   const web = spawnPrefixed('web', {
     args: [VITE_BIN, '--configLoader', 'runner', '--port', String(settings.webPort), '--strictPort'],
     cwd: WEB_DIR,

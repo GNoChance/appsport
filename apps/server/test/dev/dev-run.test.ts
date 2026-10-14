@@ -1,10 +1,11 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { type AddressInfo, createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { PRIVACY_POLICY_VERSION } from '@rune/contracts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isPortBusy } from '../../scripts/dev/ports';
 
@@ -165,6 +166,92 @@ describe('pnpm dev', () => {
     );
     expect(gitStatus()).toBe(before);
   }, 180_000);
+
+  it("relance : ni init ni base refaite ; plus de lien d'invitation une fois le compte créé", async () => {
+    const before = gitStatus();
+    const dataDir = join(tmp, 'donnees');
+    const dbPath = join(dataDir, 'rune.db');
+    const serverPort = await freePort();
+    const webPort = await freePort();
+    const env = { RUNE_DATA_DIR: dataDir, PORT: String(serverPort), RUNE_DEV_WEB_PORT: String(webPort) };
+    // Booléens et sortie masquée : ni lien ni code dans un message d'échec.
+    const has = (text: string): boolean => output.includes(text);
+    const launch = async (): Promise<void> => {
+      output = '';
+      startDev(env);
+      await waitFor('santé du serveur', async () => {
+        const res = await fetch(`http://127.0.0.1:${serverPort}/api/health`);
+        return res.status === 200;
+      });
+    };
+    const stop = async (): Promise<void> => {
+      if (child) await killTree(child, 'SIGINT');
+      await waitFor(
+        'ports libérés',
+        async () => !(await isPortBusy(serverPort)) && !(await isPortBusy(webPort)),
+        { timeoutMs: 15_000, scriptAlive: false },
+      );
+    };
+
+    await launch();
+    expect(has('Base initialisée'), masked()).toBe(true);
+    await stop();
+    const db = statSync(dbPath);
+
+    // Deuxième lancement, toujours sans compte : pas d'init, même base, un nouveau lien.
+    await launch();
+    expect(has('Base initialisée'), masked()).toBe(false);
+    const again = statSync(dbPath);
+    expect(again.ino).toBe(db.ino);
+    expect(again.birthtimeMs).toBe(db.birthtimeMs);
+    const code = new RegExp(`http://localhost:${webPort}/invite#(\\S+)`).exec(output)?.[1];
+    expect(code !== undefined, masked()).toBe(true);
+    const accepted = await fetch(`http://127.0.0.1:${serverPort}/api/invitations/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: `http://localhost:${webPort}` },
+      body: JSON.stringify({
+        code,
+        username: 'proprietaire',
+        password: 'tortue verte du jardin potager',
+        termsVersion: PRIVACY_POLICY_VERSION,
+      }),
+    });
+    expect(accepted.status).toBe(201);
+    await stop();
+
+    // Troisième lancement : le compte existe, donc ni admin:bootstrap ni lien.
+    await launch();
+    expect(has('/invite#'), masked()).toBe(false);
+    expect(has('Base initialisée'), masked()).toBe(false);
+    await stop();
+    expect(gitStatus()).toBe(before);
+  }, 240_000);
+
+  it("le serveur échoue au démarrage : tout s'arrête seul, sortie non nulle, ports libérés", async () => {
+    // Adresse de documentation (RFC 5737), jamais locale : init, db:stats et admin:bootstrap passent, les ports
+    // sondés sur la boucle locale sont libres, seule l'écoute du serveur échoue (EADDRNOTAVAIL).
+    const serverPort = await freePort();
+    const webPort = await freePort();
+    const proc = startDev({
+      RUNE_DATA_DIR: join(tmp, 'donnees'),
+      HOST: '192.0.2.1',
+      PORT: String(serverPort),
+      RUNE_DEV_WEB_PORT: String(webPort),
+    });
+    const code = await Promise.race([
+      exitOf(proc),
+      new Promise<'toujours lancé'>((resolve) => setTimeout(() => resolve('toujours lancé'), 60_000)),
+    ]);
+    expect(code, masked()).not.toBe('toujours lancé');
+    expect(code).not.toBe(0);
+    expect(code).not.toBeNull();
+    expect(output.includes("Le serveur n'a pas pu démarrer"), masked()).toBe(true);
+    await waitFor(
+      'ports libérés',
+      async () => !(await isPortBusy(serverPort)) && !(await isPortBusy(webPort)),
+      { timeoutMs: 15_000, scriptAlive: false },
+    );
+  }, 120_000);
 
   it('port déjà pris : message clair, sortie non nulle, aucun dossier créé', async () => {
     const dataDir = join(tmp, 'donnees');

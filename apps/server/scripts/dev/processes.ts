@@ -46,15 +46,16 @@ export function runCapture(cmd: Command): Promise<{ code: number | null; stdout:
 /**
  * Lance `node <args>` en continu, sorties préfixées par `[label]`. Sous POSIX, l'enfant a son propre groupe
  * pour qu'un signal atteigne tous ses sous-processus ; sous Windows, il reste dans la console (Ctrl+C l'atteint).
+ * `keepOut` voit chaque ligne de la sortie standard et peut la retirer de l'affichage.
  */
-export function spawnPrefixed(label: string, cmd: Command): DevChild {
+export function spawnPrefixed(label: string, cmd: Command, keepOut?: (line: string) => boolean): DevChild {
   const proc = spawn(process.execPath, cmd.args, {
     cwd: cmd.cwd,
     env: cmd.env,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: !WINDOWS,
   });
-  const out = createLinePrefixer(`[${label}]`, (text) => process.stdout.write(text));
+  const out = createLinePrefixer(`[${label}]`, (text) => process.stdout.write(text), keepOut);
   const err = createLinePrefixer(`[${label}]`, (text) => process.stderr.write(text));
   proc.stdout.on('data', (d: Buffer) => out.push(d.toString()));
   proc.stderr.on('data', (d: Buffer) => err.push(d.toString()));

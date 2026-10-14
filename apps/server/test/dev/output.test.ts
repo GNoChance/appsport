@@ -31,4 +31,17 @@ describe('createLinePrefixer', () => {
     createLinePrefixer('[web]', write).push('\n\n');
     expect(written).toEqual(['[web] \n', '[web] \n']);
   });
+
+  it('retire les lignes refusées par le filtre, sans toucher aux autres', () => {
+    const { written, write } = collect();
+    const seen: string[] = [];
+    const p = createLinePrefixer('[serveur]', write, (line) => {
+      seen.push(line);
+      return line !== 'cachée';
+    });
+    p.push('a\r\ncachée\r\nb');
+    p.end();
+    expect(written).toEqual(['[serveur] a\n', '[serveur] b\n']);
+    expect(seen).toEqual(['a', 'cachée', 'b']);
+  });
 });
