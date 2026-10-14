@@ -87,3 +87,37 @@ describe('décor de page (spec refonte §4 : lignes et marge du Carnet, fond nui
     expect(nuit?.has('--page-inset-start')).toBe(false);
   });
 });
+
+describe('composants de base : lisibles à toutes les tailles et en contraste élevé', () => {
+  it('bouton block : pleine largeur sur téléphone seulement, largeur propre au-delà (spec refonte §6)', () => {
+    expect(rule('.block')?.get('width')).toBe('100%');
+    const wide = declarationsOf(base(), '.block', '(min-width: 600px)');
+    expect(wide?.get('width')).toBe('auto');
+    expect(px(wide?.get('min-width'))).toBeGreaterThanOrEqual(240);
+  });
+
+  it('champ en lecture seule : l’attribut readonly seul, pas :read-only (qui prend aussi désactivé, case, radio)', () => {
+    expect(rule('.field input:read-only')).toBeNull();
+    expect(rule('.field input[readonly]')?.get('border-style')).toBe('dashed');
+  });
+
+  it('valeur d’une ligne de liste : elle passe à la ligne au lieu d’être coupée par des points de suspension', () => {
+    const value = rule('.rowValue');
+    expect(value?.get('text-overflow')).toBeUndefined();
+    expect(value?.get('white-space')).not.toBe('nowrap');
+    expect(value?.get('overflow-wrap')).toBe('anywhere');
+  });
+
+  it('interrupteur en couleurs forcées : piste bordée, bouton et état activé dessinés en couleurs système', () => {
+    const media = '(forced-colors: active)';
+    expect(declarationsOf(base(), '.switchTrack', media)?.get('border')).toBe('1px solid ButtonText');
+    const thumb = declarationsOf(base(), '.switchThumb', media);
+    expect(thumb?.get('forced-color-adjust')).toBe('none');
+    expect(thumb?.get('background')).toBe('ButtonText');
+    const on = declarationsOf(base(), '.switch[aria-checked="true"] .switchTrack', media);
+    expect(on?.get('forced-color-adjust')).toBe('none');
+    expect(on?.get('background')).toBe('Highlight');
+    const onThumb = declarationsOf(base(), '.switch[aria-checked="true"] .switchThumb', media);
+    expect(onThumb?.get('background')).toBe('HighlightText');
+  });
+});
