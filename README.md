@@ -68,10 +68,27 @@ Chaque brique suit le même cycle : spécification, plan d'implémentation, puis
 
 ## Lancer Rune en local (sans Docker)
 
-Il faut Node 24 et pnpm 10. Les commandes ci-dessous sont pour PowerShell, sous Windows ; les données vont dans un dossier hors du dépôt.
+Il faut Node 24 et pnpm 10. Depuis la racine du dépôt, dans PowerShell ou Git Bash :
 
 ```powershell
 pnpm install
+pnpm dev
+```
+
+`pnpm dev` lance ensemble le serveur sur http://localhost:3000 et le web sur http://localhost:5173. Il faut ouvrir http://localhost:5173 : Vite y fait passer `/api` vers le serveur. Les sorties sont préfixées `[serveur]` et `[web]`. Le serveur redémarre à chaque modification de `apps/server/src`, `packages/contracts/src` ou `packages/domain/src`, et le web se recharge tout seul. Ctrl+C arrête les deux. Si l'un des deux s'arrête en erreur, l'autre est arrêté aussi.
+
+- **Les données de dev** sont hors du dépôt, dans le dossier `rune-data-dev` du dossier personnel (`$HOME\rune-data-dev`). La variable `RUNE_DATA_DIR` en choisit un autre. Au premier lancement, `pnpm dev` crée le dossier, la sentinelle `.rune-volume` et la base ; ensuite, il ne refait rien.
+- **Le lien d'invitation** du premier admin s'affiche dans la console, sur les lignes `[dev]`, tant qu'aucun compte n'existe. Il n'est écrit nulle part ailleurs. Chaque lancement en donne un nouveau, et l'ancien ne marche plus. La date de naissance du compte est factice (`1990-01-01`, ou `RUNE_DEV_BIRTH_DATE`).
+- **Pour repartir de zéro**, il faut arrêter `pnpm dev` puis supprimer le dossier `rune-data-dev`.
+- **Les ports 3000 et 5173** doivent être libres : sinon, `pnpm dev` le dit et s'arrête. Le proxy de Vite vise toujours le port 3000.
+- **Les variables** déjà définies gagnent sur les valeurs de dev (`APP_ORIGIN`, `PORT`, `HOST`, `RUNE_PUBLIC_DIR`, `RUNE_CONTENT_DIR`).
+- **Le service worker** n'existe pas en dev. Si un ancien service worker reste enregistré sur `localhost:5173` (un build servi sur ce port), il faut le désinscrire dans les outils du navigateur (Application, Service workers).
+
+### Comme en production
+
+Pour tester l'appli installable (build du web et service worker), il faut le build et le serveur seul, dans un autre dossier de données. Les commandes ci-dessous sont pour PowerShell, sous Windows.
+
+```powershell
 pnpm --filter @rune/web build
 
 $Data = "$HOME\rune-data"

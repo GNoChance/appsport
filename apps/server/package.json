@@ -8,6 +8,7 @@
     "./testing": "./test/support/index.ts"
   },
   "scripts": {
+    "dev": "node --import tsx scripts/dev/main.ts",
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --root ../.. --project server"
