@@ -46,6 +46,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  sessionStorage.clear();
 });
 
 describe('applyKillSwitchIfNeeded (R-PWA-6)', () => {
@@ -86,6 +87,43 @@ describe('applyKillSwitchIfNeeded (R-PWA-6)', () => {
     expect(await applyKillSwitchIfNeeded(KILL, { serviceWorker: f.container, caches, reload })).toBe(false);
     expect(reload).not.toHaveBeenCalled();
     expect(info).not.toHaveBeenCalled();
+  });
+
+  it('le SW a fait le ménage sans joindre cette page, encore contrôlée → rechargée une fois, sans boucle', async () => {
+    // Course réelle (E2E kill-switch) : le SW nettoie pendant la navigation, quand l'ancien document est parti et
+    // le nouveau pas encore prêt ; son navigate ne vise personne, et la page servie par lui resterait sur ce build.
+    const f = createFakeSwContainer({ registrations: 0 });
+    f.setController(true);
+    const caches = createFakeCacheStorage();
+    await caches.open(LOCAL_DB_MARKER_CACHE);
+    const reload = vi.fn();
+    const env = { serviceWorker: f.container, caches, reload };
+    expect(await applyKillSwitchIfNeeded(KILL, env)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledTimes(1);
+    // Même onglet, toujours contrôlé (navigateur qui garderait le SW désenregistré) : pas de second rechargement.
+    expect(await applyKillSwitchIfNeeded(KILL, env)).toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('page contrôlée, stockage de session refusé → rechargée une fois quand même', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('refusé');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('refusé');
+    });
+    const f = createFakeSwContainer({ registrations: 0 });
+    f.setController(true);
+    const reload = vi.fn();
+    expect(
+      await applyKillSwitchIfNeeded(KILL, {
+        serviceWorker: f.container,
+        caches: createFakeCacheStorage(),
+        reload,
+      }),
+    ).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('deuxième passage après le rechargement → plus rien à faire, pas de boucle', async () => {

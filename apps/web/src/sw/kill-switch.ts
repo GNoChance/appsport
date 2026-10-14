@@ -5,7 +5,7 @@ import type { SwContainerLike } from './register';
 
 /** Navigateur que l'interrupteur d'urgence touche ; le vrai par défaut, factice dans les tests. */
 export interface KillSwitchEnv {
-  serviceWorker?: Pick<SwContainerLike, 'getRegistrations'>;
+  serviceWorker?: Pick<SwContainerLike, 'getRegistrations' | 'controller'>;
   caches?: CacheStorage;
   reload?: () => void;
 }
@@ -38,6 +38,27 @@ export async function probeHealth(transport: SyncTransport): Promise<HealthRespo
   }
 }
 
+/** Rechargement de l'onglet déjà fait parce qu'il restait contrôlé (garde contre une boucle). */
+const CONTROLLED_RELOAD_KEY = 'rune.kill-switch-reload';
+/** Repli quand le stockage de session est refusé : une fois par chargement de la page. */
+let controlledReloadDone = false;
+
+/**
+ * Vrai la première fois seulement, dans cet onglet : le rechargement d'une page encore contrôlée ne se
+ * répète pas, même si un navigateur gardait le SW désenregistré aux commandes après lui.
+ */
+function firstControlledReload(): boolean {
+  try {
+    if (sessionStorage.getItem(CONTROLLED_RELOAD_KEY) === '1') return false;
+    sessionStorage.setItem(CONTROLLED_RELOAD_KEY, '1');
+    return true;
+  } catch {
+    if (controlledReloadDone) return false;
+    controlledReloadDone = true;
+    return true;
+  }
+}
+
 const doomedCache = (name: string) =>
   name.startsWith(SHELL_CACHE_PREFIX) || name.startsWith(ILLUSTRATIONS_CACHE_PREFIX);
 
@@ -59,9 +80,10 @@ async function anyDone(tasks: readonly (() => Promise<boolean>)[]): Promise<bool
 /**
  * Interrupteur d'urgence côté page (R-PWA-6), au démarrage : si `swKill`, désenregistre tout SW, vide les
  * caches `shell-*` et `illustrations-*` (ni le marqueur `rune-meta`, ni un cache inconnu, ni jamais
- * IndexedDB), puis recharge la page depuis le réseau. Recharge une seule fois et seulement si quelque chose
- * a été retiré : le SW a pu faire le ménage avant (T36), et la page rechargée ne trouve plus rien, ce qui
- * évite la boucle. Rend `true` si la page est rechargée.
+ * IndexedDB), puis recharge la page depuis le réseau. Recharge une seule fois : si quelque chose a été retiré,
+ * ou si le SW a fait le ménage avant (T36) sans pouvoir recharger cette page, encore contrôlée par lui (une fois
+ * par onglet). La page rechargée ne trouve plus rien et n'est plus contrôlée, ce qui évite la boucle. Rend
+ * `true` si la page est rechargée.
  */
 export async function applyKillSwitchIfNeeded(
   health: HealthResponse,
@@ -79,7 +101,11 @@ export async function applyKillSwitchIfNeeded(
     ? await anyDone(names.filter(doomedCache).map((n) => () => storage.delete(n)))
     : false;
 
-  if (!unregistered && !deleted) return false;
+  // Le SW a pu tout retirer pendant la navigation, quand l'ancien document était parti et celui-ci pas encore
+  // prêt : son rechargement n'a visé aucune fenêtre. Servie par lui (contrôlée), la page resterait sur ce build.
+  if (!unregistered && !deleted && (serviceWorker?.controller == null || !firstControlledReload())) {
+    return false;
+  }
   // Trace pour le diagnostic sur téléphone (R-TST-4, P8) : sinon ce rechargement unique passe inaperçu.
   console.info("[rune] interrupteur d'urgence : service worker et caches retirés, rechargement");
   reload();
