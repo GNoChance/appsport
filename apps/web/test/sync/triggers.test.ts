@@ -30,6 +30,8 @@ beforeEach(() => {
     start: () => {},
     stop: () => {},
     sessionOpened: () => {},
+    reportOffline: () => {},
+    reportReachable: () => {},
   };
 });
 afterEach(() => {

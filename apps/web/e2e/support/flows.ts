@@ -1,5 +1,6 @@
 import { type BrowserContext, expect, type Page } from '@playwright/test';
 import { EXPERIENCE_LABELS, GOAL_LABELS, PRESETS } from '@rune/contracts';
+import { ONBOARDING_COMPLETED_EVENT } from '../../src/app-events';
 import { emulateStandalone, requireServiceWorker, waitForController } from './pwa';
 import { bootstrapAdmin, type E2EServer } from './server';
 
@@ -70,7 +71,14 @@ export async function completeOnboardingViaUi(
   await expect(page.getByTestId('offline-ready')).toHaveAttribute('data-state', 'ready', {
     timeout: READY_TIMEOUT_MS,
   });
+  // La garde mène à l'accueil dès la réponse du serveur, mais « Commencer » y mène encore après le pull qui
+  // suit : un geste fait entre les deux serait annulé. L'événement de fin, émis juste avant, marque la fin.
+  await page.evaluate((name) => {
+    const done = () => Object.assign(window, { e2eOnboardingCompleted: true });
+    window.addEventListener(name, done, { once: true });
+  }, ONBOARDING_COMPLETED_EVENT);
   await button(page, 'Commencer').click();
+  await page.waitForFunction(() => 'e2eOnboardingCompleted' in window, null, { timeout: READY_TIMEOUT_MS });
   await page.waitForURL((url) => url.pathname === '/');
 }
 

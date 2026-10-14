@@ -26,6 +26,24 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
 
   // Pas de navigation sous `setOffline` : WebKit y fait échouer même une navigation servie par le SW
   // (« WebKit encountered an internal error »). Le rechargement à froid hors ligne passe par l'étape suivante.
+  await test.step('refus de classe E : la pastille dit « Hors ligne » sans attendre un cycle', async () => {
+    // Spec refonte §5, une seule source : la dernière synchro a réussi (aucune reprise programmée), l'outbox
+    // est vide (pas de cycle à 60 s), ni premier plan ni événement `offline` n'en lancent ; seul le refus de
+    // classe E peut faire passer la pastille à 'offline'.
+    await expect(connection).toHaveAttribute('data-state', 'online');
+    expect(await idbGetAll(page, 'outbox')).toEqual([]);
+    await tab('Profil').click();
+    await expect(username).toHaveValue('camille');
+    await context.setOffline(true);
+    await username.fill('camille-hors-ligne');
+    await saveUsername.click();
+    await expect(usernameAlert).toHaveText('Nécessite le réseau');
+    await tab('Accueil').click();
+    await expect(connection).toHaveAttribute('data-state', 'offline', { timeout: 5_000 });
+    await context.setOffline(false);
+    await expect(connection).toHaveAttribute('data-state', 'online', { timeout: 15_000 });
+  });
+
   await test.step('réseau coupé (context.setOffline)', async () => {
     // Preuve du déclencheur « premier plan » (R-SYN-29) : la dernière synchro a réussi (aucune reprise
     // programmée), l'outbox est vide (pas de cycle à 60 s) et l'événement `offline` n'en lance pas ;

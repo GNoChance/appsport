@@ -103,7 +103,8 @@ export type FakeSyncEngine = SyncEngine & {
 
 /**
  * Moteur de synchro factice : enregistre les déclencheurs, état modifiable par `set`.
- * `sessionOpened()` remet `connection` à 'unknown', comme le moteur réel.
+ * `sessionOpened()` remet `connection` à 'unknown', comme le moteur réel ; `reportOffline()` et
+ * `reportReachable()` n'y changent rien (le test pilote l'état ; le moteur réel est vu avec `realSync`).
  */
 export function createFakeSyncEngine(initial: Partial<SyncState> = {}): FakeSyncEngine {
   let state: SyncState = {
@@ -152,6 +153,8 @@ export function createFakeSyncEngine(initial: Partial<SyncState> = {}): FakeSync
       engine.sessionsOpened += 1;
       engine.set({ connection: 'unknown' });
     },
+    reportOffline() {},
+    reportReachable() {},
   };
   return engine;
 }

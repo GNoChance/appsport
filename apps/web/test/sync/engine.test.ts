@@ -496,6 +496,99 @@ describe('session perdue : synchro en pause jusqu’à une nouvelle session (R-S
   });
 });
 
+describe('requêtes en ligne (classe E) : même verdict que les écrans « Nécessite le réseau » (spec refonte §5)', () => {
+  it('reportOffline : « offline » tout de suite, puis une sonde le confirme et programme les reprises', async () => {
+    makeEngine().start();
+    await idle();
+    expect(engine.getState().connection).toBe('online');
+    server.fault = 'hang';
+    engine.reportOffline();
+    expect(engine.getState().connection).toBe('offline');
+    await until(() => count('GET /api/health') === 2);
+    await vi.advanceTimersByTimeAsync(4000);
+    await idle();
+    expect(engine.getState().connection).toBe('offline');
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(count('GET /api/health')).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(() => count('GET /api/health') === 3);
+  });
+
+  it('reportOffline alors que le serveur répond : la sonde rétablit « online »', async () => {
+    makeEngine().start();
+    await idle();
+    const seen: SyncState['connection'][] = [];
+    engine.subscribe((s) => seen.push(s.connection));
+    engine.reportOffline();
+    await until(() => count('GET /api/health') === 2);
+    await idle();
+    expect(seen[0]).toBe('offline');
+    expect(engine.getState().connection).toBe('online');
+  });
+
+  it('déjà hors ligne : rien de plus, les reprises gardent leur rythme', async () => {
+    server.fault = 'offline';
+    makeEngine().start();
+    await idle();
+    expect(engine.getState().connection).toBe('offline');
+    engine.reportOffline();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(count('GET /api/health')).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(() => count('GET /api/health') === 2);
+  });
+
+  it.each([
+    ['unauthenticated', () => server.json(401, { error: 'unauthenticated' })],
+    [
+      'protocol_unsupported',
+      () => server.json(426, { error: 'protocol_unsupported', serverProtocol: 2, minProtocol: 2 }),
+    ],
+  ] as const)('%s : gardé (il demande une action), aucune requête en plus', async (state, reply) => {
+    server.on('GET /api/health', reply);
+    makeEngine().start();
+    await idle();
+    expect(engine.getState().connection).toBe(state);
+    engine.reportOffline();
+    await idle();
+    expect(engine.getState().connection).toBe(state);
+    expect(count('GET /api/health')).toBe(1);
+  });
+
+  it('moteur pas encore démarré ou arrêté : reportOffline ne change rien', async () => {
+    makeEngine();
+    engine.reportOffline();
+    expect(engine.getState().connection).toBe('unknown');
+    engine.start();
+    await idle();
+    engine.stop();
+    engine.reportOffline();
+    expect(engine.getState().connection).toBe('online');
+    expect(count('GET /api/health')).toBe(1);
+  });
+
+  it('reportReachable : hors ligne pour le moteur, le serveur a répondu → un cycle tout de suite, « online »', async () => {
+    server.fault = 'offline';
+    makeEngine().start();
+    await idle();
+    expect(engine.getState().connection).toBe('offline');
+    server.fault = null;
+    engine.reportReachable();
+    await until(() => count('GET /api/health') === 2);
+    await idle();
+    expect(engine.getState().connection).toBe('online');
+  });
+
+  it('reportReachable en ligne : aucun cycle', async () => {
+    makeEngine().start();
+    await idle();
+    engine.reportReachable();
+    expect(engine.getState().syncing).toBe(false);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(count('GET /api/health')).toBe(1);
+  });
+});
+
 describe('pull', () => {
   it('watermark, lastPullOkAt, serverCatalogVersion ; hasMore enchaîne', async () => {
     await setMeta(db, 'watermark', 'E1:10');

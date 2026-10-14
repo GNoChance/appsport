@@ -3,9 +3,15 @@ import { z } from 'zod';
 import { ApiError, createApiClient, NetworkRequiredError } from '../../src/api/client';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 
-function setup(): { api: FakeApi; hooks: { onUnauthenticated: () => void; onAccountDeleted: () => void } } {
-  const api = createFakeApi();
-  return { api, hooks: { onUnauthenticated: vi.fn(), onAccountDeleted: vi.fn() } };
+function setup() {
+  const api: FakeApi = createFakeApi();
+  const hooks = {
+    onUnauthenticated: vi.fn(),
+    onAccountDeleted: vi.fn(),
+    onOffline: vi.fn(),
+    onReachable: vi.fn(),
+  };
+  return { api, hooks };
 }
 
 const Ok = z.object({ ok: z.literal(true) });
@@ -71,17 +77,36 @@ describe('createApiClient', () => {
       );
     await vi.advanceTimersByTimeAsync(3999);
     expect(outcome).toBe('pending');
+    expect(hooks.onOffline).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(outcome).toBeInstanceOf(NetworkRequiredError);
     expect((outcome as Error).message).toBe('Nécessite le réseau');
+    // Même verdict pour le moteur de synchro, donc pour la pastille (spec refonte §5).
+    expect(hooks.onOffline).toHaveBeenCalledTimes(1);
+    expect(hooks.onReachable).not.toHaveBeenCalled();
   });
 
-  it('transport en échec → NetworkRequiredError', async () => {
+  it('transport en échec → onOffline, puis NetworkRequiredError', async () => {
     const { api, hooks } = setup();
     api.setOffline('reject');
     await expect(createApiClient(api.transport, hooks).get('/api/me', Ok)).rejects.toBeInstanceOf(
       NetworkRequiredError,
     );
+    expect(hooks.onOffline).toHaveBeenCalledTimes(1);
+    expect(hooks.onReachable).not.toHaveBeenCalled();
+  });
+
+  it('toute réponse HTTP, même en erreur → onReachable (le serveur est joignable), jamais onOffline', async () => {
+    const { api, hooks } = setup();
+    api.on('GET', '/api/good', { status: 200, body: { ok: true } });
+    api.on('PATCH', '/api/me', { status: 409, body: { error: 'username_taken' } });
+    api.on('GET', '/api/broken', { status: 500, body: { error: 'internal' } });
+    const client = createApiClient(api.transport, hooks);
+    await client.get('/api/good', Ok);
+    await expect(client.send('PATCH', '/api/me', { username: 'x' })).rejects.toBeInstanceOf(ApiError);
+    await expect(client.get('/api/broken', Ok)).rejects.toBeInstanceOf(ApiError);
+    expect(hooks.onReachable).toHaveBeenCalledTimes(3);
+    expect(hooks.onOffline).not.toHaveBeenCalled();
   });
 
   it('410 account_deleted → onAccountDeleted une fois ; 410 watermark_expired → non', async () => {

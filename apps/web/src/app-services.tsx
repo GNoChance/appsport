@@ -1,7 +1,7 @@
 import type { MeResponse } from '@rune/contracts';
 import { liveQuery } from 'dexie';
 import { createContext, type ReactNode, useContext, useEffect, useState, useSyncExternalStore } from 'react';
-import type { ApiClient } from './api/client';
+import type { ApiClient, ApiHooks } from './api/client';
 import type { AppDb } from './local-db/db';
 import { getMeta } from './local-db/meta';
 import { wipeUserData } from './local-db/wipe';
@@ -154,4 +154,19 @@ export async function handleAccountDeleted(db: AppDb, navigate: (to: string) => 
   } finally {
     navigate('/login?reason=account_deleted');
   }
+}
+
+/**
+ * Crochets du client d'API branchés sur le moteur de synchro, les mêmes dans `main.tsx` et dans les tests :
+ * session perdue → un cycle la constate ; compte supprimé → `handleAccountDeleted` ; serveur injoignable ou
+ * joignable sur une requête en ligne → le moteur le sait aussitôt, une seule source pour la pastille et les
+ * écrans « Nécessite le réseau » (spec refonte §5).
+ */
+export function apiHooksFor(sync: SyncEngine, db: AppDb, navigate: (to: string) => void): ApiHooks {
+  return {
+    onUnauthenticated: () => void sync.syncNow('manual'),
+    onAccountDeleted: () => void handleAccountDeleted(db, navigate),
+    onOffline: () => sync.reportOffline(),
+    onReachable: () => sync.reportReachable(),
+  };
 }

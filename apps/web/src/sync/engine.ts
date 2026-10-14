@@ -73,6 +73,14 @@ export interface SyncEngine {
    * 'unknown' tout de suite, reprises à zéro, et fin de la pause d'après un 401 ou un 410.
    */
   sessionOpened(): void;
+  /**
+   * Requête en ligne (classe E) sans réponse : 'offline' tout de suite, le même verdict que l'écran qui
+   * répond « Nécessite le réseau » (spec refonte §5), puis un cycle le vérifie et programme les reprises.
+   * Sans effet moteur arrêté, ni sur un état qui demande une action (session perdue, mise à jour).
+   */
+  reportOffline(): void;
+  /** Le serveur a répondu à une requête en ligne : si le moteur le croyait hors ligne, un cycle part aussitôt. */
+  reportReachable(): void;
 }
 
 export interface SyncEngineDeps {
@@ -522,6 +530,16 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       lastUserId = null;
       failures = 0;
       setState({ connection: 'unknown' });
+    },
+    reportOffline() {
+      if (!started || stopped) return;
+      // Déjà hors ligne (reprises en cours), ou un état qui demande une action et que la pastille garde.
+      if (state.connection !== 'online' && state.connection !== 'unknown') return;
+      setState({ connection: 'offline' });
+      void enqueue('full');
+    },
+    reportReachable() {
+      if (state.connection === 'offline') void enqueue('full');
     },
   };
   return engine;

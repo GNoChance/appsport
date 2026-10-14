@@ -6,7 +6,7 @@ import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { App } from '../../src/App';
 import { createApiClient } from '../../src/api/client';
-import { type AppServices, handleAccountDeleted, ServicesProvider } from '../../src/app-services';
+import { type AppServices, apiHooksFor, ServicesProvider } from '../../src/app-services';
 import type { AppDb } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
 import type { SwStatus } from '../../src/sw/protocol';
@@ -116,10 +116,8 @@ export async function createTestServices(opts: RenderAppOptions = {}): Promise<T
     : sync;
   const services: AppServices = {
     db,
-    api: createApiClient(api.transport, {
-      onUnauthenticated: () => void engine.syncNow('manual'),
-      onAccountDeleted: () => void handleAccountDeleted(db, (to) => go(to)),
-    }),
+    // Mêmes crochets que main.tsx (session perdue, compte supprimé, réseau absent ou retrouvé).
+    api: createApiClient(api.transport, apiHooksFor(engine, db, go)),
     sync: engine,
     transport: api.transport,
     now: () => nowMs,

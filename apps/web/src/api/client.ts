@@ -41,6 +41,13 @@ export interface ApiClient {
 export interface ApiHooks {
   onUnauthenticated(): void;
   onAccountDeleted(): void;
+  /**
+   * Serveur injoignable ou muet, avant le refus « Nécessite le réseau » : le moteur de synchro le sait
+   * aussitôt, et la pastille dit la même chose que l'écran (spec refonte §5, R-SYN-30).
+   */
+  onOffline?(): void;
+  /** Une réponse HTTP est arrivée, même en erreur : le serveur est joignable. */
+  onReachable?(): void;
 }
 
 function apiErrorOf(reply: JsonReply): ApiError {
@@ -65,9 +72,13 @@ export function createApiClient(
     try {
       reply = await fetchJsonWithTimeout(t, path, init, timeoutMs);
     } catch (error) {
-      if (error instanceof OfflineError) throw new NetworkRequiredError();
+      if (error instanceof OfflineError) {
+        hooks.onOffline?.();
+        throw new NetworkRequiredError();
+      }
       throw error;
     }
+    hooks.onReachable?.();
     if (!reply.res.ok) {
       const error = apiErrorOf(reply);
       if (error.code === 'unauthenticated') hooks.onUnauthenticated();

@@ -7,7 +7,7 @@ import { Router } from 'wouter';
 import { navigate } from 'wouter/use-browser-location';
 import { App } from './App';
 import { createApiClient } from './api/client';
-import { type AppServices, handleAccountDeleted, ServicesProvider } from './app-services';
+import { type AppServices, apiHooksFor, ServicesProvider } from './app-services';
 import { bootApp } from './boot';
 import { createAppDb } from './local-db/db';
 import { reposFor } from './repos';
@@ -35,10 +35,7 @@ const sync = createSyncEngine({
   newOpId,
   onAccountDeleted: () => go('/login?reason=account_deleted'),
 });
-const api = createApiClient(transport, {
-  onUnauthenticated: () => void sync.syncNow('manual'),
-  onAccountDeleted: () => void handleAccountDeleted(db, go),
-});
+const api = createApiClient(transport, apiHooksFor(sync, db, go));
 // Vite en développement n'enregistre pas de SW : coquille et illustrations réputées en cache.
 const swStatus: AppServices['swStatus'] = import.meta.env.DEV
   ? async () => ({ type: 'STATUS', buildHash: 'dev', shellCached: true, illustrationsMissing: 0 })
