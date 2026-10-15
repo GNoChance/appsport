@@ -13,6 +13,7 @@ import { Banner, Button, ChoiceList, HealthWarning, useAction } from '../../ui';
 import { LimitationEditForm, LimitationFields, limitationLabel } from './LimitationFields';
 import styles from './onboarding.module.css';
 import { StepActions, type StepProps, saveLabel, saveStep } from './StepActions';
+import { LockGlyph, ShieldGlyph } from './StepIcons';
 import { StepTitle } from './StepTitle';
 
 const SELF_CHECK_TEXT =
@@ -22,6 +23,8 @@ const SCREENING_INCOMPLETE = 'Réponds aux 4 questions ou efface tes réponses a
 const DRAFT_INCOMPLETE = 'Termine ou efface la limitation en cours avant de continuer.';
 const CAUTIOUS_NOT_HEALTH_DATA =
   "Réglage d'entraînement, pas une donnée de santé : enregistré même sans accord.";
+const LIMITATIONS_NOTE =
+  "Facultatif : une zone sensible ou une gêne à ménager ; aucun diagnostic n'est nécessaire.";
 
 /** Explication et accord santé (E7.1, P-CST-1) : case jamais pré-cochée, distincte de Confidentialité. */
 export function HealthConsentPanel(p: { onGranted(): void; onSkip?: () => void }) {
@@ -43,7 +46,7 @@ export function HealthConsentPanel(p: { onGranted(): void; onSkip?: () => void }
         <span>{HEALTH_CONSENT_TEXT.text}</span>
       </label>
       {grant.error ? <Banner tone="error">{grant.error}</Banner> : null}
-      <div className={styles.actions}>
+      <div className={styles.panelActions}>
         {p.onSkip ? (
           <Button variant="secondary" onClick={p.onSkip}>
             Passer
@@ -63,7 +66,7 @@ const noAnswers = (): (Answer | null)[] => HEALTH_QUESTIONNAIRE.questions.map(()
 
 /**
  * Questionnaire d'alerte en cours (E7.2) : réponses, réponses déjà envoyées et `persist` (PUT des
- * 4 réponses, qui lève en cas d'échec). Tenu par `HealthStep` pour l'envoyer au clic sur « Suivant ».
+ * 4 réponses, qui lève en cas d'échec). Tenu par `HealthStep` pour l'envoyer au clic sur « Continuer ».
  */
 export function useScreening(onSaved?: (caution: boolean) => void) {
   const repos = useRepos();
@@ -143,7 +146,7 @@ export function ScreeningQuestions(p: {
       {save.error ? <Banner tone="error">{save.error}</Banner> : null}
       {s.advice ? <Banner tone="warning">{SEE_DOCTOR_TEXT}</Banner> : null}
       {s.saved ? <Banner tone="info">Réponses enregistrées.</Banner> : null}
-      <div className={styles.actions}>
+      <div className={styles.panelActions}>
         {s.dirty ? (
           <Button variant="secondary" onClick={s.clear}>
             Effacer mes réponses
@@ -159,7 +162,7 @@ export function ScreeningQuestions(p: {
 
 /**
  * Limitation en cours de saisie (E7.3) : `persist` l'ajoute (POST, lève en cas d'échec) puis vide
- * la saisie. Tenue par `HealthStep` pour l'envoyer au clic sur « Suivant ».
+ * la saisie. Tenue par `HealthStep` pour l'envoyer au clic sur « Continuer ».
  */
 export function useLimitationDraft() {
   const repos = useRepos();
@@ -246,9 +249,7 @@ export function LimitationsEditor(
   return (
     <section className={styles.panel}>
       <Heading>Limitations</Heading>
-      <p className={styles.note}>
-        Facultatif : une zone sensible ou une gêne à ménager ; aucun diagnostic n'est nécessaire.
-      </p>
+      <p className={styles.note}>{LIMITATIONS_NOTE}</p>
       {limitations === undefined ? null : limitations.length === 0 ? (
         <p>Aucune</p>
       ) : (
@@ -293,7 +294,7 @@ export function LimitationsEditor(
       <LimitationFields state={draft} />
       {add.error ? <Banner tone="error">{add.error}</Banner> : null}
       {remove.error ? <Banner tone="error">{remove.error}</Banner> : null}
-      <div className={styles.actions}>
+      <div className={styles.panelActions}>
         {draft.empty ? null : (
           <Button variant="secondary" onClick={draft.clear}>
             Effacer la saisie
@@ -307,7 +308,10 @@ export function LimitationsEditor(
   );
 }
 
-/** Mode prudent (E7.5, C1) : proposé à tous ; affiché imposé pour un mineur (R-CST-7). */
+/**
+ * Mode prudent (E7.5, C1) : proposé à tous ; affiché imposé pour un mineur (R-CST-7). Un interrupteur à droite de
+ * son libellé (maquette B07), qui reste une case à cocher de rôle `switch` : la ligne entière le bascule.
+ */
 export function CautiousModeToggle(p: {
   value: boolean;
   minor: boolean;
@@ -319,17 +323,18 @@ export function CautiousModeToggle(p: {
   const noteId = useId();
   return (
     <div className={styles.toggle}>
-      <label className={styles.check}>
+      <label className={styles.switchRow}>
+        <span>Je préfère une progression plus prudente</span>
         <input
           type="checkbox"
           role="switch"
+          className={styles.switchInput}
           aria-checked={p.minor || p.value}
           checked={p.minor || p.value}
           disabled={p.minor || p.disabled}
           aria-describedby={p.minor ? `${hintId} ${noteId}` : noteId}
           onChange={(e) => p.onChange(e.target.checked)}
         />
-        <span>Je préfère une progression plus prudente</span>
       </label>
       {p.minor ? (
         <span id={hintId} className={styles.note}>
@@ -344,10 +349,12 @@ export function CautiousModeToggle(p: {
 }
 
 /**
- * E7 Santé et prudence, facultatif. Avec accord : questionnaire enregistré et limitations ; sans :
- * accord proposé, ou auto-vérification après « Passer ». Au clic sur « Suivant » (R-ONB-2), l'écran
- * envoie ce qui n'est pas encore enregistré : réponses complètes (PUT), limitation complète (POST),
- * puis le mode prudent avec l'étape (PATCH). Une saisie à moitié faite arrête « Suivant ».
+ * E7 Santé et prudence, facultatif (maquette B07 : des cartes). Avec accord : questionnaire enregistré et
+ * limitations ; sans : la carte « Accord santé », les limitations annoncées « Après ton accord », ou
+ * l'auto-vérification après « Passer ». Textes légaux mot pour mot, sans voix du Système (spec refonte §10.1).
+ * Au clic sur « Continuer » (R-ONB-2), l'écran envoie ce qui n'est pas encore enregistré : réponses complètes
+ * (PUT), limitation complète (POST), puis le mode prudent avec l'étape (PATCH). Une saisie à moitié faite arrête
+ * « Continuer ».
  */
 export function HealthStep(p: StepProps) {
   const repos = useRepos();
@@ -385,17 +392,29 @@ export function HealthStep(p: StepProps) {
   return (
     <>
       <StepTitle>Santé et prudence</StepTitle>
+      <p className={styles.lead}>Facultatif : tu peux passer cette étape.</p>
       {recording ? (
         <>
-          <ScreeningQuestions record screening={screening} />
-          <LimitationsEditor draft={draft} />
+          <div className={styles.card}>
+            <ScreeningQuestions record screening={screening} />
+          </div>
+          <div className={styles.card}>
+            <LimitationsEditor draft={draft} />
+          </div>
         </>
       ) : skipped ? (
-        <ScreeningQuestions record={false} />
+        <div className={styles.card}>
+          <ScreeningQuestions record={false} />
+        </div>
       ) : (
-        <HealthConsentPanel onGranted={() => {}} onSkip={() => setSkipped(true)} />
+        <>
+          <ConsentCard onSkip={() => setSkipped(true)} />
+          <LockedLimitations />
+        </>
       )}
-      <CautiousModeToggle value={cautious ?? stored} minor={minor} onChange={setCautious} />
+      <div className={styles.card}>
+        <CautiousModeToggle value={cautious ?? stored} minor={minor} onChange={setCautious} />
+      </div>
       <HealthWarning />
       <StepActions
         onBack={p.onBack}
@@ -404,5 +423,44 @@ export function HealthStep(p: StepProps) {
         primary={{ label: saveLabel(p.mode), onClick: submit }}
       />
     </>
+  );
+}
+
+/** Carte « Accord santé » de l'onboarding (maquette B07) : bouclier, titre, puis l'accord tel quel. */
+function ConsentCard(p: { onSkip(): void }) {
+  const titleId = useId();
+  return (
+    <section aria-labelledby={titleId} className={styles.card}>
+      <div className={styles.cardHead}>
+        <ShieldGlyph />
+        <h3 id={titleId}>Accord santé</h3>
+      </div>
+      <HealthConsentPanel onGranted={() => {}} onSkip={p.onSkip} />
+    </section>
+  );
+}
+
+/**
+ * Limitations annoncées avant l'accord (maquette B07) : la carte dit ce qu'elles sont et qu'elles s'ouvrent
+ * « Après ton accord », sans aucun champ.
+ */
+function LockedLimitations() {
+  const titleId = useId();
+  const lockId = useId();
+  return (
+    <section aria-labelledby={titleId} aria-describedby={lockId} className={styles.locked}>
+      <span className={styles.lockedIcon} aria-hidden="true">
+        <LockGlyph />
+      </span>
+      <div className={styles.lockedText}>
+        <div className={styles.lockedHead}>
+          <h3 id={titleId}>Limitations</h3>
+          <span id={lockId} className={styles.lockedState}>
+            Après ton accord
+          </span>
+        </div>
+        <p className={styles.note}>{LIMITATIONS_NOTE}</p>
+      </div>
+    </section>
   );
 }

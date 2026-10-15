@@ -2,11 +2,13 @@ import { EXPERIENCE_LABELS, EXPERIENCES, type Experience } from '@rune/contracts
 import { useState } from 'react';
 import { useLive } from '../../app-services';
 import { useRepos } from '../../repos';
-import { ChoiceList } from '../../ui';
+import { ChoiceCard, ChoiceGroup } from '../../ui';
+import styles from './onboarding.module.css';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { EXPERIENCE_ICONS } from './StepIcons';
 import { StepTitle } from './StepTitle';
 
-/** E5 Niveau. */
+/** E5 Niveau (maquette B05 : une carte par durée, des barres qui montent avec le niveau). */
 export function ExperienceStep(p: StepProps) {
   const repos = useRepos();
   const profile = useLive(() => repos.profile.get(), [repos]);
@@ -17,13 +19,22 @@ export function ExperienceStep(p: StepProps) {
   return (
     <>
       <StepTitle>Niveau</StepTitle>
-      <ChoiceList<Experience>
-        name="experience"
-        legend="Depuis combien de temps fais-tu de la musculation régulièrement (au moins une fois par semaine) ?"
-        value={value}
-        onChange={setChoice}
-        options={EXPERIENCES.map((e) => ({ value: e, label: EXPERIENCE_LABELS[e] }))}
-      />
+      <div className={styles.question}>
+        <ChoiceGroup legend="Depuis combien de temps fais-tu de la musculation régulièrement (au moins une fois par semaine) ?">
+          {EXPERIENCES.map((e) => (
+            <ChoiceCard
+              key={e}
+              type="radio"
+              name="experience"
+              value={e}
+              checked={value === e}
+              onChange={() => setChoice(e)}
+              title={EXPERIENCE_LABELS[e]}
+              icon={EXPERIENCE_ICONS[e]}
+            />
+          ))}
+        </ChoiceGroup>
+      </div>
       <StepActions
         onBack={p.onBack}
         pending={save.pending}
