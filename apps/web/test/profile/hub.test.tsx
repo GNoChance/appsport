@@ -30,13 +30,25 @@ const knee = {
 };
 
 async function renderHub(
-  o: { me?: MeResponse; sync?: FakeSyncEngine; api?: FakeApi; pending?: number } = {},
+  o: {
+    me?: MeResponse;
+    sync?: FakeSyncEngine;
+    api?: FakeApi;
+    pending?: number;
+    /** Champs du profil d'entraînement (coach Le Skald sauf `coach: null`) ; objectif et disponibilité par défaut. */
+    profile?: Parameters<typeof seedProfile>[1];
+    /** Limitation « Genou » quand l'accord santé est donné ; vrai par défaut. */
+    limitation?: boolean;
+  } = {},
 ) {
   const me = o.me ?? makeMe();
   const db = createTestLocalDb();
-  await seedProfile(db, { goal: 'muscle', experience: 'none', daysPerWeek: 3, sessionMinutes: 45 });
+  await seedProfile(
+    db,
+    o.profile ?? { goal: 'muscle', experience: 'none', daysPerWeek: 3, sessionMinutes: 45 },
+  );
   await seedPrimaryGym(db);
-  if (me.consents.health.active) await seedMirror(db, 'limitation', [knee]);
+  if (me.consents.health.active && o.limitation !== false) await seedMirror(db, 'limitation', [knee]);
   if (o.pending) await seedOutbox(db, 'u-1', o.pending);
   const view = await renderApp({ path: '/profile', me, db, api: o.api, sync: o.sync });
   await screen.findByRole('heading', { level: 1, name: 'Profil' });
@@ -62,6 +74,19 @@ const description = (el: Element) =>
     .join(' ');
 /** Lien de l'écran (le pied de page de la coquille a aussi « Aide » et « Confidentialité et règles »). */
 const link = (name: string) => within(screen.getByRole('main')).getByRole('link', { name });
+/**
+ * Valeur de la ligne `name`, attendue (chaque valeur vient de sa propre lecture sur l'appareil) : une valeur
+ * fausse échoue sur l'égalité qui suit, pas sur l'attente.
+ */
+async function rowValue(name: string): Promise<string> {
+  await until(() => description(link(name)) !== '');
+  return description(link(name));
+}
+/** Petits titres des groupes de l'écran, dans l'ordre. */
+const groupTitles = () =>
+  within(screen.getByRole('main'))
+    .getAllByRole('heading', { level: 2 })
+    .map((h) => h.textContent);
 
 describe('ProfileHub (spec refonte §5, maquette C01)', () => {
   it('en-tête : initiale, pseudo, rôle et rang E', async () => {
@@ -79,6 +104,7 @@ describe('ProfileHub (spec refonte §5, maquette C01)', () => {
 
   it('groupes et lignes : Entraînement, Compte et appli, chacun vers sa page', async () => {
     await renderHub();
+    expect(groupTitles()).toEqual(['Entraînement', 'Compte et appli']);
     expect(rowLabels('Entraînement')).toEqual(['Mon profil', 'Mon coach', 'Mes lieux', 'Santé']);
     expect(rowLabels('Compte et appli')).toEqual(['Confidentialité et données', 'Réglages', 'Aide']);
     const href = (name: string) => link(name).getAttribute('href');
@@ -93,13 +119,32 @@ describe('ProfileHub (spec refonte §5, maquette C01)', () => {
 
   it('valeurs des lignes : profil, coach, lieu principal, accord santé et limitations', async () => {
     await renderHub({ me: consented() });
-    await until(() => description(link('Mes lieux')) === 'Basic Fit');
-    expect(description(link('Mon profil'))).toBe('Prendre du muscle · 3 séances de 45 min');
-    expect(description(link('Mon coach'))).toBe('Le Skald · entraînement et nutrition');
-    await until(() => description(link('Santé')) === 'Accord donné · 1 limitation');
+    expect(await rowValue('Mes lieux')).toBe('Basic Fit');
+    expect(await rowValue('Mon profil')).toBe('Prendre du muscle · 3 séances de 45 min');
+    expect(await rowValue('Mon coach')).toBe('Le Skald · entraînement et nutrition');
+    expect(await rowValue('Santé')).toBe('Accord donné · 1 limitation');
     expect(description(link('Confidentialité et données'))).toBe('Accords, export, suppression');
     expect(description(link('Réglages'))).toBe('Apparence, synchronisation');
     expect(description(link('Aide'))).toBe("En cas d'urgence : 15 ou 112");
+  });
+
+  it('profil vide (rien répondu, pas de coach) : ni valeur sur « Mon profil » ni sur « Mon coach »', async () => {
+    await renderHub({ profile: { coach: null } });
+    expect(await rowValue('Mes lieux')).toBe('Basic Fit');
+    expect(await rowValue('Santé')).toBe('Accord non donné');
+    await settle();
+    expect(link('Mon profil').hasAttribute('aria-describedby')).toBe(false);
+    expect(link('Mon coach').hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('objectif seul : « Prendre du muscle », sans disponibilité inventée', async () => {
+    await renderHub({ profile: { goal: 'muscle' } });
+    expect(await rowValue('Mon profil')).toBe('Prendre du muscle');
+  });
+
+  it('accord santé sans limitation : « Accord donné » seul', async () => {
+    await renderHub({ me: consented(), limitation: false });
+    expect(await rowValue('Santé')).toBe('Accord donné');
   });
 
   it('sans accord santé : « Accord non donné »', async () => {
@@ -109,6 +154,7 @@ describe('ProfileHub (spec refonte §5, maquette C01)', () => {
 
   it('Administration, dans le groupe Cercle, pour un admin seulement', async () => {
     const admin = await renderHub({ me: makeMe({ role: 'admin' }) });
+    expect(groupTitles()).toEqual(['Entraînement', 'Compte et appli', 'Cercle']);
     expect(rowLabels('Cercle')).toEqual(['Administration']);
     expect(link('Administration').getAttribute('href')).toBe('/admin/members');
     expect(description(link('Administration'))).toBe('Membres, invitations, salles');

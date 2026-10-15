@@ -92,9 +92,12 @@ describe('ProfilePage › Compte (02 §11, R-CPT-3, maquette C02)', () => {
     expect(screen.getByText('Date de naissance')).toBeTruthy();
     expect(screen.getByText('01/01/1990')).toBeTruthy();
     expect(screen.getByText("Seul l'administrateur peut la corriger.")).toBeTruthy();
-    // La date ne se modifie pas ici : ni champ ni bouton.
-    expect(screen.queryByRole('textbox', { name: 'Date de naissance' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Date de naissance' })).toBeNull();
+    // La date ne se modifie pas ici : ni champ ni bouton, ni lien, sur sa ligne quel que soit son nom.
+    const birthRow = screen.getByText('Date de naissance').closest('li');
+    if (!birthRow) throw new Error('aucune ligne Date de naissance');
+    expect(within(birthRow).queryByRole('textbox')).toBeNull();
+    expect(within(birthRow).queryByRole('button')).toBeNull();
+    expect(within(birthRow).queryByRole('link')).toBeNull();
     expect(description(button('Changer le mot de passe'))).toBe('Tes autres appareils seront déconnectés.');
   });
 

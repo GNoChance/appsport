@@ -259,11 +259,15 @@ describe('ConsentWithdrawDialog dans Santé (R-CST-5, P-CST-3, P-AUT-5)', () => 
     expect(await witnessStores(db)).toEqual(SEEDED_STORES);
   });
 
-  it('« Annuler » ferme sans requête', async () => {
+  it('« Annuler » ferme sans requête ; le focus revient au bouton du retrait', async () => {
     const { api } = await renderHealth();
+    // Ouvert d'un clic qui ne pose pas le focus sur le bouton (Safari) : la fenêtre n'a pas de déclencheur à
+    // qui le rendre, l'écran le pose lui-même sur « Retirer mon accord santé ».
     const dialog = await openWithdraw();
     fireEvent.click(dialog.getByRole('button', { name: 'Annuler' }));
     await until(() => screen.queryByRole('dialog') === null);
+    await settle();
+    expect(document.activeElement).toBe(button('Retirer mon accord santé'));
     expect(api.calls.filter((c) => c.path === WITHDRAW)).toHaveLength(0);
   });
 });

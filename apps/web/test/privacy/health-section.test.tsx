@@ -288,11 +288,16 @@ describe('HealthSection › accord, mode prudent et retrait (spec refonte §10.4
     if (!consent) throw new Error('aucune ligne Accord santé');
     expect(within(consent).getByText('Donné le 01/10/2026')).toBeTruthy();
     expect(within(consent).getByText('Actif')).toBeTruthy();
+    // En tête : avant le questionnaire d'alerte, première section de la page.
+    const screening = await screen.findByRole('heading', { level: 2, name: SCREENING_TITLE });
+    expect(consent.compareDocumentPosition(screening) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('le mode prudent est dans Mon profil seulement, pas dans Santé', async () => {
     await renderHealth({ cautiousMode: true });
     await screen.findByText(LIMITATION);
+    // Le profil lu (l'ancienne section du mode prudent l'attendait) avant de conclure à l'absence.
+    await settle();
     expect(screen.queryByRole('switch', { name: CAUTIOUS })).toBeNull();
     expect(screen.queryByRole('heading', { level: 2, name: 'Mode prudent' })).toBeNull();
   });
