@@ -166,9 +166,16 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     fireEvent.click(checkbox('Kettlebell'));
     expect(checkbox('Kettlebell').checked).toBe(true);
     expect(summary()).toBe('1 changement · 1 ajout');
+    // Changement annoncé : sur la pastille (description) et dans le nom du titre de sa catégorie.
+    expect(
+      screen.getByRole('checkbox', { name: 'Kettlebell', description: 'changement non enregistré' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Petit matériel changement non enregistré/ })).toBeTruthy();
     fireEvent.click(checkbox('Kettlebell'));
     expect(checkbox('Kettlebell').checked).toBe(false);
     expect(draftBar()).toBeNull();
+    expect(checkbox('Kettlebell').getAttribute('aria-describedby')).toBeNull();
+    expect(screen.queryByRole('button', { name: /changement non enregistré/ })).toBeNull();
     await settle();
     expect(writes(api)).toEqual([]);
   });
@@ -202,10 +209,18 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     await renderGym(api);
     await openEditor();
     fireEvent.click(checkbox('Kettlebell'));
-    fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Annuler' }));
+    // Le résumé de la barre est une région d'état : son compte s'annonce à chaque changement.
+    expect(within(draftBar() as HTMLElement).getByRole('status').textContent).toContain(
+      '1 changement · 1 ajout',
+    );
+    const cancel = within(draftBar() as HTMLElement).getByRole('button', { name: 'Annuler' });
+    cancel.focus();
+    fireEvent.click(cancel);
     expect(draftBar()).toBeNull();
     expect(checkbox('Kettlebell').checked).toBe(false);
     expect(screen.getByRole('heading', { level: 1, name: 'Matériel' })).toBeTruthy();
+    // « Annuler » part avec la barre : le focus passe au titre de la première catégorie, pas au document.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Petit matériel/ }));
     await settle();
     expect(writes(api)).toEqual([]);
   });
@@ -288,6 +303,71 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
       'PUT /api/gyms/g-1/equipment/kettlebell',
       'DELETE /api/gyms/g-1/equipment/flat_bench',
     ]);
+  });
+
+  it('un autre membre change la salle entre l’échec et la relecture : seuls les changements de l’utilisateur restent', async () => {
+    const api = createFakeApi();
+    const fail: Record<string, number> = { 'DELETE flat_bench': 500 };
+    const server = serveGym(api, { fail });
+    await renderGym(api);
+    await openEditor();
+    fireEvent.click(checkbox('Kettlebell'));
+    openCategory('Bancs et supports');
+    fireEvent.click(checkbox('Banc plat'));
+    openCategory('Charges libres');
+    // Pendant l'édition, un autre membre retire la barre.
+    server.delete('barbell');
+    let before = gets(api).length;
+    fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
+    await within(draftBar() as HTMLElement).findByRole('alert');
+    await until(() => gets(api).length > before);
+    await settle();
+    // Relu : { haltères, banc plat, kettlebell }. Le retrait de la barre n'est pas un ajout de l'utilisateur.
+    expect(draftBar()?.textContent).toContain('1 changement · 1 retrait');
+    expect(checkbox('Barre droite et disques').checked).toBe(false);
+    expect(checkbox('Barre droite et disques').getAttribute('aria-describedby')).toBeNull();
+    expect(checkbox('Kettlebell').checked).toBe(true);
+    expect(checkbox('Banc plat').checked).toBe(false);
+    // L'ajout passé n'est plus dans le brouillon : un membre qui retire le kettlebell ne le ressuscite pas.
+    server.delete('kettlebell');
+    before = gets(api).length;
+    fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
+    await until(() => gets(api).length > before);
+    await settle();
+    expect(draftBar()?.textContent).toContain('1 changement · 1 retrait');
+    expect(checkbox('Kettlebell').checked).toBe(false);
+    expect(checkbox('Kettlebell').getAttribute('aria-describedby')).toBeNull();
+    // Le serveur accepte enfin le retrait : seul le banc plat part, rien pour la barre ni le kettlebell.
+    delete fail['DELETE flat_bench'];
+    fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
+    await screen.findByRole('heading', { level: 1, name: 'Basic Fit' });
+    expect(writes(api)).toEqual([
+      'PUT /api/gyms/g-1/equipment/kettlebell',
+      'DELETE /api/gyms/g-1/equipment/flat_bench',
+      'DELETE /api/gyms/g-1/equipment/flat_bench',
+      'DELETE /api/gyms/g-1/equipment/flat_bench',
+    ]);
+    expect([...server]).toEqual(['dumbbells']);
+  });
+
+  it('une erreur passée ne revient pas dans la barre pour des changements jamais envoyés', async () => {
+    const api = createFakeApi();
+    serveGym(api);
+    await renderGym(api);
+    await openEditor();
+    fireEvent.click(checkbox('Kettlebell'));
+    const before = gets(api).length;
+    api.setOffline('reject');
+    fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
+    await within(draftBar() as HTMLElement).findByRole('alert');
+    await until(() => gets(api).length > before);
+    await settle();
+    // L'utilisateur défait son changement (la barre part), puis en fait un autre, jamais tenté.
+    fireEvent.click(checkbox('Kettlebell'));
+    expect(draftBar()).toBeNull();
+    fireEvent.click(checkbox('Élastiques'));
+    expect(draftBar()?.textContent).toContain('1 changement · 1 ajout');
+    expect(within(draftBar() as HTMLElement).queryByRole('alert')).toBeNull();
   });
 
   it('maison : le brouillon part d’un coup sur les routes du lieu, puis la fiche montre le matériel relu', async () => {

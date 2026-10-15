@@ -5,7 +5,7 @@ import {
   type EquipmentCategory,
   type EquipmentCode,
 } from '@rune/contracts';
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { useAction } from '../../ui';
 import { Count, categoriesFor } from './EquipmentChips';
 import { DraftBar, type EquipmentDraft, useEquipmentDraft } from './EquipmentDraft';
@@ -34,6 +34,7 @@ export function EquipmentEditor(p: {
   const categories = categoriesFor(p.kind);
   const [open, setOpen] = useState<ReadonlySet<EquipmentCategory>>(() => new Set(categories.slice(0, 1)));
   const changedId = useId();
+  const editorRef = useRef<HTMLDivElement>(null);
   const save = useAction(async () => {
     try {
       await draft.save();
@@ -44,6 +45,12 @@ export function EquipmentEditor(p: {
     await p.reread();
     p.onSaved();
   });
+
+  /** Un geste sur une pastille : l'erreur d'un enregistrement passé ne vaut plus pour le nouveau brouillon. */
+  function toggleCode(code: EquipmentCode) {
+    save.reset();
+    draft.toggle(code);
+  }
 
   function toggleCategory(category: EquipmentCategory) {
     setOpen((current) => {
@@ -65,7 +72,7 @@ export function EquipmentEditor(p: {
       <span id={changedId} hidden>
         changement non enregistré
       </span>
-      <div className={styles.editor}>
+      <div ref={editorRef} className={styles.editor}>
         {categories.map((category) => (
           <EditorCategory
             key={category}
@@ -76,6 +83,7 @@ export function EquipmentEditor(p: {
             disabled={save.pending}
             changedId={changedId}
             onToggle={() => toggleCategory(category)}
+            onChange={toggleCode}
           />
         ))}
       </div>
@@ -86,6 +94,8 @@ export function EquipmentEditor(p: {
         onCancel={() => {
           save.reset();
           draft.reset();
+          // La barre disparaît avec son « Annuler » : le focus passe au titre de la première catégorie.
+          editorRef.current?.querySelector<HTMLButtonElement>('button[aria-expanded]')?.focus();
         }}
         onSave={() => void save.run()}
       />
@@ -106,6 +116,7 @@ function EditorCategory(p: {
   disabled: boolean;
   changedId: string;
   onToggle(): void;
+  onChange(code: EquipmentCode): void;
 }) {
   const panelId = useId();
   const label = EQUIPMENT_CATEGORY_LABELS[p.category];
@@ -159,7 +170,7 @@ function EditorCategory(p: {
                 disabled={p.disabled}
                 aria-describedby={dirty ? p.changedId : undefined}
                 onChange={() => {
-                  p.draft.toggle(code);
+                  p.onChange(code);
                   setPopping((current) => (checked ? (current === code ? null : current) : code));
                 }}
               />

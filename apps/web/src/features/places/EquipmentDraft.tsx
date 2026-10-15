@@ -10,10 +10,10 @@ export interface EquipmentChanges {
 }
 
 export interface EquipmentDraft {
-  /** Matériel affiché : le brouillon s'il y en a un, sinon l'état reçu. */
+  /** Matériel affiché : l'état reçu, auquel s'appliquent les gestes du brouillon. */
   selected: ReadonlySet<EquipmentCode>;
   toggle(code: EquipmentCode): void;
-  /** Écart entre le brouillon et l'état reçu, dans l'ordre de la taxonomie. */
+  /** Gestes du brouillon que l'état reçu ne satisfait pas encore, dans l'ordre de la taxonomie. */
   changes: EquipmentChanges;
   /** Abandonne le brouillon : l'état reçu s'affiche de nouveau. */
   reset(): void;
@@ -23,44 +23,66 @@ export interface EquipmentDraft {
 
 const keyOf = (codes: Iterable<EquipmentCode>) => sortEquipment(codes).join(' ');
 
+/** Gestes de l'utilisateur : la présence voulue de chaque code touché (vrai : ajouter, faux : retirer). */
+type Wanted = ReadonlyMap<EquipmentCode, boolean>;
+
+const NONE: Wanted = new Map();
+
+/** Les gestes encore à faire sur `state` : un code déjà dans l'état voulu sort du brouillon. */
+function pending(wanted: Wanted, state: ReadonlySet<EquipmentCode>): Wanted {
+  const left = new Map([...wanted].filter(([code, present]) => state.has(code) !== present));
+  return left.size === wanted.size ? wanted : left;
+}
+
 /**
  * Matériel en brouillon (spec refonte §10.3) : rien ne part avant `save()`. `initial` est l'état du serveur
  * (ou du miroir), `send` l'appel d'ajout (`true`) ou de retrait (`false`) d'un code.
+ * - Le brouillon garde les gestes de l'utilisateur (« ajouter X », « retirer Y »), jamais un état complet :
+ *   le matériel affiché est l'état reçu auquel ils s'appliquent.
  * - Le brouillon vit dans l'écran : le quitter l'abandonne, l'état reçu revient au retour.
- * - `initial` relu (après un enregistrement, réussi ou non) : un brouillon devenu égal à l'état relu s'efface ;
- *   sinon il reste, et ses changements se comptent contre l'état relu (ce qui est passé ne compte plus).
- *   L'appelant relit donc toujours l'état après `save()`, que l'envoi réussisse ou échoue.
+ * - `initial` relu (après un enregistrement, réussi ou non, ou un changement d'un autre membre) : les gestes
+ *   que l'état relu satisfait déjà sortent du brouillon, les autres restent ; aucun geste n'est inventé, donc
+ *   le changement d'un autre membre ne revient jamais comme un changement de l'utilisateur. L'appelant relit
+ *   donc toujours l'état après `save()`, que l'envoi réussisse ou échoue.
  */
 export function useEquipmentDraft(
   initial: ReadonlySet<EquipmentCode>,
   send: (code: EquipmentCode, present: boolean) => Promise<void>,
 ): EquipmentDraft {
-  const [draft, setDraft] = useState<ReadonlySet<EquipmentCode> | null>(null);
+  const [wanted, setWanted] = useState<Wanted>(NONE);
   const initialKey = keyOf(initial);
   const [seenKey, setSeenKey] = useState(initialKey);
   // État reçu changé : posé pendant le rendu, React rend aussitôt de nouveau avec lui.
   if (seenKey !== initialKey) {
     setSeenKey(initialKey);
-    if (draft !== null && keyOf(draft) === initialKey) setDraft(null);
+    setWanted((current) => pending(current, initial));
   }
-  const selected = draft ?? initial;
+  const left = pending(wanted, initial);
+  const selected = new Set(initial);
+  for (const [code, present] of left) {
+    if (present) selected.add(code);
+    else selected.delete(code);
+  }
+  const codes = [...left.keys()];
   const changes: EquipmentChanges = {
-    added: sortEquipment([...selected].filter((code) => !initial.has(code))),
-    removed: sortEquipment([...initial].filter((code) => !selected.has(code))),
+    added: sortEquipment(codes.filter((code) => left.get(code))),
+    removed: sortEquipment(codes.filter((code) => !left.get(code))),
   };
-  const latest = useRef({ initial, initialKey, changes, send });
-  latest.current = { initial, initialKey, changes, send };
+  const latest = useRef({ initial, changes, send });
+  latest.current = { initial, changes, send };
 
   const toggle = useCallback((code: EquipmentCode) => {
-    setDraft((current) => {
-      const next = new Set(current ?? latest.current.initial);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return keyOf(next) === latest.current.initialKey ? null : next;
+    setWanted((current) => {
+      const state = latest.current.initial;
+      const present = !(current.get(code) ?? state.has(code));
+      const next = new Map(current);
+      if (present === state.has(code)) next.delete(code);
+      else next.set(code, present);
+      return next;
     });
   }, []);
 
-  const reset = useCallback(() => setDraft(null), []);
+  const reset = useCallback(() => setWanted(NONE), []);
 
   const save = useCallback(async () => {
     const { changes: pending, send: write } = latest.current;
@@ -138,7 +160,7 @@ export function DraftBar(p: {
   return (
     <section ref={ref} aria-label="Changements à enregistrer" className={styles.draftBar}>
       {p.error ? <Banner tone="error">{p.error}</Banner> : null}
-      <p className={styles.draftSummary}>
+      <p role="status" className={styles.draftSummary}>
         <span className={styles.draftDot} aria-hidden="true" />
         <span>
           <strong className={styles.draftTotal}>{total}</strong> · {detail}
