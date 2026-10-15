@@ -267,7 +267,12 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     const sticky = declarationsOf(css, '.flow .bar');
     expect(sticky?.get('position')).toBe('sticky');
     expect(sticky?.get('bottom')).toBe('0');
-    // Un champ qui prend le focus défile au-dessus de la barre, jamais dessous (WCAG 2.4.11).
-    expect(declarationsOf(css, ':global(html):has(.flow)')?.get('scroll-padding-bottom')).toBeTruthy();
+    // Un champ qui prend le focus défile au-dessus de la barre, jamais dessous (WCAG 2.4.11) : la marge de
+    // défilement couvre au moins la barre (16 px, bouton de 52 px, 16 px : 5,25rem) et la zone de geste.
+    // Dans le navigateur : e2e/onboarding-focus.spec.ts.
+    const padding = declarationsOf(css, ':global(html):has(.flow)')?.get('scroll-padding-bottom') ?? '';
+    const reserved = /^calc\((\d+(?:\.\d+)?)rem \+ env\(safe-area-inset-bottom, 0px\)\)$/.exec(padding);
+    expect(reserved, `scroll-padding-bottom: ${padding}`).not.toBeNull();
+    expect(Number(reserved?.[1])).toBeGreaterThanOrEqual(5.25);
   });
 });
