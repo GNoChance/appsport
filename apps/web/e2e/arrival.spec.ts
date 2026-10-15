@@ -60,7 +60,7 @@ test('arrivée : admin installé, session protégée, puis un membre invité par
     await expect(page).toHaveURL(`${server.url}/invite`);
     // R-ARR-1 : dans l'appli installée, le lien mène directement à la création du compte.
     await createAccountViaUi(page, 'camille');
-    await expect(page.getByTestId('onboarding-step')).toHaveAttribute('data-step', 'goal');
+    await expect(page.getByTestId('onboarding-step')).toHaveAttribute('data-step', 'coach');
     // R-CPT-2 : stockage persistant demandé à la création du compte, résultat noté (accordé ou non).
     await expect.poll(async () => typeof (await metaValue(page, 'persistGranted'))).toBe('boolean');
     // Témoin : seule la demande de fin d'onboarding (R-SYN-31) peut encore le remplacer par un booléen.

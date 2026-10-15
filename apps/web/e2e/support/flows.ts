@@ -24,8 +24,9 @@ export async function createAccountViaUi(page: Page, username: string): Promise<
 }
 
 /**
- * Les 8 écrans de l'onboarding (02 §8) depuis l'objectif : chaque écran est attendu par son `data-step`,
- * puis E8 « Commencer » une fois le voyant « Prêt hors ligne » au vert (R-SYN-33) ; attend l'accueil.
+ * Les 9 écrans de l'onboarding (spec refonte §10.1) depuis le coach : Le Skald, sa présentation, puis
+ * chaque écran attendu par son `data-step`, et E8 « Commencer » une fois le voyant « Prêt hors ligne » au
+ * vert (R-SYN-33) ; attend l'accueil.
  */
 export async function completeOnboardingViaUi(
   page: Page,
@@ -36,6 +37,11 @@ export async function completeOnboardingViaUi(
   const choose = (name: string) => current.getByRole('radio', { name, exact: true }).check();
   const next = () => button(page, 'Suivant').click();
 
+  await at('coach');
+  await choose('Le Skald');
+  await button(page, 'Continuer').click();
+  // Coach enregistré : sa présentation s'ouvre, toujours à l'étape coach.
+  await button(page, "C'est parti").click();
   await at('goal');
   await choose(GOAL_LABELS.muscle);
   await next();

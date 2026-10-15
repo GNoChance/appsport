@@ -8,7 +8,10 @@ import { bootstrapAdmin, type E2EServer } from './support/server';
 
 const SYNC_TIMEOUT = { timeout: 20_000 };
 
-/** Administrateur créé par l'API (amorçage, compte, profil, lieu maison, fin de l'onboarding), sans accord santé. */
+/**
+ * Administrateur créé par l'API (amorçage, compte, profil avec son coach, lieu maison, fin de l'onboarding),
+ * sans accord santé. Sans coach, le serveur refuse de terminer l'onboarding.
+ */
 async function createAdminViaApi(server: E2EServer, page: Page): Promise<void> {
   const { code } = await bootstrapAdmin(server);
   const call = async (method: 'POST' | 'PATCH', path: string, data: unknown, status: number) => {
@@ -28,7 +31,14 @@ async function createAdminViaApi(server: E2EServer, page: Page): Promise<void> {
   await call(
     'PATCH',
     '/api/me/training-profile',
-    { goal: 'muscle', experience: 'none', daysPerWeek: 3, sessionMinutes: 45, onboardingStep: 'health' },
+    {
+      coach: 'skald',
+      goal: 'muscle',
+      experience: 'none',
+      daysPerWeek: 3,
+      sessionMinutes: 45,
+      onboardingStep: 'health',
+    },
     200,
   );
   await call('POST', '/api/places', { kind: 'home', equipment: [], isPrimary: true }, 201);

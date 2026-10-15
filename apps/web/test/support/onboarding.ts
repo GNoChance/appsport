@@ -7,7 +7,7 @@ import { seedMirror } from './seed';
 
 export const PROFILE_PATH = '/api/me/training-profile';
 
-/** Profil d'entraînement d'un nouveau compte : rien n'est encore répondu. */
+/** Profil d'entraînement d'un nouveau compte : rien n'est encore répondu, pas même le coach. */
 export const EMPTY_PROFILE = {
   goal: null,
   experience: null,
@@ -16,6 +16,7 @@ export const EMPTY_PROFILE = {
   sportCode: null,
   sportOtherLabel: null,
   cautiousMode: false,
+  coach: null,
 };
 
 type ProfileFields = { [K in keyof typeof EMPTY_PROFILE]?: unknown };
@@ -25,8 +26,14 @@ export function newcomer(o: Partial<MeResponse> = {}): MeResponse {
   return makeMe({ onboardingCompletedAt: null, onboardingStep: null, ...o });
 }
 
+/**
+ * Profil d'un compte qui a passé la première étape (coach Le Skald), plus `fields` ; `coach: null` pour
+ * un profil sans coach, que la reprise de l'onboarding renvoie à l'étape coach.
+ */
 export async function seedProfile(db: AppDb, fields: ProfileFields = {}, ownerId = 'u-1'): Promise<void> {
-  await seedMirror(db, 'training_profile', [{ id: ownerId, ownerId, ...EMPTY_PROFILE, ...fields }]);
+  await seedMirror(db, 'training_profile', [
+    { id: ownerId, ownerId, ...EMPTY_PROFILE, coach: 'skald', ...fields },
+  ]);
 }
 
 /** Salle « Basic Fit » à Lyon, lieu principal de `ownerId`. */

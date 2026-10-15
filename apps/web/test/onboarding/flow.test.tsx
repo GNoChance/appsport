@@ -29,17 +29,17 @@ async function openFlow(me = newcomer()) {
   return { db, api, me, server, render: () => renderApp({ path: '/onboarding', me, db, api }) };
 }
 
-const progress = () => screen.getByText(/^Étape \d\/8$/).textContent;
+const progress = () => screen.getByText(/^Étape \d sur 9$/).textContent;
 /** Le titre de l'écran, nommé avec l'indicateur d'étape, a le focus. */
 const hasFocus = (name: string) =>
   screen.queryByRole('heading', { level: 2, name }) === document.activeElement;
 
 describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
-  it("départ 'goal', « Étape 1/8 », hors de la coquille de l'appli", async () => {
+  it("départ 'coach', « Étape 1 sur 9 », hors de la coquille de l'appli", async () => {
     const { render } = await openFlow();
     const { location } = await render();
-    await until(() => currentStep() === 'goal');
-    expect(progress()).toBe('Étape 1/8');
+    await until(() => currentStep() === 'coach');
+    expect(progress()).toBe('Étape 1 sur 9');
     expect(location()).toBe('/onboarding');
     expect(screen.queryByRole('navigation', { name: 'Navigation principale' })).toBeNull();
     // La marque ne mène pas hors de l'onboarding (la garde y ramènerait en perdant l'écran).
@@ -47,16 +47,20 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(screen.queryByRole('link', { name: 'Rune' })).toBeNull();
   });
 
-  it('changement d’écran : le titre, nommé avec « Étape n/8 », reçoit le focus ; pas au premier affichage', async () => {
+  it('changement d’écran : le titre, nommé avec « Étape n sur 9 », reçoit le focus ; pas au premier affichage', async () => {
     const t = await openFlow();
+    // Coach déjà choisi : reprise à l'objectif.
+    await seedProfile(t.db);
     await t.render();
-    await screen.findByRole('heading', { level: 2, name: 'Étape 1/8 Objectif' });
+    await screen.findByRole('heading', { level: 2, name: 'Étape 2 sur 9 Objectif' });
     expect(document.activeElement).toBe(document.body);
     choose('Prendre du muscle');
     fireEvent.click(button('Suivant'));
-    await until(() => hasFocus('Étape 2/8 Autre sport'));
+    await until(() => hasFocus('Étape 3 sur 9 Autre sport'));
     fireEvent.click(button('Retour'));
-    await until(() => hasFocus('Étape 1/8 Objectif'));
+    await until(() => hasFocus('Étape 2 sur 9 Objectif'));
+    fireEvent.click(button('Retour'));
+    await until(() => hasFocus('Étape 1 sur 9 Choisis ton coach'));
   });
 
   it('reprise au premier écran incomplet (firstIncompleteStep)', async () => {
@@ -68,7 +72,7 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(expected).toBe('experience');
     await t.render();
     await until(() => currentStep() === 'experience');
-    expect(progress()).toBe('Étape 5/8');
+    expect(progress()).toBe('Étape 6 sur 9');
   });
 
   it("santé validée : reprise à 'ready'", async () => {
@@ -77,18 +81,19 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     await seedPrimaryGym(t.db);
     await t.render();
     await until(() => currentStep() === 'ready');
-    expect(progress()).toBe('Étape 8/8');
+    expect(progress()).toBe('Étape 9 sur 9');
   });
 
   it('nouvel appareil : la reprise est recalculée quand la première synchro arrive', async () => {
     const t = await openFlow(newcomer({ onboardingStep: 'place' }));
     const { sync } = await t.render();
-    await until(() => currentStep() === 'goal');
+    // Miroir vide : pas de coach connu, l'étape coach d'abord.
+    await until(() => currentStep() === 'coach');
     await seedProfile(t.db, { goal: 'muscle' });
     await seedPrimaryGym(t.db);
     sync.set({ lastPullOkAt: '2026-10-06T12:00:00.000Z' });
     await until(() => currentStep() === 'experience');
-    expect(progress()).toBe('Étape 5/8');
+    expect(progress()).toBe('Étape 6 sur 9');
   });
 
   it('écran déjà changé par l’utilisateur : une synchro ne le déplace plus', async () => {
@@ -103,24 +108,24 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(currentStep()).toBe('goal');
   });
 
-  it('« Prendre du muscle » + « Suivant » → PATCH, puis « Autre sport » en 2/8 ; « Retour » garde la réponse', async () => {
+  it('« Prendre du muscle » + « Suivant » → PATCH, puis « Autre sport » en 3 sur 9 ; « Retour » garde la réponse', async () => {
     const t = await openFlow();
+    await seedProfile(t.db);
     await t.render();
     await until(() => currentStep() === 'goal');
     await screen.findByRole('radio', { name: 'Prendre du muscle' });
     expect(button('Suivant').disabled).toBe(true);
-    expect(screen.queryByRole('button', { name: 'Retour' })).toBeNull();
     choose('Prendre du muscle');
     expect(t.server.patches).toEqual([]);
     fireEvent.click(button('Suivant'));
     await until(() => currentStep() === 'sport');
     expect(t.server.patches).toEqual([{ goal: 'muscle', onboardingStep: 'goal' }]);
-    expect(progress()).toBe('Étape 2/8');
+    expect(progress()).toBe('Étape 3 sur 9');
 
     fireEvent.click(await screen.findByRole('button', { name: 'Retour' }));
     await until(() => currentStep() === 'goal');
     await until(() => isChecked('Prendre du muscle'));
-    expect(progress()).toBe('Étape 1/8');
+    expect(progress()).toBe('Étape 2 sur 9');
     expect(t.server.patches).toHaveLength(1);
   });
 
@@ -162,7 +167,7 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     await until(() => currentStep() === 'place_kind');
     expect(radio('À la salle').checked).toBe(false);
     expect(radio('À la maison').checked).toBe(false);
-    expect(progress()).toBe('Étape 3/8');
+    expect(progress()).toBe('Étape 4 sur 9');
   });
 
   it("shownStep : 'place' sans type de lieu connu → 'place_kind' ; avec un type → 'place'", () => {
@@ -188,6 +193,7 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
 
   it('hors ligne : « Nécessite le réseau » en alerte, on reste sur l’objectif', async () => {
     const t = await openFlow();
+    await seedProfile(t.db);
     await t.render();
     await until(() => currentStep() === 'goal');
     await screen.findByRole('radio', { name: 'Gagner en force' });

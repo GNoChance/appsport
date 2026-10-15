@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, type RefObject, useCallback, useContext, useId } from 'react';
 
 /**
- * Titre d'écran dans l'onboarding : `progressId` nomme le titre avec « Étape n/8 » ; `focusNext`
+ * Titre d'écran dans l'onboarding : `progressId` nomme le titre avec « Étape n sur 9 » ; `focusNext`
  * vaut vrai après un changement d'écran, et le prochain titre affiché prend alors le focus.
  */
 export const StepTitleContext = createContext<{
@@ -10,7 +10,7 @@ export const StepTitleContext = createContext<{
 } | null>(null);
 
 /**
- * Titre d'un écran (h2). Dans l'onboarding, il est nommé « Étape n/8 <titre> » et reçoit le focus
+ * Titre d'un écran (h2). Dans l'onboarding, il est nommé « Étape n sur 9 <titre> » et reçoit le focus
  * dès qu'il apparaît après un changement d'écran (lecteur d'écran et clavier repartent de là) ;
  * hors onboarding (Profil), simple titre.
  */

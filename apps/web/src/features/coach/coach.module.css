@@ -1,0 +1,440 @@
+/*
+ * Choix et présentation du coach (spec refonte §8) : mise en page des maquettes B01 (titre, phrase, cartes,
+ * actions) et comportement du prototype (écrans « coach » et « intro »). Couleurs prises dans les jetons ;
+ * mouvement sur la courbe et les durées communes (motion.css), remplacé par des fondus sous mouvement réduit.
+ */
+
+/* ---------- Choix du coach ---------- */
+
+.choices {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* La phrase sous le titre (maquette B01 : 15,5 px, texte secondaire) sert de légende au groupe. */
+.lead {
+  padding: 0;
+  margin: 0 0 var(--space-4);
+  font-size: 0.96875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/*
+ * Carte d'un coach (prototype « coach-card ») : avatar de 84 px, nom, tempérament et aperçu ; coche en haut à
+ * droite. Mêmes bord, fond et états que la carte de choix de la boîte à outils.
+ */
+.card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 12px 40px 12px 12px;
+  border-radius: var(--radius-card);
+  border: 2px solid var(--border);
+  background: var(--surface);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+/* Le vrai bouton radio, transparent, couvre toute la carte : doigt, souris et clavier le visent directement. */
+.cardInput {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.cardAvatar {
+  display: grid;
+  place-items: center;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.cardText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cardName {
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 1.125rem;
+  line-height: 1.2;
+}
+
+.cardTemper {
+  font-size: 0.84375rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.cardQuote {
+  margin-top: 5px;
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  font-size: 0.875rem;
+  line-height: 1.38;
+}
+
+.cardMark {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-muted) 70%, var(--surface));
+}
+
+/* Choisie : bord accent, teinte, coche pleine et petit ressort (retour du geste). */
+.card:has(.cardInput:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  animation: card-spring var(--dur-fast) var(--ease);
+}
+
+.card:has(.cardInput:checked) .cardMark {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Un coach choisi : les avatars des autres s'effacent un peu (dessins décoratifs ; le texte garde son contraste). */
+.cards:has(.cardInput:checked) .card:not(:has(.cardInput:checked)) .cardAvatar {
+  opacity: 0.55;
+}
+
+.card:has(.cardInput:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .card:has(.cardInput:hover:not(:checked)) {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+}
+
+@keyframes card-spring {
+  0% {
+    transform: scale(0.98);
+  }
+  60% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.note {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 0.84375rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.note svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+/* ---------- Présentation ---------- */
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Scène de l'avatar : halo de l'entraînement (accent) ou de la nutrition (or), avatar de 184 px qui grandit. */
+.stage {
+  position: relative;
+  height: 232px;
+  display: grid;
+  place-items: center;
+}
+
+.halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280px;
+  height: 280px;
+  margin: -140px 0 0 -140px;
+  border-radius: 50%;
+  transition: opacity var(--dur-screen) var(--ease);
+  animation: intro-fade var(--dur-screen) var(--ease) 150ms backwards;
+}
+
+.halo[data-tone="training"] {
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 24%, transparent) 0%, transparent 62%);
+}
+
+.halo[data-tone="nutrition"] {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--warning-text) 26%, transparent) 0%,
+    transparent 62%
+  );
+  opacity: 0;
+}
+
+.stage[data-mode="nutrition"] .halo[data-tone="training"] {
+  opacity: 0;
+}
+
+.stage[data-mode="nutrition"] .halo[data-tone="nutrition"] {
+  opacity: 1;
+}
+
+.grow {
+  position: relative;
+  display: block;
+  width: 184px;
+  height: 184px;
+  animation: grow-in var(--dur-screen) var(--ease) 160ms backwards;
+}
+
+/* Les deux versions de l'avatar, superposées : la nutrition tourne et grandit à la place de l'entraînement. */
+.layer {
+  position: absolute;
+  inset: 0;
+  transition:
+    opacity var(--dur-screen) var(--ease),
+    transform var(--dur-screen) var(--ease);
+}
+
+.layer[data-layer="nutrition"] {
+  opacity: 0;
+  transform: scale(1.1) rotate(-8deg);
+}
+
+.stage[data-mode="nutrition"] .layer[data-layer="training"] {
+  opacity: 0;
+  transform: scale(0.88) rotate(8deg);
+}
+
+.stage[data-mode="nutrition"] .layer[data-layer="nutrition"] {
+  opacity: 1;
+  transform: none;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Le nom du coach, centré (prototype : 26 px) ; plus spécifique que le titre d'étape de l'onboarding. */
+.intro .identity h2 {
+  margin: 0;
+  font-size: 1.625rem;
+  line-height: 1.1;
+  text-align: center;
+}
+
+/* Interrupteur « Entraînement / Nutrition » : deux boutons pressables, pastille qui glisse sous le choisi. */
+.modeSwitch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  min-width: 0;
+  margin: 0;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.modePill {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  bottom: 3px;
+  width: calc(50% - 3px);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.modeSwitch[data-mode="nutrition"] .modePill {
+  transform: translateX(100%);
+  background: color-mix(in srgb, var(--warning-text) 14%, var(--surface));
+}
+
+.modeButton {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.modeButton[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.modeSwitch[data-mode="nutrition"] .modeButton[aria-pressed="true"] {
+  color: var(--warning-text);
+}
+
+.modeDot {
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  background: currentColor;
+}
+
+/* Nom, interrupteur, bulle et aide arrivent juste après l'avatar. */
+.introFade {
+  animation: intro-fade var(--dur-screen) var(--ease) 420ms backwards;
+}
+
+/*
+ * Dévoilement : le texte entier reste à sa place (il réserve la hauteur de la bulle et c'est lui que lisent les
+ * lecteurs d'écran), invisible tant que la copie animée, posée dessus et cachée aux lecteurs, s'écrit.
+ */
+.reveal {
+  position: relative;
+  margin: 0;
+}
+
+.reveal[data-revealing] .fullText {
+  opacity: 0;
+}
+
+.typed {
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * Texte de l'entraînement et texte de la nutrition superposés dans la même case : la bulle prend la hauteur
+ * du plus long et ne saute pas d'un mode à l'autre. Le texte de l'autre mode s'efface en glissant un peu.
+ */
+.modeTexts {
+  display: grid;
+}
+
+.modeTexts > * {
+  grid-area: 1 / 1;
+  margin: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.modeTexts[data-mode="training"] > [data-text="nutrition"] {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.modeTexts[data-mode="nutrition"] > [data-text="training"] {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Annonce du mode aux lecteurs d'écran, invisible à l'écran. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes intro-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes grow-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Mouvement réduit (spec refonte §7) : plus de ressort, d'agrandissement ni de rotation, de simples fondus. */
+@media (prefers-reduced-motion: reduce) {
+  .card:has(.cardInput:checked) {
+    animation: none;
+  }
+
+  .grow {
+    animation-name: intro-fade;
+  }
+
+  .layer,
+  .layer[data-layer="nutrition"],
+  .stage[data-mode="nutrition"] .layer[data-layer="training"],
+  .modeTexts[data-mode="training"] > [data-text="nutrition"],
+  .modeTexts[data-mode="nutrition"] > [data-text="training"] {
+    transform: none;
+  }
+
+  .modePill {
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+}
