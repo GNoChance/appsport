@@ -40,7 +40,8 @@ describe('AdminGymsPage (02 §6, R-SAL-4, R-SAL-7)', () => {
   it('liste GET /api/gyms?q= : nom (lien vers la fiche), ville, membres visibles ; recherche', async () => {
     const api = createFakeApi();
     await renderGyms(api);
-    expect(screen.getByRole('heading', { level: 1, name: 'Salles' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Salles' })).toBeTruthy();
     expect(searches(api)).toEqual(['']);
     expect(gym('Basic Fit').getByRole('link', { name: 'Basic Fit' }).getAttribute('href')).toBe('/gyms/g-1');
     expect(gym('Basic Fit').getByText('Lyon · 2 membres visibles')).toBeTruthy();
@@ -131,6 +132,8 @@ describe('AdminGymsPage (02 §6, R-SAL-4, R-SAL-7)', () => {
 const HOUR = 3_600_000;
 const ago = (ms: number) => new Date(DEFAULT_NOW - ms).toISOString();
 
+type Host = NonNullable<OpsStatus['host']>;
+
 /** État d'exploitation de 08 §9 : déploiement, sauvegarde, test de restauration, hôte. */
 const OPS: OpsStatus = {
   deploy: { at: '2026-10-01T09:00:00.000Z', version: 'v1.2.3', previousVersion: 'v1.2.2', ok: true },
@@ -149,82 +152,128 @@ const OPS: OpsStatus = {
   },
 };
 
+/** Tout va bien : aucune alerte. */
+const HEALTHY: OpsStatus = {
+  ...OPS,
+  host: { ...(OPS.host as Host), ok: true, disks: [{ mount: '/', usedPct: 42 }], rebootRequired: false },
+};
+
 async function renderHealth(opsStatus: OpsStatus | null, api: FakeApi = createFakeApi()) {
   api.on('GET', '/api/admin/ops-status', { status: 200, body: { version: 'v1.2.3', opsStatus } });
   const rendered = await renderWithServices(<ServerHealthPage />, { api, me: ADMIN });
-  await screen.findByText('Version en service : v1.2.3');
+  await screen.findByRole('region', { name: 'Résumé' });
   return rendered;
 }
 
-describe('ServerHealthPage (08 §9)', () => {
+const summary = () => within(screen.getByRole('region', { name: 'Résumé' }));
+/** Ligne d'un contrôle de la section Exploitation (libellé, détail, badge), trouvée par son libellé. */
+const checkRow = (label: string) => {
+  const li = within(screen.getByRole('list', { name: 'Exploitation' }))
+    .getAllByRole('listitem')
+    .find((el) => el.textContent?.startsWith(label));
+  if (!li) throw new Error(`contrôle ${label} absent`);
+  return within(li);
+};
+const disks = () =>
+  within(screen.getByRole('list', { name: 'Espace disque' }))
+    .getAllByRole('listitem')
+    .map((li) => li.textContent);
+const hostFacts = () => {
+  const host = within(screen.getByRole('region', { name: 'Hôte' }));
+  const terms = host.getAllByRole('term').map((t) => t.textContent);
+  const values = host.getAllByRole('definition').map((d) => d.textContent);
+  return Object.fromEntries(terms.map((t, i) => [t, values[i]]));
+};
+
+describe('ServerHealthPage (08 §9, maquette E05)', () => {
   it('seuils : 26 h de sauvegarde, disque au-delà de 80 %', () => {
     expect(BACKUP_LATE_MS).toBe(26 * HOUR);
     expect(DISK_WARN_PCT).toBe(80);
   });
 
-  it('version, déploiement, sauvegarde, test de restauration, disques, SMART, redémarrage', async () => {
+  it('résumé : version, nombre d’alertes, « Dernier contrôle de l’hôte » ; un badge par contrôle', async () => {
     await renderHealth(OPS);
-    expect(screen.getByRole('heading', { level: 1, name: 'État du serveur' })).toBeTruthy();
-    expect(screen.getByText('Dernier déploiement : v1.2.3 le 01/10/2026 (réussi)')).toBeTruthy();
-    expect(screen.getByText('Dernière sauvegarde : il y a 5 h (réussie)')).toBeTruthy();
-    expect(screen.getByText('Dernier test de restauration : 04/10/2026 (réussi)')).toBeTruthy();
-    expect(screen.getByText("Dernier contrôle de l'hôte : il y a 8 h")).toBeTruthy();
-    const disks = within(screen.getByRole('list', { name: 'Espace disque' }))
-      .getAllByRole('listitem')
-      .map((li) => li.textContent);
-    expect(disks).toEqual(['/ : 42 %', '/srv/rune : 81 % (au-delà de 80 %)', '/srv/backup : 80 %']);
-    expect(screen.getByText('SMART : OK')).toBeTruthy();
-    expect(screen.getByText('Redémarrage nécessaire')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
+    expect(summary().getByText('Version en service')).toBeTruthy();
+    expect(summary().getByText('v1.2.3')).toBeTruthy();
+    // Disque /srv/rune à 81 % et redémarrage nécessaire.
+    expect(summary().getByText('2 alertes')).toBeTruthy();
+    expect(summary().getByText("Dernier contrôle de l'hôte : il y a 8 h")).toBeTruthy();
+    expect(checkRow('Dernier déploiement').getByText('v1.2.3 le 01/10/2026')).toBeTruthy();
+    expect(checkRow('Dernier déploiement').getByText('Réussi')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('il y a 5 h')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('Réussie')).toBeTruthy();
+    expect(checkRow('Test de restauration').getByText('04/10/2026')).toBeTruthy();
+    expect(checkRow('Test de restauration').getByText('Réussi')).toBeTruthy();
+    expect(disks()).toEqual(['/ : 42 %', '/srv/rune : 81 %Au-delà de 80 %', '/srv/backup : 80 %']);
+    expect(hostFacts()).toEqual({ SMART: 'OK', Redémarrage: 'Nécessaire' });
     expect(screen.queryByText('Sauvegarde en retard (plus de 26 h)')).toBeNull();
     expect(screen.queryByText('Aucune sauvegarde enregistrée')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('tout va bien : « Aucune alerte », redémarrage « Non nécessaire »', async () => {
+    await renderHealth(HEALTHY);
+    expect(summary().getByText('Aucune alerte')).toBeTruthy();
+    expect(hostFacts()).toEqual({ SMART: 'OK', Redémarrage: 'Non nécessaire' });
   });
 
   it('pourcentages arrondis au-dessus : 80,2 % est au-delà de 80 %, 79,6 % ne l’est pas', async () => {
     await renderHealth({
       ...OPS,
       host: {
-        ...(OPS.host as NonNullable<OpsStatus['host']>),
+        ...(OPS.host as Host),
         disks: [
           { mount: '/', usedPct: 80.2 },
           { mount: '/srv/rune', usedPct: 79.6 },
         ],
       },
     });
-    const disks = within(screen.getByRole('list', { name: 'Espace disque' }))
-      .getAllByRole('listitem')
-      .map((li) => li.textContent);
-    expect(disks).toEqual(['/ : 81 % (au-delà de 80 %)', '/srv/rune : 80 %']);
+    expect(disks()).toEqual(['/ : 81 %Au-delà de 80 %', '/srv/rune : 80 %']);
   });
 
-  it('sauvegarde de plus de 26 h → bandeau « Sauvegarde en retard (plus de 26 h) »', async () => {
+  it('sauvegarde de plus de 26 h → bandeau « Sauvegarde en retard (plus de 26 h) », comptée en alerte', async () => {
     await renderHealth({ ...OPS, backup: { at: ago(28 * HOUR), ok: true } });
     const late = screen.getByText('Sauvegarde en retard (plus de 26 h)');
     expect(late.closest('[role="status"], [role="alert"]')).not.toBeNull();
     // En heures sous 72 h : « il y a 1 j » sous « plus de 26 h » minimiserait le retard.
-    expect(screen.getByText('Dernière sauvegarde : il y a 28 h (réussie)')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('il y a 28 h')).toBeTruthy();
+    expect(summary().getByText('3 alertes')).toBeTruthy();
   });
 
   it('sauvegarde de 3 jours et plus : âge en jours', async () => {
     await renderHealth({ ...OPS, backup: { at: ago(80 * HOUR), ok: true } });
-    expect(screen.getByText('Dernière sauvegarde : il y a 3 j (réussie)')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('il y a 3 j')).toBeTruthy();
     expect(screen.getByText('Sauvegarde en retard (plus de 26 h)')).toBeTruthy();
   });
 
   it('sauvegarde de 26 h tout juste : pas encore en retard', async () => {
-    await renderHealth({ ...OPS, backup: { at: ago(26 * HOUR), ok: true } });
+    await renderHealth({ ...HEALTHY, backup: { at: ago(26 * HOUR), ok: true } });
     expect(screen.queryByText('Sauvegarde en retard (plus de 26 h)')).toBeNull();
+    expect(summary().getByText('Aucune alerte')).toBeTruthy();
   });
 
-  it('sauvegarde échouée → « (échouée) » et bandeau d’erreur', async () => {
+  it('sauvegarde échouée → badge « Échouée » et bandeau d’erreur avec le détail', async () => {
     await renderHealth({
-      ...OPS,
+      ...HEALTHY,
       backup: { at: ago(5 * HOUR), ok: false, detail: 'restic: dépôt verrouillé' },
     });
-    expect(screen.getByText('Dernière sauvegarde : il y a 5 h (échouée)')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('Échouée')).toBeTruthy();
     const alert = screen.getByRole('alert');
     expect(alert.textContent).toContain('La dernière sauvegarde a échoué.');
     expect(alert.textContent).toContain('restic: dépôt verrouillé');
+    expect(summary().getByText('1 alerte')).toBeTruthy();
+  });
+
+  it('déploiement raté écrit par les scripts (même version, ok false) : « Échoué » avec la version, compté en alerte', async () => {
+    await renderHealth({
+      ...HEALTHY,
+      deploy: { at: '2026-10-05T19:00:00.000Z', version: 'v1.2.3', previousVersion: 'v1.2.3', ok: false },
+    });
+    expect(checkRow('Dernier déploiement').getByText('v1.2.3 le 05/10/2026')).toBeTruthy();
+    expect(checkRow('Dernier déploiement').getByText('Échoué')).toBeTruthy();
+    expect(checkRow('Dernier déploiement').queryByText('Réussi')).toBeNull();
+    expect(summary().getByText('1 alerte')).toBeTruthy();
   });
 
   it('échecs : déploiement, test de restauration, SMART ; redémarrage inutile', async () => {
@@ -232,27 +281,32 @@ describe('ServerHealthPage (08 §9)', () => {
       ...OPS,
       deploy: { at: '2026-10-01T09:00:00.000Z', version: 'v1.2.4', previousVersion: 'v1.2.3', ok: false },
       restoreTest: { at: '2026-10-04T05:00:00.000Z', ok: false },
-      host: { ...(OPS.host as NonNullable<OpsStatus['host']>), smartOk: false, rebootRequired: false },
+      host: { ...(OPS.host as Host), smartOk: false, rebootRequired: false },
     });
-    expect(screen.getByText('Dernier déploiement : v1.2.4 le 01/10/2026 (échoué)')).toBeTruthy();
-    expect(screen.getByText('Dernier test de restauration : 04/10/2026 (échoué)')).toBeTruthy();
-    expect(screen.getByText('SMART : problème détecté')).toBeTruthy();
-    expect(screen.queryByText('Redémarrage nécessaire')).toBeNull();
+    expect(checkRow('Dernier déploiement').getByText('v1.2.4 le 01/10/2026')).toBeTruthy();
+    expect(checkRow('Dernier déploiement').getByText('Échoué')).toBeTruthy();
+    expect(checkRow('Test de restauration').getByText('Échoué')).toBeTruthy();
+    expect(hostFacts()).toEqual({ SMART: 'Problème détecté', Redémarrage: 'Non nécessaire' });
+    // Déploiement, restauration, SMART et le disque à 81 %.
+    expect(summary().getByText('4 alertes')).toBeTruthy();
   });
 
-  it('aucune sauvegarde enregistrée : bandeau d’avertissement (08 §9 : sauvegarde absente)', async () => {
-    await renderHealth({ deploy: OPS.deploy, host: OPS.host });
+  it('aucune sauvegarde enregistrée : bandeau d’avertissement et badge « Absente » (08 §9 : sauvegarde absente)', async () => {
+    await renderHealth({ deploy: OPS.deploy, host: HEALTHY.host });
     const missing = screen.getByText('Aucune sauvegarde enregistrée');
     expect(missing.closest('[role="status"], [role="alert"]')).not.toBeNull();
-    expect(screen.getByText('Dernière sauvegarde : aucune')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('Aucune')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('Absente')).toBeTruthy();
+    expect(summary().getByText('1 alerte')).toBeTruthy();
   });
 
-  it('contrôles absents : « aucune », « aucun »', async () => {
+  it('contrôles absents : « Aucun », « Aucune », pas de section Hôte', async () => {
     await renderHealth({});
-    expect(screen.getByText('Dernier déploiement : aucun')).toBeTruthy();
-    expect(screen.getByText('Dernière sauvegarde : aucune')).toBeTruthy();
-    expect(screen.getByText('Dernier test de restauration : aucun')).toBeTruthy();
-    expect(screen.getByText("Dernier contrôle de l'hôte : aucun")).toBeTruthy();
+    expect(checkRow('Dernier déploiement').getByText('Aucun')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('Aucune')).toBeTruthy();
+    expect(checkRow('Test de restauration').getByText('Aucun')).toBeTruthy();
+    expect(summary().getByText("Dernier contrôle de l'hôte : aucun")).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Hôte' })).toBeNull();
   });
 
   it('lecture en cours : « Chargement… », puis l’état', async () => {
@@ -264,18 +318,21 @@ describe('ServerHealthPage (08 §9)', () => {
     await renderWithServices(<ServerHealthPage />, { api, me: ADMIN });
     expect((await screen.findByText('Chargement…')).getAttribute('role')).toBe('status');
     reply.resolve();
-    expect(await screen.findByText('Version en service : v1.2.3')).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Résumé' })).toBeTruthy();
     expect(screen.queryByText('Chargement…')).toBeNull();
   });
 
-  it('opsStatus null → aucun état d’exploitation disponible', async () => {
+  it('opsStatus null → version seule et « aucun état d’exploitation disponible »', async () => {
     await renderHealth(null);
+    expect(summary().getByText('v1.2.3')).toBeTruthy();
     expect(
       screen.getByText(
         "Aucun état d'exploitation disponible : les scripts de l'hôte n'ont encore rien écrit.",
       ),
     ).toBeTruthy();
-    expect(screen.queryByText(/Dernière sauvegarde/)).toBeNull();
+    expect(summary().queryByText(/alerte/)).toBeNull();
+    expect(screen.queryByText(/Dernier contrôle/)).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Exploitation' })).toBeNull();
   });
 
   it('hors ligne : « Nécessite le réseau » puis « Réessayer »', async () => {
@@ -286,6 +343,6 @@ describe('ServerHealthPage (08 §9)', () => {
     api.setOffline(false);
     api.on('GET', '/api/admin/ops-status', { status: 200, body: { version: 'v1.2.3', opsStatus: null } });
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
-    expect(await screen.findByText('Version en service : v1.2.3')).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Résumé' })).toBeTruthy();
   });
 });

@@ -436,7 +436,7 @@ describe('coquille', () => {
   it('les pages /admin restent servies à un admin', async () => {
     media();
     await renderApp({ path: '/admin/members', me: makeMe({ role: 'admin' }) });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Membres' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
     expect(current()).toEqual(['Profil']);
   });
 

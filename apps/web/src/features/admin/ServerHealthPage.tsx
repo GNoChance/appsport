@@ -1,11 +1,12 @@
 import type { OpsStatus, OpsStatusResponse } from '@rune/contracts';
-import { useCallback, useId } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useId } from 'react';
 import { useServices } from '../../app-services';
 import { useRepos } from '../../repos';
-import { Banner, formatAge, formatDate, Page } from '../../ui';
-import { AdminNav } from './AdminNav';
+import { Badge, Banner, formatAge, formatDate, plural } from '../../ui';
+import { AdminPage } from './AdminPage';
 import styles from './admin.module.css';
 import { LoadFailure, Loading, useServerData } from './admin-ui';
+import { ChipIcon, ClockIcon, DiskIcon, RestartIcon, ServerIcon, WarningIcon } from './icons';
 
 const HOUR_MS = 3_600_000;
 /** [décision plan] période de 24 h + 2 h de grâce du contrôle `backup` (08 §9). */
@@ -28,44 +29,103 @@ function backupAge(iso: string, nowMs: number): string {
   return hours >= 1 && hours < 72 ? `il y a ${hours} h` : formatAge(iso, nowMs);
 }
 
-const done = (ok: boolean) => (ok ? 'réussi' : 'échoué');
-const doneFeminine = (ok: boolean) => (ok ? 'réussie' : 'échouée');
+const backupLate = (backup: OpsStatus['backup'], nowMs: number) =>
+  backup !== undefined && nowMs - Date.parse(backup.at) > BACKUP_LATE_MS;
 
 /**
- * Admin › État du serveur (08 §9) : version en service, dernier déploiement, âge de la dernière
- * sauvegarde (en retard au-delà de 26 h), dernier test de restauration, espace disque, SMART et
- * redémarrage, tels qu'écrits par les scripts de l'hôte dans /data/ops/status.json.
+ * Alertes de l'état d'exploitation (08 §9) : déploiement raté (y compris celui que les scripts écrivent avec
+ * `ok: false` et la même version, T43-F14), sauvegarde absente, ratée ou en retard (une alerte), test de
+ * restauration raté, chaque disque au-delà de 80 %, SMART en défaut, redémarrage nécessaire.
+ */
+export function opsAlertCount(ops: OpsStatus, nowMs: number): number {
+  const { deploy, backup, restoreTest, host } = ops;
+  return [
+    deploy !== undefined && !deploy.ok,
+    backup === undefined || !backup.ok || backupLate(backup, nowMs),
+    restoreTest !== undefined && !restoreTest.ok,
+    ...(host
+      ? [...host.disks.map((d) => d.usedPct > DISK_WARN_PCT), !host.smartOk, host.rebootRequired]
+      : []),
+  ].filter(Boolean).length;
+}
+
+/** Résultat d'un contrôle : réussi en vert, échoué en danger (le mot dit toujours l'état). */
+function Outcome(p: { ok: boolean; feminine?: boolean }) {
+  const label = p.ok ? 'Réussi' : 'Échoué';
+  return <Badge tone={p.ok ? 'success' : 'danger'}>{p.feminine ? `${label}e` : label}</Badge>;
+}
+
+/**
+ * Admin › Serveur (08 §9, maquette E05) : résumé (version en service, nombre d'alertes, dernier contrôle de
+ * l'hôte), puis l'exploitation (dernier déploiement, âge de la dernière sauvegarde, en retard au-delà de 26 h,
+ * dernier test de restauration), chacun avec son badge, et l'hôte (espace disque, SMART, redémarrage), tels
+ * qu'écrits par les scripts de l'hôte dans /data/ops/status.json.
  */
 export function ServerHealthPage() {
   const repos = useRepos();
   const load = useCallback(() => repos.admin.opsStatus(), [repos]);
   const { data, error, loading, reload } = useServerData(load);
   return (
-    <Page title="État du serveur">
-      <AdminNav />
+    <AdminPage>
       {loading ? <Loading /> : null}
       {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
       {data ? <HealthReport status={data} /> : null}
-    </Page>
+    </AdminPage>
   );
 }
 
 function HealthReport(p: { status: OpsStatusResponse }) {
   const { now } = useServices();
+  const nowMs = now();
   const ops = p.status.opsStatus;
+  const alerts = ops ? opsAlertCount(ops, nowMs) : 0;
   return (
     <>
-      <p>Version en service : {p.status.version}</p>
-      {ops ? <OpsReport ops={ops} nowMs={now()} /> : <p>{NO_OPS_STATUS}</p>}
+      <section aria-label="Résumé" className={`enter-up ${styles.card} ${styles.summary}`}>
+        <div className={styles.summaryHead}>
+          <span className={styles.summaryIcon} aria-hidden="true">
+            <ServerIcon />
+          </span>
+          <div className={styles.summaryText}>
+            <span className={styles.meta}>Version en service</span>
+            <span className={styles.version}>{p.status.version}</span>
+          </div>
+          {ops ? (
+            <Badge tone={alerts > 0 ? 'warning' : 'success'}>
+              {alerts > 0 ? `${alerts} ${plural(alerts, 'alerte', 'alertes')}` : 'Aucune alerte'}
+            </Badge>
+          ) : null}
+        </div>
+        {ops ? (
+          <p className={styles.hostCheck}>
+            <ClockIcon />
+            {ops.host
+              ? `Dernier contrôle de l'hôte : ${formatAge(ops.host.at, nowMs)}`
+              : "Dernier contrôle de l'hôte : aucun"}
+          </p>
+        ) : null}
+      </section>
+      {ops ? <OpsReport ops={ops} nowMs={nowMs} /> : <p>{NO_OPS_STATUS}</p>}
     </>
+  );
+}
+
+/** Ligne d'un contrôle : libellé, détail (date, âge, version), badge du résultat. */
+function CheckRow(p: { label: string; detail: string; badge?: ReactNode }) {
+  return (
+    <li className={styles.checkRow}>
+      <span className={styles.checkText}>
+        <span className={styles.checkLabel}>{p.label}</span>
+        <span className={styles.meta}>{p.detail}</span>
+      </span>
+      {p.badge}
+    </li>
   );
 }
 
 function OpsReport(p: { ops: OpsStatus; nowMs: number }) {
   const { deploy, backup, restoreTest, host } = p.ops;
-  const hostId = useId();
-  const disksId = useId();
-  const late = backup !== undefined && p.nowMs - Date.parse(backup.at) > BACKUP_LATE_MS;
+  const opsId = useId();
   return (
     <>
       {backup && !backup.ok ? (
@@ -74,49 +134,95 @@ function OpsReport(p: { ops: OpsStatus; nowMs: number }) {
         </Banner>
       ) : null}
       {backup === undefined ? <Banner tone="warning">{NO_BACKUP}</Banner> : null}
-      {late ? <Banner tone="warning">Sauvegarde en retard (plus de {BACKUP_LATE_HOURS} h)</Banner> : null}
-      <ul className={styles.facts}>
-        <li>
-          {deploy
-            ? `Dernier déploiement : ${deploy.version} le ${formatDate(deploy.at)} (${done(deploy.ok)})`
-            : 'Dernier déploiement : aucun'}
-        </li>
-        <li>
-          {backup
-            ? `Dernière sauvegarde : ${backupAge(backup.at, p.nowMs)} (${doneFeminine(backup.ok)})`
-            : 'Dernière sauvegarde : aucune'}
-        </li>
-        <li>
-          {restoreTest
-            ? `Dernier test de restauration : ${formatDate(restoreTest.at)} (${done(restoreTest.ok)})`
-            : 'Dernier test de restauration : aucun'}
-        </li>
-        <li>
-          {host
-            ? `Dernier contrôle de l'hôte : ${formatAge(host.at, p.nowMs)}`
-            : "Dernier contrôle de l'hôte : aucun"}
-        </li>
-      </ul>
-      {host ? (
-        <section aria-labelledby={hostId} className={styles.section}>
-          <h2 id={hostId}>Hôte</h2>
-          <h3 id={disksId}>Espace disque</h3>
-          <ul aria-labelledby={disksId} className={styles.facts}>
+      {backupLate(backup, p.nowMs) ? (
+        <Banner tone="warning">Sauvegarde en retard (plus de {BACKUP_LATE_HOURS} h)</Banner>
+      ) : null}
+      <section aria-labelledby={opsId} className={styles.section}>
+        <h2 id={opsId}>Exploitation</h2>
+        <ul aria-labelledby={opsId} className={`${styles.card} ${styles.checks}`}>
+          <CheckRow
+            label="Dernier déploiement"
+            detail={deploy ? `${deploy.version} le ${formatDate(deploy.at)}` : 'Aucun'}
+            badge={deploy ? <Outcome ok={deploy.ok} /> : undefined}
+          />
+          <CheckRow
+            label="Dernière sauvegarde"
+            detail={backup ? backupAge(backup.at, p.nowMs) : 'Aucune'}
+            badge={backup ? <Outcome ok={backup.ok} feminine /> : <Badge tone="warning">Absente</Badge>}
+          />
+          <CheckRow
+            label="Test de restauration"
+            detail={restoreTest ? formatDate(restoreTest.at) : 'Aucun'}
+            badge={restoreTest ? <Outcome ok={restoreTest.ok} /> : undefined}
+          />
+        </ul>
+      </section>
+      {host ? <HostReport host={host} /> : null}
+    </>
+  );
+}
+
+/** Hôte (08 §9, contrôle `host`) : occupation de chaque disque (barre qui se remplit), SMART et redémarrage. */
+function HostReport(p: { host: NonNullable<OpsStatus['host']> }) {
+  const { host } = p;
+  const hostId = useId();
+  const disksId = useId();
+  return (
+    <section aria-labelledby={hostId} className={styles.section}>
+      <h2 id={hostId}>Hôte</h2>
+      <div className={styles.card}>
+        <div className={styles.disks}>
+          <h3 id={disksId}>
+            <DiskIcon />
+            Espace disque
+          </h3>
+          <ul aria-labelledby={disksId}>
             {host.disks.map((d) => {
+              const pct = Math.ceil(d.usedPct);
               const warn = d.usedPct > DISK_WARN_PCT;
+              const fill = { '--fill': Math.min(100, Math.max(0, pct)) / 100 } as CSSProperties;
               return (
-                <li key={d.mount} className={warn ? styles.alert : undefined}>
-                  {`${d.mount} : ${Math.ceil(d.usedPct)} %${warn ? ` (au-delà de ${DISK_WARN_PCT} %)` : ''}`}
+                <li key={d.mount} className={styles.disk} data-warn={warn || undefined}>
+                  <span className={styles.diskHead}>
+                    <span className={styles.diskMount}>{d.mount}</span>
+                    <span className={styles.srOnly}> : </span>
+                    <span className={styles.diskPct}>{pct} %</span>
+                  </span>
+                  <span className={styles.bar} aria-hidden="true">
+                    <span className={styles.barFill} style={fill} />
+                  </span>
+                  {warn ? (
+                    <span className={styles.diskWarn}>
+                      <WarningIcon />
+                      Au-delà de {DISK_WARN_PCT} %
+                    </span>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
-          <p className={host.smartOk ? undefined : styles.alert}>
-            {host.smartOk ? 'SMART : OK' : 'SMART : problème détecté'}
-          </p>
-          {host.rebootRequired ? <p className={styles.alert}>Redémarrage nécessaire</p> : null}
-        </section>
-      ) : null}
-    </>
+        </div>
+        <dl className={styles.hostFacts}>
+          <div>
+            <dt>
+              <ChipIcon />
+              SMART
+            </dt>
+            <dd>
+              <Badge tone={host.smartOk ? 'success' : 'danger'}>
+                {host.smartOk ? 'OK' : 'Problème détecté'}
+              </Badge>
+            </dd>
+          </div>
+          <div>
+            <dt>
+              <RestartIcon />
+              Redémarrage
+            </dt>
+            <dd>{host.rebootRequired ? <Badge tone="warning">Nécessaire</Badge> : 'Non nécessaire'}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
   );
 }

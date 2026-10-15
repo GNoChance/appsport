@@ -6,11 +6,11 @@ import {
   type GymSummary,
   type UpdateGymRequest,
 } from '@rune/contracts';
-import { type RefObject, useCallback, useRef, useState } from 'react';
+import { type RefObject, useCallback, useId, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useRepos } from '../../repos';
-import { Button, Field, Page, plural } from '../../ui';
-import { AdminNav } from './AdminNav';
+import { Button, Field, plural } from '../../ui';
+import { AdminPage } from './AdminPage';
 import styles from './admin.module.css';
 import { ActionDialog, LoadFailure, Loading, useServerData } from './admin-ui';
 
@@ -21,7 +21,7 @@ const lengthError = (value: string, min: number, max: number) =>
   value.length < min || value.length > max ? `${min} à ${max} caractères.` : null;
 
 /**
- * Admin › Salles (02 §6) : liste avec recherche, modification du nom et de la ville (R-SAL-4,
+ * Admin › Salles (02 §6) : liste en cartes avec recherche, modification du nom et de la ville (R-SAL-4,
  * matériel sur la fiche de la salle), suppression d'une salle inutilisée (R-SAL-7). En ligne
  * seulement ; la liste est relue après chaque réussite.
  */
@@ -33,39 +33,26 @@ export function AdminGymsPage() {
   const [editing, setEditing] = useState<GymSummary | null>(null);
   const [deleting, setDeleting] = useState<GymSummary | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const headingId = useId();
 
   return (
-    <Page title="Salles">
-      <AdminNav />
-      <Field label="Rechercher une salle">
-        <input ref={searchRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
-      </Field>
-      {loading ? <Loading /> : null}
-      {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
-      {gyms && gyms.length === 0 ? <p>Aucune salle trouvée.</p> : null}
-      {gyms && gyms.length > 0 ? (
-        <ul aria-label="Salles" className={styles.cards}>
-          {gyms.map((g) => (
-            <li key={g.id} className={styles.card}>
-              <Link href={`/gyms/${g.id}`} className={styles.cardTitle}>
-                {g.name}
-              </Link>
-              <span className={styles.meta}>
-                {g.city} · {g.visibleMemberCount}{' '}
-                {plural(g.visibleMemberCount, 'membre visible', 'membres visibles')}
-              </span>
-              <div className={styles.actions}>
-                <Button variant="secondary" onClick={() => setEditing(g)}>
-                  Modifier
-                </Button>
-                <Button variant="danger" onClick={() => setDeleting(g)}>
-                  Supprimer
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+    <AdminPage>
+      <section aria-labelledby={headingId} className={styles.section}>
+        <h2 id={headingId}>Salles</h2>
+        <Field label="Rechercher une salle">
+          <input ref={searchRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </Field>
+        {loading ? <Loading /> : null}
+        {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
+        {gyms && gyms.length === 0 ? <p>Aucune salle trouvée.</p> : null}
+        {gyms && gyms.length > 0 ? (
+          <ul aria-labelledby={headingId} className={`stagger ${styles.cards}`}>
+            {gyms.map((g) => (
+              <GymCard key={g.id} gym={g} onEdit={() => setEditing(g)} onDelete={() => setDeleting(g)} />
+            ))}
+          </ul>
+        ) : null}
+      </section>
       {editing ? (
         <EditGymDialog
           gym={editing}
@@ -94,7 +81,31 @@ export function AdminGymsPage() {
           </p>
         </ActionDialog>
       ) : null}
-    </Page>
+    </AdminPage>
+  );
+}
+
+/** Carte d'une salle : nom (vers sa fiche), ville et membres visibles ; ses actions sont décrites par son nom. */
+function GymCard(p: { gym: GymSummary; onEdit(): void; onDelete(): void }) {
+  const g = p.gym;
+  const nameId = useId();
+  return (
+    <li className={`${styles.card} ${styles.gymCard}`}>
+      <Link id={nameId} href={`/gyms/${g.id}`} className={styles.cardTitle}>
+        {g.name}
+      </Link>
+      <span className={styles.meta}>
+        {g.city} · {g.visibleMemberCount} {plural(g.visibleMemberCount, 'membre visible', 'membres visibles')}
+      </span>
+      <div className={styles.gymActions}>
+        <Button variant="secondary" className={styles.compact} aria-describedby={nameId} onClick={p.onEdit}>
+          Modifier
+        </Button>
+        <Button variant="danger" className={styles.compact} aria-describedby={nameId} onClick={p.onDelete}>
+          Supprimer
+        </Button>
+      </div>
+    </li>
   );
 }
 
