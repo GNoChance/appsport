@@ -235,7 +235,28 @@ describe('étape coach de l’onboarding (spec refonte §8, §10.1)', () => {
     expect(writes(t.api)).toEqual(['PATCH /api/me/training-profile']);
   });
 
-  it('hors ligne : « Nécessite le réseau », on reste sur le choix sans coach enregistré', async () => {
+  it('« Retour » depuis l’objectif puis un autre coach : « Continuer » enregistre le nouveau choix', async () => {
+    const t = await openFlow();
+    await until(() => currentStep() === 'coach');
+    await screen.findByRole('radio', { name: "L'Ombre" });
+    choose("L'Ombre");
+    fireEvent.click(button('Continuer'));
+    fireEvent.click(await screen.findByRole('button', { name: "C'est parti" }));
+    await until(() => currentStep() === 'goal');
+    fireEvent.click(await screen.findByRole('button', { name: 'Retour' }));
+    await until(() => currentStep() === 'coach');
+    await until(() => isChecked("L'Ombre"));
+    choose('Le Scribe');
+    fireEvent.click(button('Continuer'));
+    await screen.findByRole('button', { name: "C'est parti" });
+    expect(t.server.patches).toEqual([{ coach: 'ombre' }, { coach: 'scribe' }]);
+    await until(() => hasFocus('Étape 1 sur 9 Le Scribe'));
+    fireEvent.click(button("C'est parti"));
+    await until(() => currentStep() === 'goal');
+    expect(t.server.patches).toEqual([{ coach: 'ombre' }, { coach: 'scribe' }]);
+  });
+
+  it('hors ligne : « Nécessite le réseau », on reste sur le choix ; un autre choix efface le message, le réseau revenu « Continuer » enregistre', async () => {
     const t = await openFlow();
     await until(() => currentStep() === 'coach');
     await screen.findByRole('radio', { name: "L'Ombre" });
@@ -247,6 +268,18 @@ describe('étape coach de l’onboarding (spec refonte §8, §10.1)', () => {
     expect(screen.queryByRole('button', { name: "C'est parti" })).toBeNull();
     expect(isChecked("L'Ombre")).toBe(true);
     expect(t.server.patches).toEqual([]);
+    // Un autre choix efface le message, qui ne valait que pour la tentative précédente.
+    choose('Le Scribe');
+    expect(isChecked('Le Scribe')).toBe(true);
+    expect(screen.queryByRole('alert')).toBeNull();
+    // Le réseau revient : « Continuer » n'est ni bloqué ni en attente, il enregistre et ouvre la présentation.
+    t.api.setOffline(false);
+    expect(button('Continuer').disabled).toBe(false);
+    fireEvent.click(button('Continuer'));
+    await screen.findByRole('button', { name: "C'est parti" });
+    expect(t.server.patches).toEqual([{ coach: 'scribe' }]);
+    await until(() => hasFocus('Étape 1 sur 9 Le Scribe'));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('erreur du serveur : le message, on reste sur le choix', async () => {
@@ -409,6 +442,11 @@ function renderIntro(coach: CoachId = 'skald') {
 
 /** Copie animée du texte de la bulle (cachée aux lecteurs d'écran), absente une fois le texte entier. */
 const typedCopy = (root: HTMLElement) => root.querySelector('[data-reveal]');
+/**
+ * Bulle en cours de dévoilement : sa feuille de style rend le texte entier transparent (`.reveal[data-revealing]
+ * .fullText`), happy-dom n'applique pas le CSS. Absente, le texte entier est visible.
+ */
+const revealing = (root: HTMLElement) => root.querySelector('[data-revealing]');
 const pressed = (name: string) => button(name).getAttribute('aria-pressed');
 const nutritionShown = () => screen.queryByText('Aperçu') !== null;
 
@@ -421,20 +459,29 @@ describe('présentation du coach (CoachIntro)', () => {
     expect(readable(full)).toHaveLength(1);
     expect(screen.getByText("Message d'accueil")).toBeTruthy();
     expect(button("C'est parti")).toBeTruthy();
+    // La copie animée existe dès le départ (vide) et elle est cachée aux lecteurs d'écran.
     const copy = typedCopy(container);
-    expect(copy?.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(copy).toBeInstanceOf(HTMLElement);
+    expect(copy?.closest('[aria-hidden="true"]')).toBeInstanceOf(HTMLElement);
     act(() => {
       vi.advanceTimersByTime(1500);
     });
-    const partial = typedCopy(container)?.textContent ?? '';
-    expect(partial.length).toBeGreaterThan(0);
+    // En plein dévoilement, la copie partielle reste cachée : jamais une seconde copie, tronquée, lisible.
+    const typing = typedCopy(container);
+    expect(typing).toBeInstanceOf(HTMLElement);
+    expect(typing?.closest('[aria-hidden="true"]')).toBeInstanceOf(HTMLElement);
+    const partial = typing?.textContent ?? '';
+    expect(partial.trim().length).toBeGreaterThan(0);
     expect(partial.length).toBeLessThan(full.length);
     expect(full.startsWith(partial)).toBe(true);
+    expect(readable(partial.trim())).toEqual([]);
     expect(readable(full)).toHaveLength(1);
     expect(screen.queryByText(/écrire/i)).toBeNull();
     expect(container.querySelector('[data-typing], [aria-busy="true"]')).toBeNull();
     advanceUntil(() => typedCopy(container) === null, 15_000);
     expect(readable(full)).toHaveLength(1);
+    // Dévoilement fini : plus d'état « en cours », qui rend le texte entier transparent sous sa copie animée.
+    expect(revealing(container)).toBeNull();
   });
 
   it('démonstration nutrition jouée une fois après le texte : ligne nutri, « Aperçu », puis retour', () => {
@@ -494,6 +541,8 @@ describe('présentation du coach (CoachIntro)', () => {
     phoneSettings(REDUCE);
     const { container, onStart, onBack } = renderIntro('scribe');
     expect(typedCopy(container)).toBeNull();
+    // Le texte entier est visible, pas seulement présent : aucun état « en cours » ne le rend transparent.
+    expect(revealing(container)).toBeNull();
     expect(readable(COACHES.scribe.intro)).toHaveLength(1);
     fireEvent.click(button("C'est parti"));
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -601,6 +650,11 @@ describe('textes des coachs (coach-lines)', () => {
     // 2026-12-31 23:30 UTC = 2027-01-01 00:30 à Paris (UTC+1) : jour 20819, 20819 % 3 = 2.
     expect(coachLine('ombre', 'daily', new Date('2026-12-31T23:30:00Z'), 'lea', 3)).toBe(
       TEXTS.ombre.daily[2],
+    );
+    // 2026-12-31 22:30 UTC = 23:30 à Paris, encore le 31 en hiver : jour 20818, 20818 % 3 = 1 (un décalage
+    // d'été figé à +2 h donnerait déjà le 1er janvier, index 2).
+    expect(coachLine('ombre', 'daily', new Date('2026-12-31T22:30:00Z'), 'lea', 3)).toBe(
+      TEXTS.ombre.daily[1],
     );
   });
 

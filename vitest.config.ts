@@ -24,6 +24,8 @@ export default defineConfig({
           setupFiles: ['test/setup.ts'],
           include: ['test/**/*.test.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
           exclude: ['e2e/**', '**/node_modules/**'],
+          // Comme le serveur : une date locale à la place de la date de Paris échoue aussi sur un poste à Paris.
+          env: { TZ: 'America/New_York' },
         },
       },
     ],
