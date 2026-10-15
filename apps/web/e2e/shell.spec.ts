@@ -135,6 +135,13 @@ test('barre d’onglets : ni sur le dernier contrôle ni sur le focus ; lisible 
     expect.soft(hit.reached, `« ${hit.name} » reçoit le toucher`).toBe(true);
   });
 
+  // Les champs du Profil sont dans Mon profil, derrière leur ligne (spec refonte §10.4) : le formulaire du mot de
+  // passe en aligne trois.
+  await page.getByRole('main').getByRole('link', { name: 'Mon profil', exact: true }).click();
+  await page.getByRole('button', { name: 'Changer le mot de passe', exact: true }).click();
+  await expect(page.getByLabel('Mot de passe actuel', { exact: true })).toBeVisible();
+  await settle(page);
+
   await test.step('tabulation : le champ atteint finit au-dessus de la barre (2.4.11)', async () => {
     const id = await fieldUnderBar(page);
     expect(id, 'un champ de saisie peut passer sous la barre').not.toBeNull();

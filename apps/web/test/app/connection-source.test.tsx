@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 /**
- * Profil avec le moteur réel (comme `bootApp`), sur téléphone : barre d'onglets. `beforeStart` : juste avant
+ * Mon profil avec le moteur réel (comme `bootApp`), sur téléphone : barre d'onglets. `beforeStart` : juste avant
  * le démarrage du moteur, une fois l'écran affiché.
  */
 async function openProfile(api: FakeApi, beforeStart: () => void = () => {}): Promise<SyncEngine> {
@@ -51,9 +51,9 @@ async function openProfile(api: FakeApi, beforeStart: () => void = () => {}): Pr
   }));
   const db = createTestLocalDb();
   await seedProfile(db, { goal: 'muscle', experience: 'none', daysPerWeek: 3, sessionMinutes: 45 });
-  const view = await renderApp({ path: '/profile', db, api, realSync: true });
+  const view = await renderApp({ path: '/profile/edit', db, api, realSync: true });
   engine = view.engine;
-  await until(() => screen.queryByRole('heading', { level: 1, name: 'Profil' }) !== null);
+  await until(() => screen.queryByRole('heading', { level: 1, name: 'Mon profil' }) !== null);
   beforeStart();
   engine.start();
   return view.engine;
@@ -66,7 +66,9 @@ const goHome = () =>
       name: 'Accueil',
     }),
   );
+/** Pseudo derrière sa ligne dans Mon profil : la ligne ouvre le formulaire. */
 const savePseudo = (value: string) => {
+  if (!screen.queryByRole('textbox', { name: 'Pseudo' })) fireEvent.click(button('Modifier le pseudo'));
   fill('Pseudo', value);
   fireEvent.click(button('Enregistrer le pseudo'));
 };
