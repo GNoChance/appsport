@@ -3,11 +3,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { THEME_CHOICES, type ThemeChoice } from '../../src/ui/theme/theme';
-import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
+import { type CssBlock, declarationsOf, parseCssBlocks } from '../support/css-blocks';
 
 const TOKENS_CSS = resolve(import.meta.dirname, '../../src/ui/theme/tokens.css');
 const VOICE_CSS = resolve(import.meta.dirname, '../../src/ui/voice.module.css');
 const SHELL_CSS = resolve(import.meta.dirname, '../../src/ui/shell.module.css');
+const COACH_CSS = resolve(import.meta.dirname, '../../src/features/coach/coach.module.css');
 const DARK = '(prefers-color-scheme: dark)';
 
 /** `#rgb` ou `#rrggbb` → [r, g, b] de 0 à 255. */
@@ -94,6 +95,19 @@ const SHELL_PAIRS: readonly (readonly [string, string, string])[] = [
   ['initiale du profil', '.avatar > span', '.avatar > span'],
 ];
 
+/**
+ * Interrupteur « Entraînement / Nutrition » de la présentation du coach : libellé pressé (14 px, demi-gras,
+ * texte courant) sur la pastille opaque qui glisse dessous. Même lecture que la coquille.
+ */
+const COACH_PAIRS: readonly (readonly [string, string, string])[] = [
+  ['mode entraînement pressé', '.modeButton[aria-pressed="true"]', '.modePill'],
+  [
+    'mode nutrition pressé',
+    '.modeSwitch[data-mode="nutrition"] .modeButton[aria-pressed="true"]',
+    '.modeSwitch[data-mode="nutrition"] .modePill',
+  ],
+];
+
 const rgbToHex = (rgb: number[]) =>
   `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
 
@@ -117,6 +131,32 @@ function resolveColor(name: string, vars: ReadonlyMap<string, string>, depth = 0
   const p = Number(mix[2]) / 100;
   const [ra, rb] = [hexToRgb(a), hexToRgb(b)];
   return rgbToHex(ra.map((c, i) => c * p + (rb[i] as number) * (1 - p)));
+}
+
+/**
+ * Libellés posés sur une teinte d'une feuille de composant : la couleur du texte et le fond de la teinte,
+ * calculés avec les jetons du rendu, atteignent 4,5:1.
+ */
+function expectTintPairs(
+  sheet: readonly CssBlock[],
+  pairs: readonly (readonly [string, string, string])[],
+  tokens: ReadonlyMap<string, string>,
+  palette: string,
+): void {
+  for (const [name, text, tint] of pairs) {
+    const color = declarationsOf(sheet, text)?.get('color');
+    const background = declarationsOf(sheet, tint)?.get('background');
+    const vars = new Map([...tokens, ['--pair-text', color ?? ''], ['--pair-tint', background ?? '']]);
+    const fg = resolveColor('--pair-text', vars);
+    const bg = resolveColor('--pair-tint', vars);
+    // Une teinte qui laisse voir dessous (transparent) ne se calcule pas : elle échoue ici, lisiblement.
+    expect(fg ?? '', `${name} : couleur ${color} (${palette})`).toMatch(HEX);
+    expect(bg ?? '', `${name} : fond ${background} (${palette})`).toMatch(HEX);
+    const ratio = contrastRatio(fg as string, bg as string);
+    expect(ratio, `${name} ${fg} sur ${bg} (${palette}) : ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(
+      TEXT,
+    );
+  }
 }
 
 type ForcedTheme = Exclude<ThemeChoice, 'auto'>;
@@ -181,6 +221,7 @@ describe('contrastes des jetons, pour chaque thème', () => {
   const blocks = parseCssBlocks(readFileSync(TOKENS_CSS, 'utf8'));
   const voice = parseCssBlocks(readFileSync(VOICE_CSS, 'utf8'));
   const shell = parseCssBlocks(readFileSync(SHELL_CSS, 'utf8'));
+  const coach = parseCssBlocks(readFileSync(COACH_CSS, 'utf8'));
   const root = declarationsOf(blocks, ':root');
   const own = (p: Palette) => declarationsOf(blocks, p.selector, p.media);
   /** Ce que voit la page dans ce rendu : `:root`, puis le bloc du thème par-dessus (la cascade). */
@@ -256,24 +297,13 @@ describe('contrastes des jetons, pour chaque thème', () => {
       it('coquille : onglet actif, entrée latérale active et initiale atteignent 4,5:1 sur leur teinte', () => {
         const tokens = seen(p);
         expect(tokens, `bloc ${p.selector} absent de tokens.css`).not.toBeNull();
-        for (const [name, text, tint] of SHELL_PAIRS) {
-          const color = declarationsOf(shell, text)?.get('color');
-          const background = declarationsOf(shell, tint)?.get('background');
-          const vars = new Map([
-            ...(tokens ?? []),
-            ['--pair-text', color ?? ''],
-            ['--pair-tint', background ?? ''],
-          ]);
-          const fg = resolveColor('--pair-text', vars);
-          const bg = resolveColor('--pair-tint', vars);
-          // Une teinte qui laisse voir dessous (transparent) ne se calcule pas : elle échoue ici, lisiblement.
-          expect(fg ?? '', `${name} : couleur ${color} (${p.name})`).toMatch(HEX);
-          expect(bg ?? '', `${name} : fond ${background} (${p.name})`).toMatch(HEX);
-          const ratio = contrastRatio(fg as string, bg as string);
-          expect(ratio, `${name} ${fg} sur ${bg} (${p.name}) : ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(
-            TEXT,
-          );
-        }
+        expectTintPairs(shell, SHELL_PAIRS, tokens ?? new Map(), p.name);
+      });
+
+      it('coach : le libellé pressé de l’interrupteur de mode atteint 4,5:1 sur sa pastille', () => {
+        const tokens = seen(p);
+        expect(tokens, `bloc ${p.selector} absent de tokens.css`).not.toBeNull();
+        expectTintPairs(coach, COACH_PAIRS, tokens ?? new Map(), p.name);
       });
 
       // Le pont est déclaré sur :root ; le bloc du thème, plus spécifique, l'emporte pour les jetons.

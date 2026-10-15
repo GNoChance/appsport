@@ -506,10 +506,34 @@ describe('présentation du coach (CoachIntro)', () => {
     phoneSettings(REDUCE);
     renderIntro('skald');
     // Texte entier dès le montage : sous StrictMode, l'effet de la démonstration est monté deux fois d'emblée.
-    advanceUntil(nutritionShown, 5_000);
+    // La démonstration attend autant que le dévoilement l'aurait fait (environ 5,7 s pour le Skald).
+    advanceUntil(nutritionShown, 20_000);
     expect(readable(coachText('skald', 'nutri', 'lea'))).toHaveLength(1);
     advanceUntil(() => !nutritionShown(), 10_000);
     expect(pressed('Entraînement')).toBe('true');
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(nutritionShown()).toBe(false);
+  });
+
+  it('mouvement réduit : le texte entier reste à l’écran aussi longtemps qu’avec le dévoilement avant la démonstration', () => {
+    vi.useFakeTimers();
+    phoneSettings();
+    const animated = renderIntro('skald');
+    const withMotion = advanceUntil(nutritionShown, 20_000);
+    animated.unmount();
+    phoneSettings(REDUCE);
+    renderIntro('skald');
+    const reduced = advanceUntil(nutritionShown, 20_000);
+    // Le texte s'affiche d'emblée : la démonstration ne doit pas le remplacer avant qu'il ait pu être lu.
+    expect(reduced).toBeGreaterThanOrEqual(withMotion - 50);
+    expect(screen.getByRole('status').textContent).toBe(
+      `Mode nutrition. ${coachText('skald', 'nutri', 'lea')}`,
+    );
+    // Jouée une fois, puis retour à l'entraînement.
+    expect(advanceUntil(() => !nutritionShown(), 10_000)).toBeGreaterThanOrEqual(2000);
+    expect(readable(COACHES.skald.intro)).toHaveLength(1);
     act(() => {
       vi.advanceTimersByTime(30_000);
     });
@@ -520,7 +544,7 @@ describe('présentation du coach (CoachIntro)', () => {
     vi.useFakeTimers();
     const phone = phoneSettings(REDUCE);
     renderIntro('skald');
-    advanceUntil(nutritionShown, 5_000);
+    advanceUntil(nutritionShown, 20_000);
     advanceUntil(() => !nutritionShown(), 10_000);
     // Mouvement réduit désactivé : le texte se dévoile de nouveau, mais la démonstration ne revient pas.
     phone.change();

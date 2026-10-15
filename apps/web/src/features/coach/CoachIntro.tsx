@@ -24,6 +24,13 @@ const pauseAfter = (ch: string | undefined) =>
       ? CLAUSE_PAUSE_MS
       : CHAR_MS;
 
+/** Durée du dévoilement de `text` par TypedText, du premier rendu au dernier caractère. */
+function revealMs(text: string): number {
+  let ms = REVEAL_START_MS;
+  for (let i = 0; i < text.length - 1; i++) ms += pauseAfter(text[i]);
+  return ms;
+}
+
 const MODES: readonly { mode: CoachMode; label: string }[] = [
   { mode: 'training', label: 'Entraînement' },
   { mode: 'nutrition', label: 'Nutrition' },
@@ -60,6 +67,9 @@ export function CoachIntro(p: { coach: CoachId; pseudo: string; onBack(): void; 
   // biome-ignore lint/correctness/useExhaustiveDependencies: démonstration programmée une fois, à la fin du texte
   useEffect(() => {
     if (!revealed) return;
+    // Mouvement réduit : le texte entier est là d'emblée ; la démonstration attend autant que le dévoilement
+    // l'aurait fait, pour que la présentation puisse être lue avant de céder la place à la ligne nutri.
+    const delay = typed ? DEMO_DELAY_MS : revealMs(intro) + DEMO_DELAY_MS;
     let back: ReturnType<typeof setTimeout> | undefined;
     const start = setTimeout(() => {
       if (touched.current || demoPlayed.current) return;
@@ -68,7 +78,7 @@ export function CoachIntro(p: { coach: CoachId; pseudo: string; onBack(): void; 
       back = setTimeout(() => {
         if (!touched.current) switchMode('training');
       }, DEMO_HOLD_MS);
-    }, DEMO_DELAY_MS);
+    }, delay);
     return () => {
       clearTimeout(start);
       clearTimeout(back);

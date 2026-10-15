@@ -81,6 +81,11 @@
   line-height: 1.2;
 }
 
+/* Newsreader n'est embarqué qu'en 600 : pas de gras synthétisé. */
+:global(:root[data-theme="carnet"]) .cardName {
+  font-weight: 600;
+}
+
 .cardTemper {
   font-size: 0.84375rem;
   line-height: 1.35;
@@ -189,11 +194,12 @@
   margin: -140px 0 0 -140px;
   border-radius: 50%;
   transition: opacity var(--dur-screen) var(--ease);
-  animation: intro-fade var(--dur-screen) var(--ease) 150ms backwards;
 }
 
+/* Seul le halo de l'entraînement rejoue l'arrivée (prototype) ; celui de la nutrition ne suit que le mode. */
 .halo[data-tone="training"] {
   background: radial-gradient(circle, color-mix(in srgb, var(--accent) 24%, transparent) 0%, transparent 62%);
+  animation: intro-fade var(--dur-screen) var(--ease) 150ms backwards;
 }
 
 .halo[data-tone="nutrition"] {
@@ -280,7 +286,8 @@
   bottom: 3px;
   width: calc(50% - 3px);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  /* Teinte à 10 % : le libellé pressé en accent garde 4,5:1 dans les 5 thèmes (Clair compris). */
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   transition:
     transform var(--dur-fast) var(--ease),
     background-color var(--dur-fast) var(--ease);
@@ -424,6 +431,14 @@
 
   .grow {
     animation-name: intro-fade;
+  }
+
+  /* Sans cascade (motion.css) : halo, avatar, nom, interrupteur et bulle entière là d'emblée, en un fondu court. */
+  .halo[data-tone="training"],
+  .grow,
+  .introFade {
+    animation-delay: 0ms;
+    animation-duration: var(--dur-fast);
   }
 
   .layer,
