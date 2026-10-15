@@ -232,6 +232,23 @@ describe('ServerHealthPage (08 §9, maquette E05)', () => {
     expect(disks()).toEqual(['/ : 81 %Au-delà de 80 %', '/srv/rune : 80 %']);
   });
 
+  it('deux disques au-delà de 80 % : une alerte par disque', async () => {
+    await renderHealth({
+      ...HEALTHY,
+      host: {
+        ...(HEALTHY.host as Host),
+        ok: false,
+        detail: 'disque / à 85 %; disque /srv/rune à 90 %',
+        disks: [
+          { mount: '/', usedPct: 85 },
+          { mount: '/srv/rune', usedPct: 90 },
+        ],
+      },
+    });
+    expect(disks()).toEqual(['/ : 85 %Au-delà de 80 %', '/srv/rune : 90 %Au-delà de 80 %']);
+    expect(summary().getByText('2 alertes')).toBeTruthy();
+  });
+
   it('sauvegarde de plus de 26 h → bandeau « Sauvegarde en retard (plus de 26 h) », comptée en alerte', async () => {
     await renderHealth({ ...OPS, backup: { at: ago(28 * HOUR), ok: true } });
     const late = screen.getByText('Sauvegarde en retard (plus de 26 h)');
@@ -265,6 +282,14 @@ describe('ServerHealthPage (08 §9, maquette E05)', () => {
     expect(summary().getByText('1 alerte')).toBeTruthy();
   });
 
+  it('sauvegarde échouée et en retard : les deux bandeaux, une seule alerte pour la sauvegarde', async () => {
+    await renderHealth({ ...HEALTHY, backup: { at: ago(28 * HOUR), ok: false } });
+    expect(screen.getByRole('alert').textContent).toContain('La dernière sauvegarde a échoué.');
+    expect(screen.getByText('Sauvegarde en retard (plus de 26 h)')).toBeTruthy();
+    expect(checkRow('Dernière sauvegarde').getByText('Échouée')).toBeTruthy();
+    expect(summary().getByText('1 alerte')).toBeTruthy();
+  });
+
   it('déploiement raté écrit par les scripts (même version, ok false) : « Échoué » avec la version, compté en alerte', async () => {
     await renderHealth({
       ...HEALTHY,
@@ -289,6 +314,54 @@ describe('ServerHealthPage (08 §9, maquette E05)', () => {
     expect(hostFacts()).toEqual({ SMART: 'Problème détecté', Redémarrage: 'Non nécessaire' });
     // Déploiement, restauration, SMART et le disque à 81 %.
     expect(summary().getByText('4 alertes')).toBeTruthy();
+  });
+
+  it.each([
+    ["df absent de l'hôte", []],
+    ['disque /srv/backup illisible', [{ mount: '/', usedPct: 42 }]],
+  ])(
+    'contrôle de l’hôte échoué sans autre signe (%s) : compté en alerte, détail affiché comme Healthchecks',
+    async (detail, hostDisks) => {
+      await renderHealth({
+        ...HEALTHY,
+        host: { ...(HEALTHY.host as Host), ok: false, detail, disks: hostDisks },
+      });
+      expect(summary().getByText('1 alerte')).toBeTruthy();
+      expect(summary().queryByText('Aucune alerte')).toBeNull();
+      const host = within(screen.getByRole('region', { name: 'Hôte' }));
+      expect(host.getByText(`Contrôle échoué : ${detail}`)).toBeTruthy();
+      expect(hostFacts()).toEqual({ SMART: 'OK', Redémarrage: 'Non nécessaire' });
+    },
+  );
+
+  it('contrôle de l’hôte échoué par un disque plein et un redémarrage : deux alertes, pas une de plus pour l’échec', async () => {
+    await renderHealth({
+      ...HEALTHY,
+      host: {
+        ...(HEALTHY.host as Host),
+        ok: false,
+        detail: 'disque / à 85 %; redémarrage requis',
+        disks: [{ mount: '/', usedPct: 85 }],
+        rebootRequired: true,
+      },
+    });
+    expect(summary().getByText('2 alertes')).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: 'Hôte' })).getByText(
+        'Contrôle échoué : disque / à 85 %; redémarrage requis',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('contrôle de l’hôte échoué sans détail : « Contrôle échoué » seul', async () => {
+    await renderHealth({ ...HEALTHY, host: { ...(HEALTHY.host as Host), ok: false } });
+    expect(summary().getByText('1 alerte')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Hôte' })).getByText('Contrôle échoué')).toBeTruthy();
+  });
+
+  it('contrôle de l’hôte réussi : aucune ligne d’échec', async () => {
+    await renderHealth(HEALTHY);
+    expect(screen.queryByText(/Contrôle échoué/)).toBeNull();
   });
 
   it('aucune sauvegarde enregistrée : bandeau d’avertissement et badge « Absente » (08 §9 : sauvegarde absente)', async () => {

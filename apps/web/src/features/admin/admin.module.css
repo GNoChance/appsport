@@ -28,8 +28,14 @@
 /* Icônes en ligne avec leur texte : taille fixe, jamais tassées ; couleur du texte, sauf mention. */
 .codeWarning svg,
 .hostCheck svg,
+.hostWarn svg,
 .diskWarn svg {
   flex: none;
+}
+
+/* Détail sur plusieurs lignes : l'icône reste en face de la première. */
+.hostWarn svg {
+  margin-top: 1px;
 }
 
 .disks h3 svg {
@@ -608,6 +614,20 @@
 .checkLabel {
   font-size: 0.96875rem;
   font-weight: 600;
+}
+
+/* Contrôle de l'hôte en échec : son détail, en tête de la carte, au ton d'avertissement des disques pleins. */
+.hostWarn {
+  margin: 0;
+  padding: 14px 14px 0 var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--warning-text);
+  overflow-wrap: anywhere;
 }
 
 .disks {

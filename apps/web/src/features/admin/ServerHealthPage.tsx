@@ -45,18 +45,23 @@ const backupLate = (backup: OpsStatus['backup'], nowMs: number) =>
 /**
  * Alertes de l'état d'exploitation (08 §9) : déploiement raté (y compris celui que les scripts écrivent avec
  * `ok: false` et la même version, T43-F14), sauvegarde absente, ratée ou en retard (une alerte), test de
- * restauration raté, chaque disque au-delà de 80 %, SMART en défaut, redémarrage nécessaire.
+ * restauration raté, chaque disque au-delà de 80 %, SMART en défaut, redémarrage nécessaire. Un contrôle `host`
+ * en échec sans aucun de ces signes (df absent, disque illisible : rune-check) compte quand même une alerte,
+ * comme Healthchecks qui le reçoit en /fail.
  */
 export function opsAlertCount(ops: OpsStatus, nowMs: number): number {
   const { deploy, backup, restoreTest, host } = ops;
-  return [
+  const opsAlerts = [
     deploy !== undefined && !deploy.ok,
     backup === undefined || !backup.ok || backupLate(backup, nowMs),
     restoreTest !== undefined && !restoreTest.ok,
-    ...(host
-      ? [...host.disks.map((d) => d.usedPct > DISK_WARN_PCT), !host.smartOk, host.rebootRequired]
-      : []),
   ].filter(Boolean).length;
+  return opsAlerts + (host ? hostAlertCount(host) : 0);
+}
+
+function hostAlertCount(host: NonNullable<OpsStatus['host']>): number {
+  const signs = [...host.disks.map((d) => d.usedPct > DISK_WARN_PCT), !host.smartOk, host.rebootRequired];
+  return signs.filter(Boolean).length || (host.ok ? 0 : 1);
 }
 
 /** Résultat d'un contrôle : réussi en vert, échoué en danger (le mot dit toujours l'état). */
@@ -178,7 +183,10 @@ function OpsReport(p: { ops: OpsStatus; nowMs: number }) {
   );
 }
 
-/** Hôte (08 §9, contrôle `host`) : occupation de chaque disque (barre qui se remplit), SMART et redémarrage. */
+/**
+ * Hôte (08 §9, contrôle `host`) : contrôle en échec avec son détail (le même que reçoit Healthchecks), puis
+ * occupation de chaque disque (barre qui se remplit), SMART et redémarrage.
+ */
 function HostReport(p: { host: NonNullable<OpsStatus['host']> }) {
   const { host } = p;
   const hostId = useId();
@@ -187,6 +195,12 @@ function HostReport(p: { host: NonNullable<OpsStatus['host']> }) {
     <section aria-labelledby={hostId} className={styles.section}>
       <h2 id={hostId}>Hôte</h2>
       <div className={styles.card}>
+        {host.ok ? null : (
+          <p className={styles.hostWarn}>
+            <WarningIcon />
+            {host.detail ? `Contrôle échoué : ${host.detail}` : 'Contrôle échoué'}
+          </p>
+        )}
         <div className={styles.disks}>
           <h3 id={disksId}>
             <DriveIcon />
