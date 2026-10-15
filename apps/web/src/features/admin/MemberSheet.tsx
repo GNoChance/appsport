@@ -56,7 +56,15 @@ export function MemberSheet(p: {
           <ListRow
             icon={<LogoutIcon />}
             label="Fermer les sessions"
-            badge={<span className={styles.count}>{m.activeSessions}</span>}
+            badge={
+              // Le nombre seul à l'écran ; son unité pour le lecteur d'écran (« 2 sessions ouvertes »).
+              <span className={styles.count}>
+                {m.activeSessions}
+                <span className={styles.srOnly}>
+                  {` ${plural(m.activeSessions, 'session ouverte', 'sessions ouvertes')}`}
+                </span>
+              </span>
+            }
             onClick={() => p.onChoose('sessions')}
           />
           <ListRow

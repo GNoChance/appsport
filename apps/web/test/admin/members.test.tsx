@@ -253,9 +253,12 @@ describe('MembersPage : feuille des actions (spec refonte §10.5)', () => {
     ]);
     const sensitive = within(sheet).getByRole('region', { name: 'Actions sensibles' });
     expect(buttonNames(sensitive)).toEqual(['Désactiver', 'Supprimer le compte']);
-    // Le groupe sensible ferme la feuille : rien ne le suit, pas même une barre d'actions.
-    expect(sensitive.nextElementSibling).toBeNull();
-    expect(sensitive.parentElement?.nextElementSibling ?? null).toBeNull();
+    // Le groupe sensible ferme la feuille : rien ne le suit, à aucun niveau jusqu'à la feuille elle-même (pas même
+    // la barre d'actions de BottomSheet, sœur du corps de la feuille).
+    expect(sheet.lastElementChild?.contains(sensitive)).toBe(true);
+    for (let el: Element | null = sensitive; el && el !== sheet; el = el.parentElement) {
+      expect(el.nextElementSibling).toBeNull();
+    }
     expect(
       within(sensitive).getByRole('button', { name: 'Désactiver' }).getAttribute('aria-describedby'),
     ).toBe(within(sensitive).getByText('Plus de connexion, données conservées').id);
@@ -271,6 +274,25 @@ describe('MembersPage : feuille des actions (spec refonte §10.5)', () => {
     expect(within(sheet).getByRole('button', { name: 'Rétrograder' })).toBeTruthy();
     expect(within(sheet).queryByRole('button', { name: 'Promouvoir administrateur' })).toBeNull();
   });
+
+  it.each([
+    [1, '1 session ouverte'],
+    [2, '2 sessions ouvertes'],
+    [0, '0 session ouverte'],
+  ] as const)(
+    '« Fermer les sessions » avec %i session(s) : le compte affiché est annoncé avec son unité',
+    async (activeSessions, announced) => {
+      await renderMembers({ members: [BASTIEN, { ...INES, activeSessions }] });
+      const close = within(openSheet('ines.m')).getByRole('button', { name: 'Fermer les sessions' });
+      const description = (close.getAttribute('aria-describedby') ?? '')
+        .split(' ')
+        .map((id) => document.getElementById(id)?.textContent)
+        .join(' ');
+      expect(description).toBe(announced);
+      // À l'écran, le nombre seul (maquette E02).
+      expect(within(close).getByText(String(activeSessions))).toBeTruthy();
+    },
+  );
 
   it('membre désactivé : il garde « Réactiver » ; « Désactiver » disparaît des actions sensibles', async () => {
     await renderMembers({ members: [BASTIEN, { ...INES, status: 'disabled', activeSessions: 0 }] });
@@ -303,6 +325,23 @@ describe('MembersPage : feuille des actions (spec refonte §10.5)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     await until(() => document.activeElement === trigger);
     expect(api.calls.filter((c) => c.method !== 'GET')).toEqual([]);
+  });
+
+  it('Safari (le bouton touché ne prend pas le focus) : « Fermer » et Échap rendent quand même le focus à « Actions pour ines.m »', async () => {
+    await renderMembers();
+    const trigger = screen.getByRole('button', { name: 'Actions pour ines.m' });
+    for (const close of [
+      () => fireEvent.click(dialog().getByRole('button', { name: 'Fermer' })),
+      () => fireEvent.keyDown(document, { key: 'Escape' }),
+    ]) {
+      // Comme Safari : à l'ouverture, le focus est sur la page, pas sur le bouton.
+      (document.activeElement as HTMLElement | null)?.blur();
+      expect(document.activeElement).toBe(document.body);
+      openSheet('ines.m');
+      close();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await until(() => document.activeElement === trigger);
+    }
   });
 
   it('choisir une action ferme la feuille et ouvre sa confirmation, seule à l’écran', async () => {

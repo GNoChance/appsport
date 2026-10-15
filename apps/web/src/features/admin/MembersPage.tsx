@@ -1,5 +1,5 @@
 import type { MemberSummary } from '@rune/contracts';
-import { type RefObject, useCallback, useId, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useServices } from '../../app-services';
 import { useRepos } from '../../repos';
 import { plural } from '../../ui';
@@ -40,6 +40,20 @@ export function MembersPage() {
       return opener.current?.isConnected ? opener.current : headingRef.current;
     },
   }));
+  // Feuille fermée sans action choisie (« Fermer », Échap) : la feuille rend le focus à l'élément qui l'avait à
+  // l'ouverture, mais sous Safari un bouton touché ne le prend pas, et c'était la page. Après son démontage (la
+  // page n'est plus inerte), le focus resté sur la page revient au bouton « Actions pour <pseudo> ».
+  const sheetShown = useRef(false);
+  useEffect(() => {
+    if (sheet) {
+      sheetShown.current = true;
+      return;
+    }
+    if (!sheetShown.current) return;
+    sheetShown.current = false;
+    const active = document.activeElement;
+    if (!action && (!active || active === document.body)) returnFocus.current?.focus();
+  }, [sheet, action, returnFocus]);
 
   return (
     <AdminPage>
