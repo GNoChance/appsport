@@ -135,7 +135,7 @@ export function LimitationEditForm(p: { limitation: LimitationView; onDone(): vo
         state={{ bodyArea, setBodyArea, side, setSide, severity, setSeverity, note, setNote }}
       />
       {save.error ? <Banner tone="error">{save.error}</Banner> : null}
-      <div className={styles.actions}>
+      <div className={styles.panelActions}>
         <Button variant="secondary" disabled={save.pending} onClick={p.onDone}>
           Annuler
         </Button>

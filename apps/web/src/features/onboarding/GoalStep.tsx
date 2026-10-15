@@ -3,15 +3,18 @@ import { availableGoals } from '@rune/domain';
 import { useContext, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
-import { ChoiceList } from '../../ui';
+import { ChoiceCard, ChoiceGroup } from '../../ui';
+import styles from './onboarding.module.css';
 import { SportStep } from './SportStep';
-import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { CONTINUE_LABEL, StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { GOAL_ICONS } from './StepIcons';
 import { StepTitle, StepTitleContext } from './StepTitle';
 
 /**
- * E1 Objectif : « Perdre du gras » n'est pas proposé à un mineur. En édition, choisir l'objectif
- * sportif sans sport enregistré mène d'abord au sport, puis un seul PATCH (R-ONB-3) ; le titre de
- * l'écran affiché (sport, ou objectif au retour) prend alors le focus.
+ * E1 Objectif (maquette B01 : une carte par objectif, avec son icône) : « Perdre du gras » n'est pas proposé
+ * à un mineur. En édition, choisir l'objectif sportif sans sport enregistré mène d'abord au sport
+ * (« Continuer »), puis un seul PATCH (R-ONB-3) ; le titre de l'écran affiché (sport, ou objectif au retour)
+ * prend alors le focus.
  */
 export function GoalStep(p: StepProps) {
   const repos = useRepos();
@@ -42,19 +45,28 @@ export function GoalStep(p: StepProps) {
   return (
     <>
       <StepTitle>Objectif</StepTitle>
-      <ChoiceList<Goal>
-        name="goal"
-        legend="Quel est ton objectif principal ?"
-        value={value}
-        onChange={setChoice}
-        options={goals.map((g) => ({ value: g, label: GOAL_LABELS[g] }))}
-      />
+      <div className={styles.question}>
+        <ChoiceGroup legend="Quel est ton objectif principal ?">
+          {goals.map((g) => (
+            <ChoiceCard
+              key={g}
+              type="radio"
+              name="goal"
+              value={g}
+              checked={value === g}
+              onChange={() => setChoice(g)}
+              title={GOAL_LABELS[g]}
+              icon={GOAL_ICONS[g]}
+            />
+          ))}
+        </ChoiceGroup>
+      </div>
       <StepActions
         onBack={p.onBack}
         pending={save.pending}
         error={save.error}
         primary={{
-          label: needsSport ? 'Suivant' : saveLabel(p.mode),
+          label: needsSport ? CONTINUE_LABEL : saveLabel(p.mode),
           disabled: value === null,
           onClick: () => {
             if (value === null) return;

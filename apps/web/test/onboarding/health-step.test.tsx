@@ -74,6 +74,20 @@ describe('HealthStep sans accord santé (E7, P-CST-1, P-CST-2)', () => {
     expect(button("J'accepte et je renseigne").disabled).toBe(false);
   });
 
+  it('carte « Accord santé » ; limitations annoncées « Après ton accord » ; aucune voix du Système', async () => {
+    await renderHealth();
+    const consent = screen.getByRole('region', { name: 'Accord santé' });
+    expect(within(consent).getByRole('heading', { level: 3, name: 'Accord santé' })).toBeTruthy();
+    expect(within(consent).getByText(HEALTH_CONSENT_TEXT.text)).toBeTruthy();
+    const locked = screen.getByRole('region', { name: 'Limitations' });
+    expect(within(locked).getByText('Après ton accord')).toBeTruthy();
+    expect(within(locked).getByText(/aucun diagnostic n'est nécessaire/)).toBeTruthy();
+    expect(within(locked).queryByRole('combobox')).toBeNull();
+    // Textes légaux mot pour mot, en « vous » pour l'avertissement, hors de toute fenêtre du Système.
+    expect(screen.getByText(HEALTH_WARNING_TEXT)).toBeTruthy();
+    expect(screen.queryByText('SYSTÈME')).toBeNull();
+  });
+
   it('« Passer » : les 4 questions en auto-vérification, aucune requête', async () => {
     const { api } = await renderHealth();
     fireEvent.click(button('Passer'));
@@ -84,20 +98,20 @@ describe('HealthStep sans accord santé (E7, P-CST-1, P-CST-2)', () => {
     expect(api.calls).toEqual([]);
   });
 
-  it('mode prudent : rien à la bascule, enregistré avec l’étape au clic sur « Suivant » (R-ONB-2)', async () => {
+  it('mode prudent : rien à la bascule, enregistré avec l’étape au clic sur « Continuer » (R-ONB-2)', async () => {
     const t = await renderHealth();
     expect(toggle().checked).toBe(false);
     fireEvent.click(toggle());
     expect(toggle().checked).toBe(true);
     expect(t.api.calls).toEqual([]);
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ cautiousMode: true, onboardingStep: 'health' }]);
   });
 
-  it('« Suivant » sans changement : seulement l’étape', async () => {
+  it('« Continuer » sans changement : seulement l’étape', async () => {
     const t = await renderHealth();
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ onboardingStep: 'health' }]);
   });
@@ -113,7 +127,7 @@ describe('HealthStep sans accord santé (E7, P-CST-1, P-CST-2)', () => {
     await until(() => toggle().checked);
     fireEvent.click(toggle());
     expect(toggle().checked).toBe(false);
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ cautiousMode: false, onboardingStep: 'health' }]);
   });
@@ -158,7 +172,7 @@ describe('HealthStep avec accord santé', () => {
     expect(screen.queryByText(SEE_DOCTOR)).toBeNull();
   });
 
-  it('réponses non enregistrées : « Suivant » envoie le PUT puis le PATCH (R-ONB-2, R-CST-7)', async () => {
+  it('réponses non enregistrées : « Continuer » envoie le PUT puis le PATCH (R-ONB-2, R-CST-7)', async () => {
     const t = await renderHealth(consenting());
     let body: unknown;
     t.api.on('PUT', '/api/me/health-screening', (req) => {
@@ -167,47 +181,47 @@ describe('HealthStep avec accord santé', () => {
     });
     answer(0, 'Oui');
     for (const i of [1, 2, 3]) answer(i, 'Non');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(writes(t.api)).toEqual([SCREENING, PATCH]);
     expect(body).toEqual({ answers: [true, false, false, false], questionnaireVersion: '1.0' });
     expect(t.patches).toEqual([{ onboardingStep: 'health' }]);
   });
 
-  it('réponses déjà enregistrées : « Suivant » ne renvoie pas le questionnaire', async () => {
+  it('réponses déjà enregistrées : « Continuer » ne renvoie pas le questionnaire', async () => {
     const t = await renderHealth(consenting());
     t.api.on('PUT', '/api/me/health-screening', { status: 200, body: { caution: false } });
     for (const i of [0, 1, 2, 3]) answer(i, 'Non');
     fireEvent.click(button('Enregistrer mes réponses'));
     await screen.findByText('Réponses enregistrées.');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(writes(t.api)).toEqual([SCREENING, PATCH]);
   });
 
-  it('hors ligne : le « Oui » affiche la recommandation ; « Suivant » → « Nécessite le réseau »', async () => {
+  it('hors ligne : le « Oui » affiche la recommandation ; « Continuer » → « Nécessite le réseau »', async () => {
     const t = await renderHealth(consenting());
     t.api.setOffline('reject');
     answer(0, 'Oui');
     expect(screen.getByText(SEE_DOCTOR)).toBeTruthy();
     for (const i of [1, 2, 3]) answer(i, 'Non');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
     expect(t.onNext).not.toHaveBeenCalled();
     expect(t.patches).toEqual([]);
     expect(screen.getByText(SEE_DOCTOR)).toBeTruthy();
   });
 
-  it('réponses incomplètes : « Suivant » s’arrête avec un message ; « Effacer mes réponses » débloque', async () => {
+  it('réponses incomplètes : « Continuer » s’arrête avec un message ; « Effacer mes réponses » débloque', async () => {
     const t = await renderHealth(consenting());
     answer(0, 'Oui');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     expect((await screen.findByRole('alert')).textContent).toBe(SCREENING_INCOMPLETE);
     expect(t.api.calls).toEqual([]);
     fireEvent.click(button('Effacer mes réponses'));
     expect(screen.queryByText(SCREENING_INCOMPLETE)).toBeNull();
     expect(screen.queryAllByRole('radio', { checked: true })).toEqual([]);
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(writes(t.api)).toEqual([PATCH]);
   });
@@ -231,6 +245,7 @@ describe('HealthStep avec accord santé', () => {
       return { status: 201, body: { id: 'l-1' } };
     });
     expect(screen.getByText(/aucun diagnostic n'est nécessaire/)).toBeTruthy();
+    expect(screen.queryByText('Après ton accord')).toBeNull();
     await screen.findByText('Aucune');
     expect(button('Ajouter une limitation').disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Zone'), { target: { value: 'knee' } });
@@ -271,7 +286,7 @@ describe('HealthStep avec accord santé', () => {
     expect(api.calls.find((c) => c.method === 'DELETE')?.path).toBe('/api/me/limitations/l-1');
   });
 
-  it('limitation remplie sans « Ajouter » : « Suivant » l’envoie, puis l’étape (R-ONB-2)', async () => {
+  it('limitation remplie sans « Ajouter » : « Continuer » l’envoie, puis l’étape (R-ONB-2)', async () => {
     const t = await renderHealth(consenting());
     let body: unknown;
     t.api.on('POST', '/api/me/limitations', (req) => {
@@ -282,37 +297,37 @@ describe('HealthStep avec accord santé', () => {
     fireEvent.change(screen.getByLabelText('Zone'), { target: { value: 'knee' } });
     fireEvent.change(screen.getByLabelText('Côté'), { target: { value: 'left' } });
     fireEvent.click(screen.getByRole('radio', { name: 'Légère' }));
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(writes(t.api)).toEqual(['POST /api/me/limitations', PATCH]);
     expect(body).toEqual({ bodyArea: 'knee', side: 'left', severity: 'mild', note: null });
   });
 
-  it('limitation incomplète : « Suivant » s’arrête avec un message ; « Effacer la saisie » débloque', async () => {
+  it('limitation incomplète : « Continuer » s’arrête avec un message ; « Effacer la saisie » débloque', async () => {
     const t = await renderHealth(consenting());
     await screen.findByText('Aucune');
     fireEvent.change(screen.getByLabelText('Zone'), { target: { value: 'knee' } });
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     expect((await screen.findByRole('alert')).textContent).toBe(DRAFT_INCOMPLETE);
     expect(t.api.calls).toEqual([]);
     fireEvent.click(button('Effacer la saisie'));
     expect((screen.getByLabelText('Zone') as HTMLSelectElement).value).toBe('');
     expect(screen.queryByText(DRAFT_INCOMPLETE)).toBeNull();
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(writes(t.api)).toEqual([PATCH]);
   });
 });
 
 describe('HealthStep pour un mineur (R-CST-7)', () => {
-  it('mode prudent coché, désactivé et imposé ; avertissement santé ; « Suivant » actif sans réponse', async () => {
+  it('mode prudent coché, désactivé et imposé ; avertissement santé ; « Continuer » actif sans réponse', async () => {
     const t = await renderHealth(newcomer({ ageBand: 'minor', cautious: true }));
     expect(toggle().checked).toBe(true);
     expect(toggle().disabled).toBe(true);
     expect(screen.getByText("Imposé jusqu'à 18 ans")).toBeTruthy();
     expect(screen.getByText(HEALTH_WARNING_TEXT)).toBeTruthy();
-    expect(button('Suivant').disabled).toBe(false);
-    fireEvent.click(button('Suivant'));
+    expect(button('Continuer').disabled).toBe(false);
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ onboardingStep: 'health' }]);
   });

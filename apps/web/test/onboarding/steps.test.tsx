@@ -54,6 +54,13 @@ const radioLabels = (group: string) =>
     .getAllByRole('radio')
     .map((r) => r.closest('label')?.textContent);
 
+/** Textes qui décrivent `el` (`aria-describedby`), dans l'ordre. */
+const describedBy = (el: HTMLElement) =>
+  (el.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent);
+
 describe('GoalStep (E1)', () => {
   it('mineur : pas de « Perdre du gras », 4 options (P-MIN, 02 §15 n°11)', async () => {
     await renderStep((onNext) => <GoalStep mode="onboarding" onNext={onNext} />, {
@@ -64,11 +71,11 @@ describe('GoalStep (E1)', () => {
     expect(screen.queryByRole('radio', { name: 'Perdre du gras' })).toBeNull();
   });
 
-  it('adulte : les 5 objectifs ; « Suivant » désactivé sans choix', async () => {
+  it('adulte : les 5 objectifs ; « Continuer » désactivé sans choix', async () => {
     await renderStep((onNext) => <GoalStep mode="onboarding" onNext={onNext} />);
     await screen.findByRole('radio', { name: 'Prendre du muscle' });
     expect(screen.getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual(ADULT_GOALS);
-    expect(button('Suivant').disabled).toBe(true);
+    expect(button('Continuer').disabled).toBe(true);
   });
 
   it('édition : « Enregistrer » et PATCH { goal } sans onboardingStep', async () => {
@@ -77,7 +84,7 @@ describe('GoalStep (E1)', () => {
       profile: { goal: 'muscle' },
     });
     await until(() => isChecked('Prendre du muscle'));
-    expect(screen.queryByRole('button', { name: 'Suivant' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continuer' })).toBeNull();
     choose('Gagner en force');
     fireEvent.click(button('Enregistrer'));
     await until(() => t.onNext.mock.calls.length === 1);
@@ -92,7 +99,7 @@ describe('GoalStep (E1)', () => {
     await until(() => isChecked('Prendre du muscle'));
     choose('Me renforcer pour mon sport');
     expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull();
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await screen.findByRole('radio', { name: 'Course à pied' });
     expect(t.patches).toEqual([]);
     choose('Course à pied');
@@ -127,15 +134,15 @@ describe('SportStep (E2)', () => {
     expect(describedBy && document.getElementById(describedBy)?.textContent).toBe(reason);
   });
 
-  it('« Non » déjà validé (étape sport passée, aucun sport) : « Non » coché, « Suivant » actif', async () => {
+  it('« Non » déjà validé (étape sport passée, aucun sport) : « Non » coché, « Continuer » actif', async () => {
     const t = await renderStep((onNext) => <SportStep mode="onboarding" onNext={onNext} />, {
       me: newcomer({ onboardingStep: 'sport' }),
       profile: { goal: 'muscle' },
     });
     await until(() => isChecked('Non'));
     expect(radio('Oui').checked).toBe(false);
-    expect(button('Suivant').disabled).toBe(false);
-    fireEvent.click(button('Suivant'));
+    expect(button('Continuer').disabled).toBe(false);
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ sportCode: null, sportOtherLabel: null, onboardingStep: 'sport' }]);
   });
@@ -146,7 +153,7 @@ describe('SportStep (E2)', () => {
       profile: { goal: 'muscle', sportCode: 'running' },
     });
     await until(() => isChecked('Oui') && isChecked('Course à pied'));
-    expect(button('Suivant').disabled).toBe(false);
+    expect(button('Continuer').disabled).toBe(false);
   });
 
   it('« Autre » enregistré : « Ton sport » rempli avec le libellé', async () => {
@@ -156,7 +163,7 @@ describe('SportStep (E2)', () => {
     });
     await until(() => isChecked('Autre'));
     expect((screen.getByLabelText('Ton sport') as HTMLInputElement).value).toBe('Pétanque');
-    expect(button('Suivant').disabled).toBe(false);
+    expect(button('Continuer').disabled).toBe(false);
   });
 
   it('« Autre » + « Pétanque » : 15 sports, libellé de 40 caractères au plus', async () => {
@@ -167,13 +174,13 @@ describe('SportStep (E2)', () => {
     choose('Oui');
     expect(radioLabels('Quel sport ?')).toEqual(SPORTS.map((s) => s.label));
     choose('Autre');
-    expect(button('Suivant').disabled).toBe(true);
+    expect(button('Continuer').disabled).toBe(true);
     const label = screen.getByLabelText('Ton sport') as HTMLInputElement;
     expect(label.maxLength).toBe(40);
     fireEvent.change(label, { target: { value: '   ' } });
-    expect(button('Suivant').disabled).toBe(true);
+    expect(button('Continuer').disabled).toBe(true);
     fireEvent.change(label, { target: { value: 'Pétanque' } });
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ sportCode: 'other', sportOtherLabel: 'Pétanque', onboardingStep: 'sport' }]);
   });
@@ -185,19 +192,19 @@ describe('SportStep (E2)', () => {
     await screen.findByRole('radio', { name: 'Non' });
     choose('Non');
     expect(screen.queryByRole('group', { name: 'Quel sport ?' })).toBeNull();
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ sportCode: null, sportOtherLabel: null, onboardingStep: 'sport' }]);
   });
 
-  it('« Suivant » désactivé tant que la question n’a pas de réponse', async () => {
+  it('« Continuer » désactivé tant que la question n’a pas de réponse', async () => {
     await renderStep((onNext) => <SportStep mode="onboarding" onNext={onNext} />, {
       profile: { goal: 'muscle' },
     });
     await screen.findByRole('radio', { name: 'Non' });
     expect(radio('Non').checked).toBe(false);
     expect(radio('Oui').checked).toBe(false);
-    expect(button('Suivant').disabled).toBe(true);
+    expect(button('Continuer').disabled).toBe(true);
   });
 });
 
@@ -209,10 +216,15 @@ function PlaceKindHarness(p: { onNext(): void }) {
 describe('PlaceKindStep (E3)', () => {
   it('« Où t’entraîneras-tu le plus souvent ? » : salle ou maison, puis PATCH de l’étape', async () => {
     const t = await renderStep((onNext) => <PlaceKindHarness onNext={onNext} />);
-    expect(radioLabels("Où t'entraîneras-tu le plus souvent ?")).toEqual(['À la salle', 'À la maison']);
-    expect(button('Suivant').disabled).toBe(true);
+    const group = within(screen.getByRole('group', { name: "Où t'entraîneras-tu le plus souvent ?" }));
+    expect(group.getAllByRole('radio').map((r) => r.getAttribute('value'))).toEqual(['gym', 'home']);
+    // Cartes de choix (maquette B03) : le titre nomme, la description dit ce que l'écran suivant demandera.
+    expect(describedBy(radio('À la salle'))).toEqual(["Tu choisiras ta salle à l'étape suivante."]);
+    expect(describedBy(radio('À la maison'))).toEqual(["Tu indiqueras ton matériel à l'étape suivante."]);
+    expect(screen.getByText('Tu pourras ajouter ou changer de lieu dans Profil › Mes lieux.')).toBeTruthy();
+    expect(button('Continuer').disabled).toBe(true);
     choose('À la maison');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ onboardingStep: 'place_kind' }]);
   });
@@ -238,7 +250,7 @@ describe('PlaceStep (E4)', () => {
 
     choose('Petit matériel');
     expect(checkbox(EQUIPMENT_LABELS.dumbbells).checked).toBe(true);
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(writes(t.api)).toEqual(['POST /api/places', 'PATCH /api/me/training-profile']);
     expect(t.api.calls.find((c) => c.path === '/api/places')?.body).toEqual({
@@ -262,7 +274,7 @@ describe('PlaceStep (E4)', () => {
     expect(checkbox(EQUIPMENT_LABELS.barbell).checked).toBe(false);
   });
 
-  it("maison : POST réussi puis PATCH hors ligne → « Suivant » renvoie seulement l'étape", async () => {
+  it("maison : POST réussi puis PATCH hors ligne → « Continuer » renvoie seulement l'étape", async () => {
     const t = await renderStep((onNext) => <PlaceStep mode="onboarding" kind="home" onNext={onNext} />);
     // Le réseau tombe juste après la création du lieu : le PATCH qui suit échoue.
     t.api.on('POST', '/api/places', () => {
@@ -270,11 +282,11 @@ describe('PlaceStep (E4)', () => {
       return { status: 201, body: { id: 'p-1' } };
     });
     await screen.findByLabelText('Nom du lieu');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
     expect(t.onNext).not.toHaveBeenCalled();
     t.api.setOffline(false);
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(writes(t.api)).toEqual([
       'POST /api/places',
@@ -297,9 +309,10 @@ describe('PlaceStep (E4)', () => {
     await renderApp({ path: '/onboarding', me, db, api });
     await until(() => currentStep() === 'place_kind');
     choose('À la salle');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => currentStep() === 'place');
-    expect(screen.queryByRole('button', { name: 'Suivant' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continuer' })).toBeNull();
+    await screen.findByText('Cherche ta salle ou crée-la.');
     await screen.findByRole('radio', { name: 'Basic Fit · Lyon · 2 membres visibles' });
     choose('Basic Fit · Lyon · 2 membres visibles');
     fireEvent.click(button('Valider'));
@@ -327,7 +340,7 @@ describe('PlaceStep (E4)', () => {
     await renderApp({ path: '/onboarding', me, db, api });
     await until(() => currentStep() === 'place_kind');
     choose('À la salle');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await screen.findByRole('radio', { name: 'Basic Fit · Lyon · 2 membres visibles' });
     expect(checkbox('Apparaître dans « Qui va à cette salle »').checked).toBe(false);
     expect(screen.getByText('Désactivé par défaut pour les moins de 18 ans.')).toBeTruthy();
@@ -352,7 +365,7 @@ describe('PlaceStep (E4)', () => {
     await renderWithServices(<PlaceStep mode="onboarding" kind="home" onNext={onNext} />, { me, db, api });
     await screen.findByText('Ton lieu principal : Basic Fit');
     expect(screen.queryByLabelText('Nom du lieu')).toBeNull();
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => onNext.mock.calls.length === 1);
     expect(writes(api)).toEqual(['PATCH /api/me/training-profile']);
     expect(server.patches).toEqual([{ onboardingStep: 'place' }]);
@@ -366,21 +379,21 @@ describe('ExperienceStep (E5)', () => {
     const legend =
       'Depuis combien de temps fais-tu de la musculation régulièrement (au moins une fois par semaine) ?';
     expect(radioLabels(legend)).toEqual(['Jamais', 'Moins de 6 mois', '6 mois à 2 ans', 'Plus de 2 ans']);
-    expect(button('Suivant').disabled).toBe(true);
+    expect(button('Continuer').disabled).toBe(true);
     choose('6 mois à 2 ans');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ experience: '6_to_24_months', onboardingStep: 'experience' }]);
   });
 
-  it('niveau enregistré : coché, « Suivant » actif (R-ONB-2, R-ONB-3)', async () => {
+  it('niveau enregistré : coché, « Continuer » actif (R-ONB-2, R-ONB-3)', async () => {
     const t = await renderStep((onNext) => <ExperienceStep mode="onboarding" onNext={onNext} />, {
       me: newcomer({ onboardingStep: 'experience' }),
       profile: { experience: '6_to_24_months' },
     });
     await until(() => isChecked('6 mois à 2 ans'));
-    expect(button('Suivant').disabled).toBe(false);
-    fireEvent.click(button('Suivant'));
+    expect(button('Continuer').disabled).toBe(false);
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ experience: '6_to_24_months', onboardingStep: 'experience' }]);
   });
@@ -393,11 +406,24 @@ describe('AvailabilityStep (E6)', () => {
     expect(radioLabels('Séances par semaine')).toEqual(['2', '3', '4']);
     expect(radioLabels("Durée d'une séance")).toEqual(['30 min', '45 min', '60 min', '75 min', '90 min']);
     choose('3');
-    expect(button('Suivant').disabled).toBe(true);
+    expect(button('Continuer').disabled).toBe(true);
     choose('60 min');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => t.onNext.mock.calls.length === 1);
     expect(t.patches).toEqual([{ daysPerWeek: 3, sessionMinutes: 60, onboardingStep: 'availability' }]);
+  });
+
+  it('« Ton rythme » : seulement les deux réponses données, jamais de valeur inventée (maquette B06)', async () => {
+    await renderStep((onNext) => <AvailabilityStep mode="onboarding" onNext={onNext} />);
+    await screen.findByRole('radio', { name: '30 min' });
+    expect(screen.queryByText('Ton rythme')).toBeNull();
+    choose('2');
+    expect(screen.queryByText('Ton rythme')).toBeNull();
+    choose('30 min');
+    expect(screen.getByText('Ton rythme')).toBeTruthy();
+    expect(screen.getByText('2 séances de 30 min par semaine')).toBeTruthy();
+    choose('4');
+    expect(screen.getByText('4 séances de 30 min par semaine')).toBeTruthy();
   });
 
   it('édition : réponses enregistrées cochées, PATCH sans onboardingStep', async () => {

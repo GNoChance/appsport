@@ -15,15 +15,17 @@ import { ChoiceList, Field, useAction } from '../../ui';
 import { EquipmentChecklist, sortEquipment } from '../places/EquipmentChecklist';
 import { GymPicker } from '../places/GymPicker';
 import styles from './onboarding.module.css';
+import { PLACES_LATER_NOTE } from './PlaceKindStep';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
+import { InfoGlyph } from './StepIcons';
 import { StepTitle } from './StepTitle';
 
 const HOME_PRESETS = PRESET_IDS.filter((id) => PRESETS[id].kind === 'home');
 
 /**
- * E4 Ma salle ou Ma maison : l'onboarding crée un seul lieu, principal (02 §8, E3/E4). Un lieu
- * principal déjà là (retour arrière) est affiché sans rien recréer ; les autres lieux se gèrent
- * dans Profil › Lieux.
+ * E4 Ma salle ou Ma maison : l'onboarding crée un seul lieu, principal (02 §8, E3/E4). La salle se cherche ou se
+ * crée dans le sélecteur des salles (maquette B04) ; la maison, son nom et son matériel. Un lieu principal déjà
+ * là (retour arrière) est affiché sans rien recréer ; les autres lieux se gèrent dans Profil › Mes lieux.
  */
 export function PlaceStep(p: StepProps & { kind: PlaceKind }) {
   const repos = useRepos();
@@ -52,8 +54,13 @@ export function PlaceStep(p: StepProps & { kind: PlaceKind }) {
     return (
       <>
         {title}
-        <p>{primary ? `Ton lieu principal : ${primary.name}` : 'Ton lieu principal est enregistré.'}</p>
-        <p className={styles.note}>Tu pourras ajouter ou changer de lieu dans Profil › Lieux.</p>
+        <p className={styles.placeDone}>
+          {primary ? `Ton lieu principal : ${primary.name}` : 'Ton lieu principal est enregistré.'}
+        </p>
+        <p className={styles.infoNote}>
+          <InfoGlyph />
+          <span>{PLACES_LATER_NOTE}</span>
+        </p>
         <StepActions
           onBack={p.onBack}
           pending={save.pending}
@@ -68,6 +75,7 @@ export function PlaceStep(p: StepProps & { kind: PlaceKind }) {
     return (
       <>
         {title}
+        <p className={styles.lead}>Cherche ta salle ou crée-la.</p>
         <GymPicker
           isPrimary
           defaultVisible={me.ageBand !== 'minor'}

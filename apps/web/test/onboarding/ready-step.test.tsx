@@ -44,7 +44,9 @@ async function openReady(pullAgoMs: number) {
   return { ...rendered, api };
 }
 
-const indicatorState = () => screen.queryByTestId('offline-ready')?.getAttribute('data-state');
+/** Quête « Prêt hors ligne » de la célébration : cochée quand le voyant est au vert (R-SYN-33). */
+const offlineReady = () =>
+  screen.queryByRole('checkbox', { name: 'Prêt hors ligne' })?.getAttribute('aria-checked') === 'true';
 
 describe('ReadyStep (E8, R-SYN-33)', () => {
   it('récapitulatif, voyant vert, « Commencer » → fin de l’onboarding, événement, accueil', async () => {
@@ -54,7 +56,7 @@ describe('ReadyStep (E8, R-SYN-33)', () => {
     for (const text of ['Prendre du muscle', '3 séances de 45 min', 'Basic Fit', 'Jamais']) {
       await screen.findByText(text);
     }
-    await until(() => indicatorState() === 'ready');
+    await until(offlineReady);
     await until(() => !button('Commencer').disabled);
     fireEvent.click(button('Commencer'));
     await until(() => location() === '/');
@@ -65,7 +67,9 @@ describe('ReadyStep (E8, R-SYN-33)', () => {
 
   it('dernier pull il y a 25 h : « Commencer » désactivé, « Réessayer » lance une synchro manuelle', async () => {
     const { sync, api } = await openReady(25 * HOUR);
-    await until(() => indicatorState() === 'not-ready');
+    // Pas prêt : le voyant explique ce qui manque, avec « Réessayer ».
+    await until(() => screen.queryByTestId('offline-ready')?.getAttribute('data-state') === 'not-ready');
+    expect(offlineReady()).toBe(false);
     expect(button('Commencer').disabled).toBe(true);
     fireEvent.click(button('Réessayer'));
     await until(() => sync.triggers.includes('manual'));
@@ -76,7 +80,7 @@ describe('ReadyStep (E8, R-SYN-33)', () => {
     const { api, location } = await openReady(HOUR);
     api.on('POST', COMPLETE, { status: 409, body: { error: 'onboarding_incomplete', step: 'availability' } });
     window.addEventListener(ONBOARDING_COMPLETED_EVENT, count);
-    await until(() => indicatorState() === 'ready');
+    await until(offlineReady);
     await until(() => !button('Commencer').disabled);
     expect(screen.queryByText(INCOMPLETE)).toBeNull();
     fireEvent.click(button('Commencer'));
@@ -94,7 +98,7 @@ describe('ReadyStep (E8, R-SYN-33)', () => {
     const { api, db, location } = await openReady(HOUR);
     api.on('POST', COMPLETE, { status: 409, body: { error: 'onboarding_incomplete' } });
     window.addEventListener(ONBOARDING_COMPLETED_EVENT, count);
-    await until(() => indicatorState() === 'ready');
+    await until(offlineReady);
     await until(() => !button('Commencer').disabled);
     // Disponibilité effacée depuis un autre appareil, sans nouveau pull : l'écran reste « C'est prêt ».
     await seedProfile(db, { goal: 'muscle', experience: 'none', daysPerWeek: null, sessionMinutes: 45 });
