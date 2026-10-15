@@ -16,6 +16,12 @@ const rule = (selector: string, media: string | null = null) =>
       .flatMap((b) => [...b.declarations]),
   );
 
+/** Taille du code de l'invitation, `max(<plancher>rem, min(1.25rem, <part>cqi))` : [plancher, part], ou null. */
+function codeSize(): [number, number] | null {
+  const m = /^max\(([\d.]+)rem, min\(1\.25rem, ([\d.]+)cqi\)\)$/.exec(rule('.code').get('font-size') ?? '');
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
 describe('admin.module.css : jetons, cibles tactiles et mouvement (spec refonte §4, §7)', () => {
   it('aucune couleur écrite en dur : chaque couleur vient de tokens.css, juste dans les 5 thèmes', () => {
     const css = source().replace(/\/\*[\s\S]*?\*\//g, '');
@@ -31,6 +37,64 @@ describe('admin.module.css : jetons, cibles tactiles et mouvement (spec refonte 
       expect(rule(selector).get('height'), selector).toBe('44px');
     }
     expect(rule('.compact').get('min-height')).toBe('44px');
+  });
+
+  it('sous-navigation : les segments passent à la ligne plutôt que de se chevaucher (320 px, texte à 200 %)', () => {
+    expect(rule('.nav ul').get('flex-wrap')).toBe('wrap');
+    // min-width: 0 laissait la case rétrécir sous son libellé : le lien en débordait sur la case voisine.
+    expect(rule('.nav li').get('min-width')).toBeUndefined();
+    expect(rule('.nav a').get('white-space')).not.toBe('nowrap');
+    expect(rule('.nav a').get('overflow-wrap')).toBe('anywhere');
+    expect(rule('.nav a').get('text-align')).toBe('center');
+  });
+
+  it('sous-navigation : le rayon du segment suit celui du cadre, moins son retrait (5 thèmes)', () => {
+    expect(rule('.nav ul').get('padding')).toBe('var(--space-1)');
+    expect(rule('.nav a').get('border-radius')).toBe('max(2px, calc(var(--radius-card) - var(--space-1)))');
+  });
+
+  it('pseudos, notes et noms de salle entiers : passés à la ligne, jamais coupés d’une ellipse', () => {
+    for (const selector of ['.memberName', '.cardTitle']) {
+      expect(rule(selector).get('white-space'), selector).toBeUndefined();
+      expect(rule(selector).get('text-overflow'), selector).toBeUndefined();
+      expect(rule(selector).get('overflow'), selector).toBeUndefined();
+      expect(rule(selector).get('overflow-wrap'), selector).toBe('anywhere');
+    }
+    for (const selector of ['.fact dt', '.fact dd', '.hostFacts dt', '.hostFacts dd']) {
+      expect(rule(selector).get('overflow-wrap'), selector).toBe('anywhere');
+    }
+    // Icône et mot sur une ligne trop étroite : l'icône cède sa ligne avant que le mot ne se coupe (« Termin / é »).
+    for (const selector of ['.fact dd', '.hostFacts dt']) {
+      expect(rule(selector).get('flex-wrap'), selector).toBe('wrap');
+    }
+  });
+
+  it('le code de l’invitation tient sur une ligne : taille réglée sur la largeur de sa boîte (E04)', () => {
+    expect(rule('.codeBox').get('container-type')).toBe('inline-size');
+    expect(rule('.code').get('white-space')).toBe('nowrap');
+    const size = codeSize();
+    expect(size, `font-size de .code : ${rule('.code').get('font-size')}`).not.toBeNull();
+    const [floorRem, cqi] = size ?? [Number.NaN, Number.NaN];
+    // Chakra Petch 700 à 0,03 em : un code fait 12,06 em en moyenne, 13,77 em pour un sur un million (W, M larges).
+    expect(cqi * 13.77, 'un code large tient dans la boîte').toBeLessThanOrEqual(100);
+    // Plancher en rem (le texte agrandi agrandit le code), lisible, et sous la taille réglée sur la boîte la plus
+    // étroite au texte par défaut (Carnet à 320 px : 188 px, 11,75rem) : sans quoi le code s'y couperait.
+    expect(floorRem, 'plancher lisible').toBeGreaterThanOrEqual(0.75);
+    expect(floorRem, 'plancher sous la taille de la boîte la plus étroite').toBeLessThanOrEqual(
+      (cqi * 11.75) / 100,
+    );
+  });
+
+  it('très grand texte : le code, à son plancher, passe à la ligne au lieu de déborder de la boîte', () => {
+    const css = source().replace(/\/\*[\s\S]*?\*\//g, '');
+    const [floorRem, cqi] = codeSize() ?? [Number.NaN, Number.NaN];
+    const query = /@container \(width < ([\d.]+)rem\)\s*\{([\s\S]*?\})\s*\}/.exec(css);
+    expect(query, 'requête de conteneur du code').not.toBeNull();
+    // Seuil = largeur où le plancher l'emporte sur la taille réglée sur la boîte : en deçà, le code déborderait.
+    expect(Number(query?.[1]) * cqi).toBeCloseTo(floorRem * 100, 0);
+    const inner = declarationsOf(parseCssBlocks(query?.[2] ?? ''), '.code');
+    expect(inner?.get('white-space')).toBe('normal');
+    expect(inner?.get('overflow-wrap')).toBe('anywhere');
   });
 
   it('le code ne se coupe jamais en fin de ligne dans le message à envoyer', () => {

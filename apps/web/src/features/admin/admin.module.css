@@ -72,22 +72,27 @@
   }
 }
 
-/* ---------- Sous-navigation : pilule segmentée (E01 à E05) ---------- */
+/*
+ * ---------- Sous-navigation : pilule segmentée (E01 à E05) ----------
+ * Texte agrandi ou écran étroit (320 px, texte à 200 %) : les segments passent à la ligne, entiers, au lieu de
+ * se chevaucher ; un segment seul plus large que la pilule coupe son libellé plutôt que de déborder.
+ */
 
 .nav ul {
   margin: 0;
   padding: var(--space-1);
   list-style: none;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
 }
 
 .nav li {
   flex: 1 1 auto;
-  min-width: 0;
   display: flex;
 }
 
+/* Rayon du segment : celui du cadre moins son retrait (concentriques dans les 5 thèmes, 2 px au moins). */
 .nav a {
   flex: 1;
   display: flex;
@@ -95,12 +100,13 @@
   justify-content: center;
   min-height: 44px;
   padding: 0 6px;
-  border-radius: 12px;
+  border-radius: max(2px, calc(var(--radius-card) - var(--space-1)));
   color: var(--text-muted);
   font-size: 0.90625rem;
   font-weight: 500;
+  text-align: center;
   text-decoration: none;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   transition:
     background-color var(--dur-fast) var(--ease),
     color var(--dur-fast) var(--ease);
@@ -243,18 +249,16 @@
   gap: 6px var(--space-2);
 }
 
-/* Le pseudo en Barlow 600 (maquette E01), coupé d'une ellipse s'il est trop long. */
+/* Le pseudo en Barlow 600 (maquette E01), entier : trop long, il passe à la ligne. */
 .memberName {
   min-width: 0;
   max-width: 100%;
   margin: 0;
-  overflow: hidden;
   font-family: var(--font-body);
   font-size: 1.0625rem;
   font-weight: 600;
   line-height: 24px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .memberCard[data-status="disabled"] .memberName {
@@ -304,6 +308,22 @@
 .fact dt {
   font-size: 0.78125rem;
   color: var(--text-muted);
+}
+
+/*
+ * Colonnes étroites (Carnet à 320 px, texte agrandi) : l'icône cède d'abord sa ligne au mot, puis un mot encore
+ * trop long passe à la ligne au lieu de déborder.
+ */
+.fact dt,
+.fact dd,
+.hostFacts dt,
+.hostFacts dd {
+  overflow-wrap: anywhere;
+}
+
+.fact dd,
+.hostFacts dt {
+  flex-wrap: wrap;
 }
 
 .fact dd {
@@ -399,14 +419,13 @@
   gap: 6px var(--space-2);
 }
 
+/* Note d'invitation ou nom de salle, entiers : une invitation utilisée ou expirée n'a pas d'autre trace de sa note. */
 .cardTitle {
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
   font-size: 1.03125rem;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .gymActions {
@@ -434,7 +453,9 @@
   background: color-mix(in srgb, var(--accent) 5%, var(--surface));
 }
 
+/* Conteneur de requête : la taille du code se règle sur la largeur de la boîte (cqi). */
 .codeBox {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -448,16 +469,32 @@
   color: var(--text-muted);
 }
 
-/* Code et message affichés une seule fois : un geste les sélectionne en entier si la copie échoue. */
+/*
+ * Code et message affichés une seule fois : un geste les sélectionne en entier si la copie échoue.
+ * Le code tient sur une ligne, jamais coupé à un tiret (maquette E04) : 20 px au plus, sinon 7,2 % de la largeur
+ * de la boîte. En Chakra Petch 700, un code mesure 12,1 em en moyenne et 13,8 em pour un code sur un million
+ * (W et M larges) : 7,2 cqi le fait tenir. Plancher à 0,81rem, pour que le texte agrandi agrandisse le code.
+ */
 .code {
   font-family: var(--font-display);
-  font-size: 1.25rem;
+  font-size: max(0.81rem, min(1.25rem, 7.2cqi));
   font-weight: 700;
   letter-spacing: 0.03em;
   color: var(--text);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
   -webkit-user-select: all;
   user-select: all;
+}
+
+/*
+ * Très grand texte : le plancher l'emporte sous 11,25rem de boîte (0,81rem = 7,2 % de 11,25rem). Le code, trop
+ * large pour une ligne, passe alors à la ligne (aux tirets d'abord) au lieu de déborder de la boîte.
+ */
+@container (width < 11.25rem) {
+  .code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 .codeWarning {
