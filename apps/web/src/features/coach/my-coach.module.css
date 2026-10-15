@@ -1,0 +1,162 @@
+/*
+ * Profil › Mon coach (prototype « Mon coach ») : carte forte du coach (deux avatars légendés, nom, tempérament,
+ * aperçu), mention de la conversation à venir, feuille du changement. Couleurs prises dans les jetons ;
+ * mouvement sur la courbe et les durées communes (motion.css), un fondu sous mouvement réduit.
+ */
+
+/* Carte forte : fond relevé, liseré d'accent et barre dégradée de 3 px en haut, comme la fenêtre du Système. */
+.hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 22px 18px 18px;
+  border-radius: calc(var(--radius-card) + 2px);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  background: var(--surface-strong);
+  animation: coach-fade var(--dur-screen) var(--ease) backwards;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.avatars {
+  display: flex;
+  justify-content: center;
+  gap: clamp(16px, 8vw, 34px);
+}
+
+.figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Deux avatars de 112 px côte à côte ; ils rétrécissent sur un téléphone étroit (320 px) plutôt que déborder. */
+.grow {
+  display: block;
+  animation: coach-grow var(--dur-screen) var(--ease) 120ms backwards;
+}
+
+.figure:nth-child(2) .grow {
+  animation-delay: 210ms;
+}
+
+.grow svg {
+  display: block;
+  width: clamp(84px, 30vw, 112px);
+  height: auto;
+}
+
+.caption {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.84375rem;
+  color: var(--text-muted);
+}
+
+/* Losange de la légende : accent pour l'entraînement, or (le ton de la nutrition) pour la nutrition. */
+.diamond {
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  background: var(--accent);
+}
+
+.diamond[data-tone="nutrition"] {
+  background: var(--warning-text);
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.name {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.temper {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* Mention de la conversation à venir : encadré d'information (icône d'accent, teinte d'accent). */
+.later {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.later svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.sheetBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@keyframes coach-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes coach-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Mouvement réduit (spec refonte §7) : plus d'agrandissement, un fondu court, sans cascade. */
+@media (prefers-reduced-motion: reduce) {
+  .grow,
+  .figure:nth-child(2) .grow {
+    animation-name: coach-fade;
+    animation-duration: var(--dur-fast);
+    animation-delay: 0ms;
+  }
+
+  .hero {
+    animation-duration: var(--dur-fast);
+  }
+}

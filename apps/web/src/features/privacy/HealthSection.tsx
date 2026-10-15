@@ -1,43 +1,63 @@
-import type { MeResponse } from '@rune/contracts';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { Link } from 'wouter';
+import { type ReactNode, type RefObject, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
-import { Banner, Button, formatDate, HealthWarning, Page, useAction } from '../../ui';
-import {
-  CautiousModeToggle,
-  HealthConsentPanel,
-  LimitationsEditor,
-  ScreeningQuestions,
-} from '../onboarding/HealthStep';
+import { Badge, Banner, Button, formatDate, HealthWarning, ListGroup, ListRow, Page } from '../../ui';
+import { HealthConsentPanel, LimitationsEditor, ScreeningQuestions } from '../onboarding/HealthStep';
+import { ShieldIcon } from '../profile/icons';
+import { ConsentWithdrawDialog } from './ConsentWithdrawDialog';
+import { consentLabel, WITHDRAW_LIST_TEXT } from './messages';
 import styles from './privacy.module.css';
 
 /** Titre de la section du questionnaire d'alerte (glossaire, 02 §11). */
 const SCREENING_TITLE = "Questionnaire d'alerte";
 
 /**
- * Profil › Santé (02 §11, E7) : sans accord, l'accord est proposé, puis les questions s'affichent
- * en auto-vérification dans leur propre section (P-CST-2) ; avec accord, dernière réponse au
- * questionnaire (« Répondre de nouveau »), limitations modifiables (P-DRT-2). Le mode prudent (C1)
- * est réglable dans tous les cas. Le retrait de l'accord se fait dans Confidentialité (R-CST-5).
+ * Profil › Santé (02 §11, E7, spec refonte §10.4, maquette C04) : sans accord, l'accord est proposé, puis les
+ * questions s'affichent en auto-vérification dans leur propre section (P-CST-2) ; avec accord, son état en tête,
+ * dernière réponse au questionnaire (« Répondre de nouveau »), limitations modifiables (P-DRT-2), puis, isolé en
+ * bas, le retrait de l'accord (R-CST-5), avec ses textes, sa confirmation et le mot de passe ressaisi. Le mode
+ * prudent se règle dans Mon profil seulement.
  */
 export function HealthSection() {
   const me = useMe();
+  const [withdrawing, setWithdrawing] = useState(false);
+  const consentHeading = useRef<HTMLHeadingElement>(null);
+  const withdrawId = useId();
+  const opened = useRef(false);
+  const close = useCallback(() => setWithdrawing(false), []);
+
+  // Dialogue fermé sans focus à rendre (Safari, ou retrait fait : son bouton a disparu) : le focus va au
+  // titre de l'accord proposé de nouveau, sinon au bouton du retrait.
+  useEffect(() => {
+    if (withdrawing) {
+      opened.current = true;
+      return;
+    }
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (opened.current && lost) (consentHeading.current ?? document.getElementById(withdrawId))?.focus();
+    opened.current = false;
+  }, [withdrawing, withdrawId]);
+
   if (!me) return null;
-  const consented = me.consents.health.active;
+  const consent = me.consents.health;
   return (
     <Page title="Santé" back="/profile">
-      {consented ? (
+      {consent.active ? (
         <>
+          <ListGroup>
+            <ListRow
+              icon={<ShieldIcon />}
+              label="Accord santé"
+              value={consentLabel(consent)}
+              badge={<Badge tone="success">Actif</Badge>}
+            />
+          </ListGroup>
           <ScreeningSection />
           <LimitationsEditor editable headingLevel={2} />
-          <p className={styles.note}>
-            Ton accord santé se retire dans <Link href="/profile/privacy">Confidentialité</Link>.
-          </p>
         </>
       ) : (
         <>
-          <Section title="Accord santé">
+          <Section title="Accord santé" headingRef={consentHeading}>
             <HealthConsentPanel onGranted={() => {}} />
           </Section>
           <Section title={SCREENING_TITLE}>
@@ -45,18 +65,37 @@ export function HealthSection() {
           </Section>
         </>
       )}
-      <CautiousSection me={me} />
       <HealthWarning />
+      {consent.active ? (
+        <Section title="Retirer l'accord santé">
+          <p className={styles.lead}>{WITHDRAW_LIST_TEXT}</p>
+          <Button
+            id={withdrawId}
+            variant="danger"
+            className={styles.start}
+            onClick={() => setWithdrawing(true)}
+          >
+            Retirer mon accord santé
+          </Button>
+        </Section>
+      ) : null}
+      <ConsentWithdrawDialog open={withdrawing} onClose={close} />
     </Page>
   );
 }
 
-/** Section titrée (h2), nommée par son titre. */
-function Section(p: { title: string; children: ReactNode }) {
+/** Section titrée (h2), nommée par son titre ; `headingRef` : titre focalisable. */
+function Section(p: {
+  title: string;
+  headingRef?: RefObject<HTMLHeadingElement | null>;
+  children: ReactNode;
+}) {
   const id = useId();
   return (
     <section aria-labelledby={id} className={styles.section}>
-      <h2 id={id}>{p.title}</h2>
+      <h2 id={id} ref={p.headingRef} tabIndex={p.headingRef ? -1 : undefined} className={styles.sectionTitle}>
+        {p.title}
+      </h2>
       {p.children}
     </section>
   );
@@ -102,7 +141,9 @@ function ScreeningSection() {
         <div ref={summaryRef} className={styles.summary}>
           {saved ? <Banner tone="info">Réponses enregistrées.</Banner> : null}
           <p>{`Dernière réponse le ${formatDate(screening.answeredAt)}`}</p>
-          <p>{`Indicateur de prudence : ${screening.caution ? 'actif' : 'inactif'}`}</p>
+          <p
+            className={styles.muted}
+          >{`Indicateur de prudence : ${screening.caution ? 'actif' : 'inactif'}`}</p>
           <Button variant="secondary" onClick={reopen}>
             Répondre de nouveau
           </Button>
@@ -117,40 +158,6 @@ function ScreeningSection() {
           ) : null}
         </>
       )}
-    </Section>
-  );
-}
-
-/**
- * Mode prudent (E7.5, C1) : envoyé au changement ; le choix s'affiche jusqu'à la relecture du
- * profil, interrupteur désactivé pendant l'envoi.
- */
-function CautiousSection(p: { me: MeResponse }) {
-  const repos = useRepos();
-  const profile = useLive(() => repos.profile.get(), [repos]);
-  const [draft, setDraft] = useState<boolean | null>(null);
-  const save = useAction(async (cautiousMode: boolean) => {
-    await repos.profile.update({ cautiousMode });
-    return true;
-  });
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: chaque lecture du profil efface le brouillon
-  useEffect(() => setDraft(null), [profile]);
-
-  if (profile === undefined) return null;
-  async function change(v: boolean) {
-    setDraft(v);
-    if (!(await save.run(v))) setDraft(null);
-  }
-  return (
-    <Section title="Mode prudent">
-      <CautiousModeToggle
-        value={draft ?? profile?.cautiousMode ?? false}
-        minor={p.me.ageBand === 'minor'}
-        disabled={save.pending}
-        onChange={(v) => void change(v)}
-      />
-      {save.error ? <Banner tone="error">{save.error}</Banner> : null}
     </Section>
   );
 }

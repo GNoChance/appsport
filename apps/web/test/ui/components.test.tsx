@@ -501,6 +501,29 @@ describe('ListGroup et ListRow', () => {
     expect(screen.getByText('En ligne')).toBeTruthy();
   });
 
+  it('emphasis="value" (maquettes C02, C03, C05) : petit libellé au-dessus, valeur en gras, nom et description inchangés', () => {
+    render(
+      <ListGroup>
+        <ListRow label="Objectif" value="Prendre du muscle" emphasis="value" onClick={() => {}} />
+        <ListRow label="Connexion" value="En ligne" emphasis="value" />
+        <ListRow label="Mot de passe" value="Tes autres appareils seront déconnectés." onClick={() => {}} />
+      </ListGroup>,
+    );
+    const goal = screen.getByRole('button', { name: 'Objectif', description: 'Prendre du muscle' });
+    expect(goal.getAttribute('data-emphasis')).toBe('value');
+    expect(screen.getByText('En ligne').closest(`.${cls('row')}`)?.getAttribute('data-emphasis')).toBe('value');
+    // Par défaut, le libellé reste en gras et la valeur en petit (lignes qui mènent ailleurs, C01).
+    expect(screen.getByRole('button', { name: 'Mot de passe' }).hasAttribute('data-emphasis')).toBe(false);
+    const label = rule('.row[data-emphasis="value"] .rowLabel');
+    const value = rule('.row[data-emphasis="value"] .rowValue');
+    expect(label?.get('font-weight')).toBe('400');
+    expect(label?.get('font-size')).toBe(rule('.rowValue')?.get('font-size'));
+    expect(label?.get('color')).toBe('var(--text-muted)');
+    expect(value?.get('font-weight')).toBe('600');
+    expect(value?.get('font-size')).toBe('1rem');
+    expect(value?.get('color')).toBe('var(--text)');
+  });
+
   it('ligne lien avec onClick : le clic lance onClick puis navigue, sans devenir un bouton', () => {
     const memory = memoryLocation({ path: '/profile', record: true });
     /** Adresses déjà visitées au moment où onClick tourne. */

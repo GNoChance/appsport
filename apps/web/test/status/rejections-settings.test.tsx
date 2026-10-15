@@ -1,12 +1,17 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { REJECTION_CODE_LABELS } from '../../src/features/status/RejectionsPage';
+import { THEME_PREVIEWS } from '../../src/features/status/theme-previews';
 import type { AppDb, DeadletterEntry } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
 import type { SyncEngine } from '../../src/sync/engine';
-import { createFakeApi } from '../support/fake-api';
+import { applyTheme, readThemeChoice } from '../../src/ui/theme/theme';
+import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
+import { createFakeApi, createFakeSyncEngine, type FakeSyncEngine } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
-import { renderApp } from '../support/render';
+import { DEFAULT_NOW, renderApp } from '../support/render';
 import { seedMirror } from '../support/seed';
 import { until } from '../support/wait';
 
@@ -182,35 +187,180 @@ describe('RejectionsPage (R-SYN-18)', () => {
   });
 });
 
-describe('SettingsPage (R-SYN-31)', () => {
+/** Valeur d'une ligne d'information (sans lien) : le texte qui suit son libellé. */
+const infoValue = (label: string) => screen.getByText(label, { exact: true }).nextElementSibling?.textContent;
+/** Texte qui décrit une ligne liée (sa valeur), via aria-describedby. */
+const describedBy = (el: Element) =>
+  (el.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ');
+
+async function renderSettings(o: { persistGranted?: boolean; sync?: FakeSyncEngine; db?: AppDb } = {}) {
+  const db = o.db ?? createTestLocalDb();
+  if (o.persistGranted !== undefined) await setMeta(db, 'persistGranted', o.persistGranted);
+  const view = await renderApp({ path: '/settings', db, sync: o.sync });
+  await screen.findByRole('heading', { level: 1, name: 'Réglages' });
+  return view;
+}
+
+describe('SettingsPage › Stockage (R-SYN-31)', () => {
   const ADVICE =
     "Ton navigateur peut effacer les données de l'appli si l'espace manque. Pense à télécharger tes données régulièrement.";
 
-  async function renderSettings(persistGranted?: boolean) {
-    const db = createTestLocalDb();
-    if (persistGranted !== undefined) await setMeta(db, 'persistGranted', persistGranted);
-    const view = await renderApp({ path: '/settings', db });
-    await screen.findByRole('heading', { level: 1, name: 'Réglages' });
-    return view;
-  }
-
-  it('persistGranted true → « Stockage persistant : accordé », sans conseil', async () => {
-    await renderSettings(true);
-    expect(await screen.findByText('Stockage persistant : accordé')).toBeTruthy();
+  it('persistGranted true → stockage persistant « Accordé », sans conseil', async () => {
+    await renderSettings({ persistGranted: true });
+    await until(() => infoValue('Stockage persistant') === 'Accordé');
     expect(screen.queryByText(ADVICE)).toBeNull();
   });
 
-  it('persistGranted false → « Stockage persistant : refusé » et conseil d’export avec lien', async () => {
-    await renderSettings(false);
-    expect(await screen.findByText('Stockage persistant : refusé')).toBeTruthy();
+  it('persistGranted false → « Refusé » et conseil d’export avec lien', async () => {
+    await renderSettings({ persistGranted: false });
+    await until(() => infoValue('Stockage persistant') === 'Refusé');
     expect(screen.getByText(ADVICE)).toBeTruthy();
     const link = screen.getByRole('link', { name: 'Télécharger mes données' });
     expect(link.getAttribute('href')).toBe('/profile/privacy');
   });
 
-  it('persistGranted absent → « Stockage persistant : pas encore demandé »', async () => {
+  it('persistGranted absent → « Pas encore demandé »', async () => {
     await renderSettings();
-    expect(await screen.findByText('Stockage persistant : pas encore demandé')).toBeTruthy();
+    await until(() => infoValue('Stockage persistant') === 'Pas encore demandé');
     expect(screen.queryByText(ADVICE)).toBeNull();
+  });
+});
+
+describe('SettingsPage › Apparence (spec refonte §4, maquette C03)', () => {
+  afterEach(() => {
+    applyTheme('auto');
+    localStorage.removeItem('rune.theme');
+  });
+
+  const radio = (name: string) => screen.getByRole('radio', { name }) as HTMLInputElement;
+
+  it('5 choix dans le groupe « Apparence », Auto coché par défaut', async () => {
+    await renderSettings();
+    const group = screen.getByRole('radiogroup', { name: 'Apparence' });
+    expect(
+      within(group)
+        .getAllByRole('radio')
+        .map((r) => (r as HTMLInputElement).value),
+    ).toEqual(['auto', 'clair', 'sombre', 'carnet', 'nuit']);
+    expect(radio('Auto').checked).toBe(true);
+    for (const name of ['Clair', 'Sombre', 'Carnet', 'Salle de nuit'])
+      expect(radio(name).checked).toBe(false);
+    expect(describedBy(radio('Auto'))).toBe('Clair ou sombre selon le téléphone');
+  });
+
+  it('chaque choix a son aperçu, décoratif', async () => {
+    await renderSettings();
+    const previews = document.querySelectorAll('[data-theme-preview]');
+    expect([...previews].map((p) => p.getAttribute('data-theme-preview'))).toEqual([
+      'auto',
+      'clair',
+      'sombre',
+      'carnet',
+      'nuit',
+    ]);
+    for (const p of previews) expect(p.closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('choisir « Carnet » le garde sur l’appareil (writeThemeChoice) et pose data-theme="carnet" tout de suite', async () => {
+    await renderSettings();
+    fireEvent.click(radio('Carnet'));
+    expect(document.documentElement.getAttribute('data-theme')).toBe('carnet');
+    expect(readThemeChoice()).toBe('carnet');
+    expect(localStorage.getItem('rune.theme')).toBe('carnet');
+    expect(radio('Carnet').checked).toBe(true);
+    expect(radio('Auto').checked).toBe(false);
+  });
+
+  it('revenir à « Auto » retire data-theme : la page suit de nouveau le téléphone', async () => {
+    await renderSettings();
+    fireEvent.click(radio('Salle de nuit'));
+    expect(document.documentElement.getAttribute('data-theme')).toBe('nuit');
+    fireEvent.click(radio('Auto'));
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+    expect(readThemeChoice()).toBe('auto');
+    expect(radio('Auto').checked).toBe(true);
+  });
+
+  it('le thème appliqué au démarrage est coché à l’ouverture', async () => {
+    applyTheme('sombre');
+    await renderSettings();
+    expect(radio('Sombre').checked).toBe(true);
+    expect(radio('Auto').checked).toBe(false);
+  });
+
+  it('les couleurs des aperçus sont celles de tokens.css, thème par thème', () => {
+    const blocks = parseCssBlocks(
+      readFileSync(resolve(import.meta.dirname, '../../src/ui/theme/tokens.css'), 'utf8'),
+    );
+    const selectors = {
+      clair: ':root',
+      sombre: ':root[data-theme="sombre"]',
+      carnet: ':root[data-theme="carnet"]',
+      nuit: ':root[data-theme="nuit"]',
+    } as const;
+    for (const [theme, selector] of Object.entries(selectors) as [keyof typeof selectors, string][]) {
+      const tokens = declarationsOf(blocks, selector);
+      expect(THEME_PREVIEWS[theme], theme).toEqual({
+        bg: tokens?.get('--bg'),
+        surface: tokens?.get('--surface'),
+        text: tokens?.get('--text'),
+        accent: tokens?.get('--accent'),
+        accent2: tokens?.get('--accent-2'),
+      });
+    }
+  });
+});
+
+describe('SettingsPage › Synchronisation (R-SYN-34, R-SYN-30)', () => {
+  it('connexion, envoi au serveur et refus : l’état du moteur de synchro', async () => {
+    const sync = createFakeSyncEngine({ connection: 'offline', pending: 2 });
+    await renderSettings({ sync });
+    expect(infoValue('Connexion')).toBe('Hors ligne');
+    expect(screen.getByTestId('pending-counter').textContent).toBe('2 en attente');
+    expect(infoValue('Refus du serveur')).toBe('Aucun refus');
+    expect(screen.queryByRole('link', { name: 'Refus du serveur' })).toBeNull();
+    act(() => sync.set({ connection: 'online', pending: 0 }));
+    expect(infoValue('Connexion')).toBe('En ligne');
+    expect(screen.getByTestId('pending-counter').textContent).toBe('0 en attente');
+  });
+
+  it('refus : la ligne mène aux éléments refusés, « 1 refusé » puis « 2 refusés »', async () => {
+    const sync = createFakeSyncEngine({ rejected: 1 });
+    const view = await renderSettings({ sync });
+    const row = screen.getByRole('link', { name: 'Refus du serveur' });
+    expect(row.getAttribute('href')).toBe('/rejections');
+    expect(describedBy(row)).toBe('1 refusé');
+    act(() => sync.set({ rejected: 2 }));
+    expect(describedBy(screen.getByRole('link', { name: 'Refus du serveur' }))).toBe('2 refusés');
+    fireEvent.click(screen.getByRole('link', { name: 'Refus du serveur' }));
+    await screen.findByRole('heading', { level: 1, name: 'Éléments refusés' });
+    expect(view.location()).toBe('/rejections');
+    // Retour des refus vers les Réglages, d'où on vient.
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/settings');
+  });
+
+  it('maquette C03 : les lignes d’état en petit libellé sur leur valeur en gras, refus compris', async () => {
+    await renderSettings({ sync: createFakeSyncEngine({ rejected: 1 }), persistGranted: true });
+    for (const label of ['Connexion', 'Sans réseau', 'Envoi au serveur', 'Stockage persistant']) {
+      const row = screen.getByText(label, { exact: true }).closest('[data-emphasis]');
+      expect(row?.getAttribute('data-emphasis'), label).toBe('value');
+    }
+    expect(screen.getByRole('link', { name: 'Refus du serveur' }).getAttribute('data-emphasis')).toBe('value');
+  });
+
+  it('sans réseau : « Prêt hors ligne » quand l’appareil l’est, sinon « Pas encore prêt hors ligne »', async () => {
+    const db = createTestLocalDb();
+    await renderSettings({ db });
+    await until(() => infoValue('Sans réseau') === 'Pas encore prêt hors ligne');
+    const ready = createTestLocalDb();
+    await setMeta(ready, 'catalogVersion', 'cat-1');
+    await setMeta(ready, 'serverCatalogVersion', 'cat-1');
+    await setMeta(ready, 'lastPullOkAt', new Date(DEFAULT_NOW - 3_600_000).toISOString());
+    cleanup();
+    await renderSettings({ db: ready });
+    await until(() => infoValue('Sans réseau') === 'Prêt hors ligne');
   });
 });

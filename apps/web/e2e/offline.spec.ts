@@ -19,10 +19,18 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
   const connection = page.getByTestId('connection-status');
   const tab = (name: string) =>
     page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('link', { name, exact: true });
-  const username = page.getByLabel('Pseudo', { exact: true });
+  const username = page.getByRole('textbox', { name: 'Pseudo', exact: true });
   const saveUsername = page.getByRole('button', { name: 'Enregistrer le pseudo', exact: true });
   // Refus de classe E : l'alerte annoncée (`role="alert"`) du formulaire du pseudo, pas un texte quelconque.
   const usernameAlert = page.locator('form').filter({ has: saveUsername }).getByRole('alert');
+  // Le pseudo se modifie dans Mon profil, derrière sa ligne (spec refonte §10.4) : la ligne ouvre le champ.
+  const openUsernameRow = () => page.getByRole('button', { name: 'Pseudo', exact: true }).click();
+  // Onglet Profil (le hub), puis « Mon profil » et sa ligne « Pseudo » : navigations dans l'appli, sans réseau.
+  const openUsername = async () => {
+    await tab('Profil').click();
+    await page.getByRole('link', { name: 'Mon profil', exact: true }).click();
+    await openUsernameRow();
+  };
 
   // Pas de navigation sous `setOffline` : WebKit y fait échouer même une navigation servie par le SW
   // (« WebKit encountered an internal error »). Le rechargement à froid hors ligne passe par l'étape suivante.
@@ -32,7 +40,7 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
     // classe E peut faire passer la pastille à 'offline'.
     await expect(connection).toHaveAttribute('data-state', 'online');
     expect(await idbGetAll(page, 'outbox')).toEqual([]);
-    await tab('Profil').click();
+    await openUsername();
     await expect(username).toHaveValue('camille');
     await context.setOffline(true);
     await username.fill('camille-hors-ligne');
@@ -53,7 +61,7 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
     await context.setOffline(true);
     await triggerForeground(page);
     await expect(connection).toHaveAttribute('data-state', 'offline', { timeout: 5_000 });
-    await tab('Profil').click();
+    await openUsername();
     await expect(username).toHaveValue('camille');
     // Classe E (API en ligne) : refusée hors ligne avec « Nécessite le réseau ».
     await username.fill('camille-sans-reseau');
@@ -71,7 +79,11 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
     await connection.waitFor({ state: 'attached', timeout: SHELL_TIMEOUT_MS });
     await expect(connection).toHaveAttribute('data-state', 'offline', { timeout: 5_000 });
     expect(await page.evaluate(() => navigator.onLine)).toBe(true);
-    await page.goto(`${server.url}/profile`, { waitUntil: 'domcontentloaded', timeout: SHELL_TIMEOUT_MS });
+    await page.goto(`${server.url}/profile/edit`, {
+      waitUntil: 'domcontentloaded',
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await openUsernameRow();
     await expect(username).toHaveValue('camille');
     // Classe E sous des requêtes muettes : refus au bout de SYNC_TIMEOUT_MS (4 s), pas une attente sans fin.
     await username.fill('camille-sans-reponse');
@@ -92,7 +104,7 @@ test('hors ligne : coquille du cache, état de connexion, profil et second appar
     await loginViaUi(other, 'camille');
     await expect(other).toHaveURL(`${server.url}/`);
 
-    await tab('Profil').click();
+    await openUsername();
     await username.fill('camille2');
     const [renamed] = await Promise.all([
       page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith('/api/me')),

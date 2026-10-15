@@ -90,43 +90,84 @@ async function renderPrivacy(o: { me?: MeResponse; api?: FakeApi } = {}) {
   return view;
 }
 
+/** Profil › Santé, où se retire l'accord santé (spec refonte §10.4). */
+async function renderHealth(o: { me?: MeResponse; api?: FakeApi } = {}) {
+  const db = createTestLocalDb();
+  await seedHealth(db);
+  const view = await renderApp({ path: '/profile/health', me: o.me ?? consented(), db, api: o.api });
+  await screen.findByRole('heading', { level: 1, name: 'Santé' });
+  return view;
+}
+
 const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
-/** Valeur d'une ligne de la liste des accords (`dt` → `dd`). */
-const consentValue = (label: string) =>
-  screen.getByText(label, { selector: 'dt' }).nextElementSibling?.textContent;
+/** Texte qui décrit une ligne (sa valeur), via aria-describedby ; une ligne sans lien porte sa valeur à côté. */
+const description = (el: Element) =>
+  (el.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ');
+/** Valeur de la ligne d'information `label` (sans lien) : le texte qui suit le libellé. */
+const infoValue = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
 
 async function openWithdraw() {
   fireEvent.click(button('Retirer mon accord santé'));
   return within(await screen.findByRole('dialog'));
 }
 
-describe('PrivacySettingsPage (02 §11, R-CST-5, 03 §13)', () => {
-  it('version en vigueur, lien vers la page, accords santé et coach, export de « tout ce que Rune garde »', async () => {
+describe('PrivacySettingsPage (02 §11, R-CST-5, 03 §13, maquette C05)', () => {
+  it('version en vigueur vers la page, accords santé et coach, export de « tout ce que Rune garde »', async () => {
     await renderPrivacy();
-    expect(screen.getByText('Version en vigueur : 1.0')).toBeTruthy();
-    expect(
-      screen.getByRole('link', { name: 'Lire la page Confidentialité et règles' }).getAttribute('href'),
-    ).toBe('/privacy');
-    expect(consentValue('Accord santé')).toBe('Donné le 01/10/2026');
-    expect(consentValue('Accord coach')).toBe('Non donné');
+    // Dans l'écran : le pied de page de la coquille a aussi un lien « Confidentialité et règles ».
+    const policy = within(screen.getByRole('main')).getByRole('link', { name: 'Confidentialité et règles' });
+    expect(policy.getAttribute('href')).toBe('/privacy');
+    expect(description(policy)).toBe('Version en vigueur : 1.0');
+    const health = screen.getByRole('link', { name: 'Accord santé' });
+    expect(health.getAttribute('href')).toBe('/profile/health');
+    expect(description(health)).toBe('Donné le 01/10/2026');
+    expect(infoValue('Accord coach')).toBe('Non donné');
     expect(screen.getByText('Un fichier JSON avec tout ce que Rune garde sur ton compte.')).toBeTruthy();
     expect(button('Télécharger mes données')).toBeTruthy();
     expect(button('Supprimer mon compte')).toBeTruthy();
   });
 
-  it('sans accord santé : « Non donné », pas de retrait, lien vers Santé', async () => {
-    await renderPrivacy({ me: makeMe() });
-    expect(consentValue('Accord santé')).toBe('Non donné');
+  it('maquette C05 : les accords en petit libellé sur leur état en gras ; la page des règles en lien simple', async () => {
+    await renderPrivacy();
+    expect(screen.getByRole('link', { name: 'Accord santé' }).getAttribute('data-emphasis')).toBe('value');
+    const coach = screen.getByText('Accord coach').closest('[data-emphasis]');
+    expect(coach?.getAttribute('data-emphasis')).toBe('value');
+    const policy = within(screen.getByRole('main')).getByRole('link', { name: 'Confidentialité et règles' });
+    expect(policy.hasAttribute('data-emphasis')).toBe(false);
+  });
+
+  it("le retrait de l'accord santé n'est plus ici : l'état de l'accord mène à Santé", async () => {
+    await renderPrivacy();
     expect(screen.queryByRole('button', { name: 'Retirer mon accord santé' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Donner mon accord santé' }).getAttribute('href')).toBe(
-      '/profile/health',
-    );
+    expect(screen.queryByText("Retirer l'accord santé")).toBeNull();
+    expect(screen.getByRole('link', { name: 'Accord santé' }).getAttribute('href')).toBe('/profile/health');
+  });
+
+  it('sans accord santé : « Non donné », la ligne mène à Santé', async () => {
+    await renderPrivacy({ me: makeMe() });
+    const health = screen.getByRole('link', { name: 'Accord santé' });
+    expect(description(health)).toBe('Non donné');
+    expect(health.getAttribute('href')).toBe('/profile/health');
+  });
+
+  it('suppression du compte isolée en bas : dernier contrôle de la page, après l’export', async () => {
+    await renderPrivacy();
+    const main = screen.getByRole('main');
+    const controls = within(main).getAllByRole('button');
+    expect(controls.at(-1)).toBe(button('Supprimer mon compte'));
+    const exportButton = button('Télécharger mes données');
+    expect(
+      exportButton.compareDocumentPosition(button('Supprimer mon compte')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 
-describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
+describe('ConsentWithdrawDialog dans Santé (R-CST-5, P-CST-3, P-AUT-5)', () => {
   it("liste ce qui sera effacé, propose l'export, « Retirer mon accord » désactivé sans mot de passe", async () => {
-    await renderPrivacy();
+    await renderHealth();
     const dialog = await openWithdraw();
     const text = screen.getByRole('dialog').textContent ?? '';
     expect(text).toContain('indicateur de prudence');
@@ -145,7 +186,7 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
   });
 
   it('saisie du mot de passe : le focus reste dans le champ', async () => {
-    await renderPrivacy();
+    await renderHealth();
     await openWithdraw();
     const field = screen.getByLabelText('Mot de passe') as HTMLInputElement;
     field.focus();
@@ -157,7 +198,7 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
 
   it('POST withdraw { type, password } → 200 MeResponse : message, meta.me à jour, aucune valeur C2 en local', async () => {
     const api = createFakeApi().on('POST', WITHDRAW, { status: 200, body: consented(null, false) });
-    const { db, sync } = await renderPrivacy({ api });
+    const { db, sync } = await renderHealth({ api });
     expect(await witnessStores(db)).toEqual(SEEDED_STORES);
     const dialog = await openWithdraw();
     fill('Mot de passe', 'cheval agrafe batterie correcte');
@@ -174,14 +215,18 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
     expect(sync.pullCount).toBe(1);
     fireEvent.click(button('Fermer'));
     await until(() => screen.queryByRole('dialog') === null);
-    expect(consentValue('Accord santé')).toBe('Non donné');
-    // Le bouton « Retirer mon accord santé » a disparu : le focus va au titre des accords.
-    await until(() => document.activeElement === screen.getByRole('heading', { level: 2, name: 'Accords' }));
+    // Plus d'accord : Santé le propose de nouveau, et le retrait a disparu.
+    expect(screen.getByRole('checkbox', { name: HEALTH_CONSENT_TEXT.text })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retirer mon accord santé' })).toBeNull();
+    // Le bouton « Retirer mon accord santé » a disparu : le focus va au titre de l'accord.
+    await until(
+      () => document.activeElement === screen.getByRole('heading', { level: 2, name: 'Accord santé' }),
+    );
   });
 
   it('401 → « Mot de passe incorrect. », miroir intact', async () => {
     const api = createFakeApi().on('POST', WITHDRAW, { status: 401, body: { error: 'invalid_credentials' } });
-    const { db } = await renderPrivacy({ api });
+    const { db } = await renderHealth({ api });
     const dialog = await openWithdraw();
     fill('Mot de passe', 'mauvais mot de passe');
     fireEvent.click(dialog.getByRole('button', { name: 'Retirer mon accord' }));
@@ -195,7 +240,7 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
       status: 429,
       body: { error: 'rate_limited', retryAfterS: 90 },
     });
-    const { db } = await renderPrivacy({ api });
+    const { db } = await renderHealth({ api });
     const dialog = await openWithdraw();
     fill('Mot de passe', 'cheval agrafe batterie correcte');
     fireEvent.click(dialog.getByRole('button', { name: 'Retirer mon accord' }));
@@ -205,7 +250,7 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
 
   it('hors ligne → « Nécessite le réseau », rien purgé', async () => {
     const api = createFakeApi();
-    const { db } = await renderPrivacy({ api });
+    const { db } = await renderHealth({ api });
     const dialog = await openWithdraw();
     api.setOffline('reject');
     fill('Mot de passe', 'cheval agrafe batterie correcte');
@@ -215,7 +260,7 @@ describe('ConsentWithdrawDialog (R-CST-5, P-CST-3, P-AUT-5)', () => {
   });
 
   it('« Annuler » ferme sans requête', async () => {
-    const { api } = await renderPrivacy();
+    const { api } = await renderHealth();
     const dialog = await openWithdraw();
     fireEvent.click(dialog.getByRole('button', { name: 'Annuler' }));
     await until(() => screen.queryByRole('dialog') === null);

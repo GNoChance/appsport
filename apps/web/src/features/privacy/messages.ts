@@ -1,7 +1,13 @@
-import type { ApiErrorCode } from '@rune/contracts';
+import type { ApiErrorCode, ConsentStatus } from '@rune/contracts';
 import { ApiError } from '../../api/client';
-import { errorMessage } from '../../ui';
+import { errorMessage, formatDate } from '../../ui';
 import { loginErrorMessage } from '../auth/messages';
+
+/** État d'un accord : « Donné le 01/10/2026 », « Donné » sans date connue, sinon « Non donné ». */
+export function consentLabel(c: ConsentStatus): string {
+  if (!c.active) return 'Non donné';
+  return c.at ? `Donné le ${formatDate(c.at)}` : 'Donné';
+}
 
 /** Ce que le retrait de l'accord santé efface (R-CST-5, P-CST-3 étape 2). */
 export const WITHDRAW_LIST_TEXT =

@@ -83,17 +83,295 @@
   color: var(--color-muted);
 }
 
+/* ---------- Réglages (maquette C03) ---------- */
+
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 10px;
 }
 
-.section h2 {
-  margin: 0;
-  font-size: 1.25rem;
+.section + .section {
+  margin-top: var(--space-1);
 }
 
 .section p {
   margin: 0;
+}
+
+/* Titre de section (GUIDE : Chakra Petch 17, 700). */
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* Apparence : Auto en grand, puis les quatre thèmes forcés en grille de deux colonnes. */
+.themes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* Carte d'un choix : mêmes bord, fond et états que la carte de choix de la boîte à outils. */
+.theme {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 60px;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  border-radius: calc(var(--radius-card) - 2px);
+  border: 2px solid var(--border);
+  background: var(--surface);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.theme[data-wide] {
+  gap: 14px;
+  padding: var(--space-3) 14px var(--space-3) var(--space-3);
+}
+
+/* Le vrai bouton radio, transparent, couvre toute la carte : doigt, souris et clavier le visent directement. */
+.themeInput {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Choisi : bord d'accent, teinte et un petit ressort (retour du geste). */
+.theme:has(.themeInput:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  animation: theme-pop var(--dur-fast) var(--ease);
+}
+
+.theme:has(.themeInput:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .theme:has(.themeInput:hover:not(:checked)) {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+}
+
+.themeText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.themeName {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.themeHint {
+  font-size: 0.84375rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+
+/* Coche : rond vide, puis plein d'accent quand le thème est choisi (la sélection ne passe pas que par la couleur). */
+.themeMark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-muted) 70%, var(--surface));
+}
+
+.theme:has(.themeInput:checked) .themeMark {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Aperçu : écran miniature aux couleurs de son thème (variables posées par le composant). */
+.preview,
+.previewAuto {
+  position: relative;
+  flex: none;
+  display: block;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.preview {
+  width: 54px;
+  height: 42px;
+  background: var(--pv-bg);
+}
+
+.preview > [data-part],
+.previewAuto > [data-part] {
+  position: absolute;
+  border-radius: 2px;
+}
+
+.preview > [data-part="card"] {
+  inset: 5px 5px auto;
+  height: 17px;
+  border-radius: 5px;
+  background: var(--pv-surface);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--pv-text) 14%, transparent);
+}
+
+.preview > [data-part="title"] {
+  left: 10px;
+  top: 9px;
+  width: 20px;
+  height: 3.5px;
+  background: linear-gradient(90deg, var(--pv-accent), var(--pv-accent-2));
+}
+
+.preview > [data-part="line"] {
+  left: 10px;
+  top: 15px;
+  width: 13px;
+  height: 2.5px;
+  background: var(--pv-text);
+  opacity: 0.45;
+}
+
+.preview > [data-part="button"] {
+  inset: auto 5px 5px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--pv-accent);
+}
+
+/* Carnet : la marge rouge du cahier ; Salle de nuit : le halo néon du bouton. */
+.preview[data-theme-preview="carnet"] {
+  background:
+    linear-gradient(
+      to right,
+      transparent 3px,
+      var(--pv-accent-2) 3px,
+      var(--pv-accent-2) 4px,
+      transparent 4px
+    ),
+    var(--pv-bg);
+}
+
+.preview[data-theme-preview="nuit"] > [data-part="button"] {
+  box-shadow: 0 0 6px var(--pv-accent);
+}
+
+/* Auto : moitié claire, moitié sombre, en diagonale. */
+.previewAuto {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--light-bg) 0 50%, var(--dark-bg) 50% 100%);
+}
+
+.previewAuto > [data-part="light-title"] {
+  left: 6px;
+  top: 7px;
+  width: 16px;
+  height: 3.5px;
+  background: var(--light-accent);
+}
+
+.previewAuto > [data-part="light-line"] {
+  left: 6px;
+  top: 13px;
+  width: 10px;
+  height: 2.5px;
+  background: var(--light-text);
+  opacity: 0.45;
+}
+
+.previewAuto > [data-part="dark-title"] {
+  right: 6px;
+  bottom: 13px;
+  width: 16px;
+  height: 3.5px;
+  background: var(--dark-accent);
+}
+
+.previewAuto > [data-part="dark-line"] {
+  right: 6px;
+  bottom: 7px;
+  width: 10px;
+  height: 2.5px;
+  background: var(--dark-text);
+  opacity: 0.45;
+}
+
+/* Synchronisation : état de connexion, point vert en ligne, avertissement quand il faut agir, gris sinon. */
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.connectionDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.connection[data-tone="online"] .connectionDot {
+  background: var(--success);
+}
+
+.connection[data-tone="warning"] .connectionDot {
+  background: var(--warning-text);
+}
+
+/* Lien seul dans une phrase : zone de toucher de 44 px. */
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+@keyframes theme-pop {
+  0% {
+    transform: scale(0.97);
+  }
+
+  60% {
+    transform: scale(1.02);
+  }
+
+  100% {
+    transform: none;
+  }
+}
+
+/* Mouvement réduit : pas de ressort. */
+@media (prefers-reduced-motion: reduce) {
+  .theme:has(.themeInput:checked) {
+    animation: none;
+  }
 }
