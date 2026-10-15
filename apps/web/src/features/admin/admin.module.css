@@ -430,14 +430,16 @@
 
 /*
  * Nom d'une salle : seul chemin vers sa fiche, donc une cible de 44 px de haut sur toute la largeur de la carte
- * (le nom, en .cardTitle, garde son ellipse). Les marges négatives prennent l'espace gagné sur le rembourrage de
- * la carte et sur l'écart du dessous : le nom reste à sa place, seule la zone de tap grandit.
+ * (le nom, en .cardTitle, entier : trop long, il passe à la ligne). Les marges négatives prennent l'espace gagné
+ * sur le rembourrage de la carte et sur l'écart du dessous, et le lien les rend en rembourrage : sur une ligne, le
+ * nom reste centré à sa place ; sur deux, il ne monte pas dans le rembourrage de la carte ni ne touche la ville.
  */
 .gymLink {
   display: flex;
   align-items: center;
   min-height: 44px;
   margin: -8px 0 -6px;
+  padding: 8px 0 6px;
 }
 
 .gymActions {

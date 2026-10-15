@@ -57,6 +57,21 @@ describe('admin.module.css : jetons, cibles tactiles et mouvement (spec refonte 
     expect(rule('.nav a').get('border-radius')).toBe('max(2px, calc(var(--radius-card) - var(--space-1)))');
   });
 
+  it('nom d’une salle passé à la ligne : il garde sa place dans la carte, le lien rembourré de ses marges négatives', () => {
+    // Haut, bas d'une déclaration abrégée `a [b [c]]` (margin, padding), en px.
+    const block = (value: string | undefined): [number, number] => {
+      const [top = '', , bottom = top] = (value ?? '').split(' ');
+      return [Number.parseFloat(top), Number.parseFloat(bottom)];
+    };
+    const [marginTop, marginBottom] = block(rule('.gymLink').get('margin'));
+    const [paddingTop, paddingBottom] = block(rule('.gymLink').get('padding'));
+    // Sur une ligne, le nom est centré dans les 44 px ; sur deux, il commence et finit là où il était sans le lien
+    // agrandi : ni dans le rembourrage de la carte, ni collé à la ville en dessous.
+    expect(marginTop, 'marge haute négative').toBeLessThan(0);
+    expect(paddingTop, 'rembourrage haut = marge haute').toBe(-marginTop);
+    expect(paddingBottom, 'rembourrage bas = marge basse').toBe(-marginBottom);
+  });
+
   it('pseudos, notes et noms de salle entiers : passés à la ligne, jamais coupés d’une ellipse', () => {
     for (const selector of ['.memberName', '.cardTitle']) {
       expect(rule(selector).get('white-space'), selector).toBeUndefined();

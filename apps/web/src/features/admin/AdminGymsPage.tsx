@@ -97,8 +97,8 @@ export function AdminGymsPage() {
 }
 
 /**
- * Carte d'une salle : nom (vers sa fiche ; seul chemin vers elle, donc un lien de 44 px de haut, le nom coupé
- * d'une ellipse), ville et membres visibles ; ses actions sont décrites par son nom.
+ * Carte d'une salle : nom (vers sa fiche ; seul chemin vers elle, donc un lien de 44 px de haut, le nom entier,
+ * passé à la ligne s'il est trop long), ville et membres visibles ; ses actions sont décrites par son nom.
  */
 function GymCard(p: { gym: GymSummary; onEdit(): void; onDelete(): void }) {
   const g = p.gym;
