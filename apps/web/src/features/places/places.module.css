@@ -1,19 +1,1219 @@
+/*
+ * Salles et lieux (maquettes D01 à D05) : Mes lieux, fiche d'une salle, écran Matériel, ajout d'une salle,
+ * fiche d'une maison. Couleurs : jetons de ui/theme/tokens.css seulement (justes dans les 5 thèmes) ; teintes
+ * par color-mix sur la surface. Mouvement : courbe unique, durées de motion.css ; mouvement réduit en bas.
+ */
+
+/* Texte lu par les lecteurs d'écran, invisible à l'écran. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.form,
 .picker,
-.create,
-.similar {
+.create {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.picker > button,
-.create > button,
-.similar > button {
-  align-self: flex-start;
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
-.similar p {
+/* Carte (GUIDE, carte) : rayon du thème, bord fin, ombre douce des maquettes en clair. */
+.card,
+.whoCard,
+.placeCard,
+.actionsCard,
+.editor,
+.toggleCard,
+.similarItem {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgb(16 21 31 / 0.06),
+    0 6px 18px rgb(16 21 31 / 0.05);
+}
+
+.card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cardTitle {
   margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+/* Compte du matériel à côté du titre : pastille teintée d'accent, chiffres en Chakra Petch. */
+.countBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* « Modifier » du matériel : contour accent, 44 px de haut, poussé au bout de la ligne. */
+.smallButton {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.90625rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.smallButton:active {
+  transform: scale(0.98);
+}
+
+/* Écran ouvert sur place : il entre par la droite ; la page quittée revient par la gauche (spec refonte §7). */
+.screenForward {
+  animation: places-in-forward var(--dur-screen) var(--ease) backwards;
+}
+
+.screenBack {
+  animation: places-in-back var(--dur-screen) var(--ease) backwards;
+}
+
+@keyframes places-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+}
+
+@keyframes places-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-48px);
+  }
+}
+
+@keyframes places-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Sous-titre d'un écran interne, sous son titre, aligné sur lui (après le Retour de 44 px). */
+.subtitle {
+  margin: -12px 0 0;
+  padding-inline-start: 56px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ——— Mes lieux (D01) ——— */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.groupMeta {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.groupLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.placeList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.placeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--space-4);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    transform var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.placeCard[data-kind="home"] {
+  padding-block: 14px;
+}
+
+.placeCard:active {
+  transform: scale(0.99);
+}
+
+.placeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.placeIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.placeCard[data-kind="home"] .placeIcon {
+  background: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
+  color: var(--accent-2);
+}
+
+.placeText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.placeName {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.placeMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.primaryBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+  font-size: 0.78125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.placeChevron {
+  flex: none;
+  display: flex;
+  color: var(--text-muted);
+}
+
+.placeFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.placeCount,
+.placeMembers {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.84375rem;
+  color: var(--text-muted);
+}
+
+.placeCount {
+  align-items: baseline;
+  gap: 6px;
+}
+
+.bigNumber {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+}
+
+.primaryNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 2px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.primaryNote svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* Tuiles d'ajout : deux colonnes, une seule quand la place manque (texte agrandi, écran étroit). */
+.addGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: var(--space-3);
+}
+
+.addTile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.addTile:active {
+  transform: scale(0.98);
+}
+
+.addTileTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.addTileIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.addTile[data-kind="home"] .addTileIcon {
+  background: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
+  color: var(--accent-2);
+}
+
+.addTilePlus {
+  display: flex;
+  color: var(--accent);
+}
+
+.addTileText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.addTileTitle {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.addTileHint {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+@media (hover: hover) {
+  .placeCard:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+
+  .addTile:hover,
+  .smallButton:hover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+}
+
+/* ——— Fiche d'une salle (D02) ——— */
+
+/* Le bouton « Modifier le nom ou la ville » se pose dans l'en-tête, au bout du titre. */
+.fiche {
+  position: relative;
+}
+
+.fiche:has(.headAction) h1 {
+  padding-inline-end: 56px;
+}
+
+.headAction {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tags {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 11px 0 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 10%, var(--surface));
+  color: var(--text-muted);
+  font-size: 0.84375rem;
+  font-weight: 500;
+}
+
+.tag[data-tone="accent"] {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+/* « Qui va à cette salle » : la liste à gauche, l'interrupteur « Visible » à droite. */
+.whoCard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+}
+
+.whoText {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-block: 6px;
+}
+
+.whoTitle {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.whoLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.84375rem;
+  color: var(--text-muted);
+}
+
+.whoSwitch {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.whoError {
+  flex-basis: 100%;
+  padding-bottom: var(--space-2);
+}
+
+/* Initiales des membres : teinte par pseudo, rond bordé de la surface quand elles se chevauchent. */
+.avatars {
+  display: flex;
+  align-items: center;
+  padding-inline-start: 2px;
+}
+
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--surface);
+  font-family: var(--font-display);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.avatar[data-size="tiny"] {
+  width: 18px;
+  height: 18px;
+  box-shadow: none;
+  font-size: 0.5625rem;
+}
+
+.avatar[data-size="medium"] {
+  width: 24px;
+  height: 24px;
+  font-size: 0.75rem;
+}
+
+.avatar[data-tone="accent"] {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent);
+}
+
+.avatar[data-tone="accent-2"] {
+  background: color-mix(in srgb, var(--accent-2) 14%, var(--surface));
+  color: var(--accent-2);
+}
+
+.avatar[data-tone="success"] {
+  background: color-mix(in srgb, var(--success) 14%, var(--surface));
+  color: color-mix(in srgb, var(--success) 70%, var(--text));
+}
+
+.avatars > .avatar + .avatar {
+  margin-inline-start: -6px;
+}
+
+/* Matériel en lecture : pastilles par catégorie, rangée qui défile de côté sous un fondu. */
+.chipGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chipGroup {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chipGroupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.chipGroupTitle {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.count {
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.countValue {
+  color: var(--accent);
+}
+
+.chipScroller {
+  position: relative;
+  min-width: 0;
+}
+
+.chipScroller::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 32px;
+  background: linear-gradient(90deg, transparent, var(--surface));
+  pointer-events: none;
+}
+
+.chipRow {
+  margin: 0;
+  padding: 0 32px 0 0;
+  list-style: none;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-radius: 999px;
+}
+
+.chipRow::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 10%, var(--surface));
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.emptyCategories {
+  margin: 0;
+  padding: 10px 0 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px dashed color-mix(in srgb, var(--text-muted) 30%, transparent);
+}
+
+.emptyCategories li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* Rien de coché : le compte reste au gris du texte. */
+.emptyCategories .countValue {
+  color: inherit;
+}
+
+/* Historique en frise : une pastille par action, reliée à la suivante par un trait. */
+.timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.timelineItem {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  padding-bottom: 14px;
+}
+
+.timelineItem:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 32px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--text-muted) 25%, transparent);
+}
+
+.timelineMark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+.timelineMark[data-tone="success"] {
+  background: color-mix(in srgb, var(--success) 14%, var(--surface));
+  color: var(--success);
+}
+
+.timelineMark[data-tone="danger"] {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.timelineMark[data-tone="accent"] {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.timelineMark[data-tone="accent-2"] {
+  background: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
+  color: var(--accent-2);
+}
+
+.timelineBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 3px;
+}
+
+.timelineText {
+  font-size: 0.9375rem;
+  line-height: 1.35;
+}
+
+.timelineText strong {
+  font-weight: 600;
+}
+
+.timelineMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* ——— Actions d'un lieu (D05) ——— */
+
+.actionsBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.actionsBlock > .hint {
+  margin-inline: 2px;
+}
+
+.actionsCard {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+.actionsCard > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.switchItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 14px var(--space-2) var(--space-3);
+}
+
+.switchLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 50px;
+}
+
+.rowIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.switchGrow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Zone sensible : la suppression seule, en bas, sur une teinte de danger (GUIDE, Danger button). */
+.danger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: 6px;
+  padding: 14px var(--space-4) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+}
+
+.dangerTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.96875rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.dangerText {
+  margin: 0 0 4px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* ——— Écran Matériel (D03) ——— */
+
+.note,
+.warningNote,
+.similarIntro {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-control);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.note {
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--text);
+}
+
+.note svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.note p,
+.warningNote p {
+  margin: 0;
+}
+
+.warningNote,
+.similarIntro {
+  border: 1px solid color-mix(in srgb, var(--warning-text) 30%, transparent);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.editor {
+  overflow: hidden;
+}
+
+.editorCategory + .editorCategory {
+  border-top: 1px solid var(--border);
+}
+
+.editorHeading {
+  margin: 0;
+  font-size: inherit;
+}
+
+.editorToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 var(--space-4) 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+
+.editorToggle:focus-visible {
+  outline-offset: -2px;
+}
+
+.editorChevron {
+  flex: none;
+  display: flex;
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.editorToggle[aria-expanded="true"] .editorChevron {
+  color: var(--accent);
+  transform: rotate(90deg);
+}
+
+.editorLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.editorPanel {
+  min-width: 0;
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-4);
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* `display: flex` l'emporterait sur le `hidden` du navigateur : une catégorie repliée ne montre rien. */
+.editorPanel[hidden] {
+  display: none;
+}
+
+/*
+ * Pastille à cocher : la vraie case, transparente, couvre la pastille. Cochée, elle prend l'accent et une
+ * coche ; changée et pas encore enregistrée, un anneau violet l'entoure (et le lecteur d'écran le dit).
+ */
+.toggleChip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 6px var(--space-3) 6px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--field-border);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.toggleChipInput {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: inherit;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.toggleChipGlyph {
+  flex: none;
+  display: flex;
+  color: var(--text-muted);
+}
+
+.toggleChip:has(.toggleChipInput:checked) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.toggleChip:has(.toggleChipInput:checked) .toggleChipGlyph {
+  color: inherit;
+  animation: places-pop var(--dur-fast) var(--ease);
+}
+
+.toggleChip[data-dirty] {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent-2);
+}
+
+.toggleChip:has(.toggleChipInput:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 5px;
+}
+
+.toggleChip:has(.toggleChipInput:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .toggleChip:has(.toggleChipInput:hover:not(:disabled, :checked)) {
+    border-color: var(--accent);
+  }
+}
+
+@keyframes places-pop {
+  from {
+    transform: scale(0.4);
+  }
+
+  60% {
+    transform: scale(1.2);
+  }
+}
+
+/*
+ * Barre des changements : collée au bas de l'écran, au-dessus de la barre d'onglets (16 px dessous, 68 px de
+ * barre, 10 px d'air) ; au-dessus des pastilles qui défilent dessous (leur case est en z-index 1), sous les
+ * feuilles du bas. Elle monte à son apparition.
+ */
+.draftBar {
+  position: sticky;
+  bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--space-3);
+  border-radius: calc(var(--radius-card) + 2px);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow:
+    0 2px 6px rgb(16 21 31 / 0.08),
+    0 12px 30px rgb(16 21 31 / 0.12);
+  animation: places-rise var(--dur-fast) var(--ease) backwards;
+}
+
+@media (min-width: 900px) {
+  .draftBar {
+    bottom: var(--space-4);
+  }
+}
+
+@keyframes places-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.draftSummary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 4px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.draftTotal {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.draftDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-2);
+}
+
+.draftActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* ——— Ajout d'une salle (D04) ——— */
+
+/* Recherche : loupe à gauche, « Effacer la recherche » à droite, dans le champ de 52 px. */
+.search {
+  position: relative;
+}
+
+.search input[type="search"] {
+  width: 100%;
+  padding-inline: 46px 48px;
+}
+
+.search input[type="search"]::-webkit-search-cancel-button {
+  appearance: none;
+  display: none;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 15px;
+  bottom: 16px;
+  display: flex;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.searchClear {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.visibility {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Visibilité choisie avant « Valider » : une vraie case, dessinée en interrupteur comme celui de la boîte à outils. */
+.toggleCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 64px;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.toggleInput {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 50px;
+  height: 30px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--field-border);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.toggleInput::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.toggleInput:checked {
+  background: var(--accent);
+}
+
+.toggleInput:checked::before {
+  transform: translateX(20px);
+  background: var(--accent-text);
+}
+
+/* Couleurs forcées : les fonds disparaissent, la case native reprend sa place. */
+@media (forced-colors: active) {
+  .toggleInput {
+    appearance: auto;
+    width: 20px;
+    height: 20px;
+  }
+
+  .toggleInput::before {
+    content: none;
+  }
+}
+
+.similar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .similarList {
@@ -31,12 +1231,14 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  padding: 10px var(--space-3);
 }
 
+.bannerText {
+  margin: 0 0 var(--space-2);
+}
+
+/* Matériel à la création (onboarding, ajout d'une salle ou d'une maison) : libellés entiers, une case par ligne. */
 .checklist {
   display: flex;
   flex-direction: column;
@@ -44,17 +1246,21 @@
 }
 
 .category {
-  border: 0;
+  min-width: 0;
   margin: 0;
   padding: 0;
+  border: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
 .category legend {
-  font-weight: 600;
+  padding: 0;
   margin-bottom: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .item {
@@ -71,110 +1277,30 @@
   margin: 0;
 }
 
-.visibility {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
+/* Mouvement réduit (spec refonte §7) : ni glissement ni ressort, des fondus simples. */
+@media (prefers-reduced-motion: reduce) {
+  .screenForward,
+  .screenBack,
+  .draftBar {
+    animation-name: places-fade;
+    animation-duration: var(--dur-fast);
+  }
 
-.hint {
-  margin: 0;
-  font-size: 0.875rem;
-  color: var(--color-muted);
-}
+  .toggleChip:has(.toggleChipInput:checked) .toggleChipGlyph {
+    animation: none;
+  }
 
-.bannerText {
-  margin: 0 0 var(--space-2);
-}
+  .placeCard,
+  .addTile,
+  .smallButton,
+  .editorChevron,
+  .toggleInput::before {
+    transition-property: background-color, border-color, color;
+  }
 
-/* Profil › Lieux, fiche d'un lieu et fiche de salle. */
-.equipmentList {
-  margin: 0;
-  padding-left: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.places {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.place {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-}
-
-.placeHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.placeName {
-  font-size: 1.125rem;
-  font-weight: 600;
-}
-
-.badge {
-  padding: 0 var(--space-2);
-  border-radius: 999px;
-  background: var(--color-primary);
-  color: var(--color-primary-text);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.5rem;
-}
-
-.meta {
-  margin: 0;
-  color: var(--color-muted);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.section,
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.section h2 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.section p {
-  margin: 0;
-}
-
-.form > button,
-.section > button,
-.section > a {
-  align-self: flex-start;
-}
-
-.members,
-.history {
-  margin: 0;
-  padding-left: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  .placeCard:active,
+  .addTile:active,
+  .smallButton:active {
+    transform: none;
+  }
 }

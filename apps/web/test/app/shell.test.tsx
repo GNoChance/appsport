@@ -19,6 +19,7 @@ import { createFakeApi, createFakeSyncEngine } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
 import { newcomer, seedPrimaryGym } from '../support/onboarding';
 import { createTestServices, makeMe, renderApp, renderWithServices } from '../support/render';
+import { seedMirror } from '../support/seed';
 import { until } from '../support/wait';
 
 const DESKTOP = '(min-width: 900px)';
@@ -486,7 +487,7 @@ describe('coquille', () => {
   it('/places : la liste des lieux, onglet « Salles »', async () => {
     media();
     await renderApp({ path: '/places' });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Lieux' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Salles' })).toBeTruthy();
     expect(current()).toEqual(['Salles']);
   });
 
@@ -494,7 +495,7 @@ describe('coquille', () => {
     media();
     const view = await renderApp({ path: '/profile/places' });
     await until(() => view.location() === '/places');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Lieux' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Salles' })).toBeTruthy();
   });
 
   it('/profile/places/p-2 redirige vers /places/p-2, sans boucle', async () => {
@@ -597,28 +598,42 @@ describe('coquille', () => {
     media();
     const db = createTestLocalDb();
     await seedPrimaryGym(db);
+    await seedMirror(db, 'place', [
+      {
+        id: 'p-2',
+        ownerId: 'u-1',
+        kind: 'home',
+        gymId: null,
+        name: 'Garage',
+        isPrimary: false,
+        visibleAtGym: null,
+        loadSettings: defaultLoadSettings('home'),
+      },
+    ]);
     const api = createFakeApi();
     api.on('GET', '/api/gyms/:id', { status: 200, body: GYM_DETAIL });
     const view = await renderAppWithHistory({ path: '/places', db, api });
     const transition = () =>
       view.container.querySelector('[data-screen-transition]')?.getAttribute('data-screen-transition');
-    fireEvent.click(await screen.findByRole('link', { name: 'Basic Fit' }));
-    fireEvent.click(await screen.findByRole('link', { name: 'Voir la salle' }));
-    expect(view.location()).toBe('/gyms/g-1');
+    fireEvent.click(await screen.findByRole('link', { name: 'Garage' }));
+    expect(view.location()).toBe('/places/p-2');
     expect(transition()).toBe('forward');
-    // Retour du navigateur vers le lieu : l'écran d'avant dans la pile.
-    view.go('/places/p-1');
+    // Adresse de la salle ouverte depuis la maison (lien partagé, historique) : un écran suivant.
+    view.go('/gyms/g-1');
+    expect(transition()).toBe('forward');
+    // Retour du navigateur vers la maison : l'écran d'avant dans la pile.
+    view.go('/places/p-2');
     expect(transition()).toBe('back');
-    fireEvent.click(await screen.findByRole('link', { name: 'Voir la salle' }));
+    view.go('/gyms/g-1');
     expect(transition()).toBe('forward');
     await screen.findByRole('heading', { level: 1, name: 'Basic Fit' });
     // Retour de la salle vers la liste des lieux : ni son parent d'adresse, ni l'écran juste avant.
     fireEvent.click(screen.getByRole('link', { name: 'Retour' }));
     expect(view.location()).toBe('/places');
     expect(transition()).toBe('back');
-    await screen.findByRole('heading', { level: 1, name: 'Lieux' });
-    // Pile repartie de la liste : le lieu est de nouveau un écran suivant.
-    fireEvent.click(await screen.findByRole('link', { name: 'Basic Fit' }));
+    await screen.findByRole('heading', { level: 1, name: 'Salles' });
+    // Pile repartie de la liste : la maison est de nouveau un écran suivant.
+    fireEvent.click(await screen.findByRole('link', { name: 'Garage' }));
     expect(transition()).toBe('forward');
   });
 });

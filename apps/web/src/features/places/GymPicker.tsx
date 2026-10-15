@@ -1,12 +1,15 @@
 import type { GymSummary } from '@rune/contracts';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useLive } from '../../app-services';
 import { useRepos } from '../../repos';
-import { Banner, Button, ChoiceList, errorMessage, Field, plural, useAction } from '../../ui';
+import { Banner, Button, ChoiceCard, ChoiceGroup, errorMessage, Field, plural, useAction } from '../../ui';
 import { GymCreate, gymLabel } from './GymCreate';
+import { CloseIcon, GymIcon, PlusIcon, SearchIcon } from './icons';
 import styles from './places.module.css';
 
 export const VISIBILITY_LABEL = 'Apparaître dans « Qui va à cette salle »';
 export const MINOR_VISIBILITY_HINT = 'Désactivé par défaut pour les moins de 18 ans.';
+const OWNED_TEXT = 'Déjà dans tes lieux';
 
 /**
  * Salles du serveur pour `query` ; la dernière recherche lancée l'emporte. Changer `reload` relance
@@ -37,21 +40,26 @@ function useGymSearch(query: string, reload: number): { gyms: GymSummary[] | nul
 }
 
 /**
- * « Ta salle » (R-SAL-1) : choisir une salle existante ou en créer une, et régler sa visibilité
- * dans « Qui va à cette salle » (R-VIS-3 ; désactivée par défaut pour un mineur, P-MIN-6). Le lieu
- * est créé ici, puis `onDone`.
+ * « Ta salle » (R-SAL-1, maquette D04) : chercher une salle existante (une salle déjà parmi les lieux de
+ * l'utilisateur est grisée, R-LIEU-2) ou en créer une, et régler sa visibilité dans « Qui va à cette salle »
+ * (R-VIS-3 ; désactivée par défaut pour un mineur, P-MIN-6). La visibilité part avec « Valider » : c'est une
+ * case à cocher, dessinée en interrupteur. Le lieu est créé ici, puis `onDone`.
  */
 export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDone(): void }) {
   const repos = useRepos();
   const hintId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [visible, setVisible] = useState(p.defaultVisible);
   const [creating, setCreating] = useState(false);
   const [reload, setReload] = useState(0);
   const { gyms, error } = useGymSearch(query, reload);
-  // Une salle choisie puis écartée par la recherche n'est plus validable.
-  const chosen = gyms?.some((g) => g.id === selected) ? selected : null;
+  const places = useLive(() => repos.places.list(), [repos]);
+  const owned = new Set((places ?? []).flatMap((pl) => (pl.gymId ? [pl.gymId] : [])));
+  // Une salle choisie puis écartée par la recherche (ou déjà parmi les lieux) n'est plus validable.
+  const chosen =
+    gyms?.some((g) => g.id === selected) && selected !== null && !owned.has(selected) ? selected : null;
 
   const pick = useAction(async (gymId: string) => {
     await repos.places.create({ kind: 'gym', gymId, isPrimary: p.isPrimary, visibleAtGym: visible });
@@ -60,14 +68,15 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
 
   const visibility = (
     <div className={styles.visibility}>
-      <label className={styles.item}>
+      <label className={styles.toggleCard}>
+        <span>{VISIBILITY_LABEL}</span>
         <input
           type="checkbox"
+          className={styles.toggleInput}
           checked={visible}
           aria-describedby={p.defaultVisible ? undefined : hintId}
           onChange={(e) => setVisible(e.target.checked)}
         />
-        {VISIBILITY_LABEL}
       </label>
       {p.defaultVisible ? null : (
         <span id={hintId} className={styles.hint}>
@@ -88,7 +97,7 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
           onPickExisting={(gymId) => void pick.run(gymId)}
         />
         {pick.error ? <Banner tone="error">{pick.error}</Banner> : null}
-        <Button variant="secondary" onClick={() => setCreating(false)}>
+        <Button variant="secondary" block onClick={() => setCreating(false)}>
           Revenir à la liste
         </Button>
       </div>
@@ -97,9 +106,33 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
 
   return (
     <div className={styles.picker}>
-      <Field label="Rechercher une salle">
-        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
-      </Field>
+      <div className={styles.search}>
+        <Field label="Rechercher une salle">
+          <input
+            ref={searchRef}
+            type="search"
+            autoComplete="off"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </Field>
+        <span className={styles.searchIcon} aria-hidden="true">
+          <SearchIcon />
+        </span>
+        {query !== '' ? (
+          <button
+            type="button"
+            aria-label="Effacer la recherche"
+            className={styles.searchClear}
+            onClick={() => {
+              setQuery('');
+              searchRef.current?.focus();
+            }}
+          >
+            <CloseIcon />
+          </button>
+        ) : null}
+      </div>
       {error ? (
         <>
           <Banner tone="error">{error}</Banner>
@@ -116,20 +149,42 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
         </p>
       ) : null}
       {gyms !== null && gyms.length > 0 ? (
-        <ChoiceList<string>
-          name="gym"
-          legend="Salles"
-          value={chosen}
-          onChange={setSelected}
-          options={gyms.map((g) => ({ value: g.id, label: gymLabel(g) }))}
-        />
+        <ChoiceGroup legend="Salles">
+          {gyms.map((g) => {
+            const mine = owned.has(g.id);
+            return (
+              <ChoiceCard
+                key={g.id}
+                type="radio"
+                name="gym"
+                value={g.id}
+                checked={chosen === g.id}
+                disabled={mine}
+                onChange={() => setSelected(g.id)}
+                icon={<GymIcon />}
+                title={gymLabel(g)}
+                description={mine ? OWNED_TEXT : undefined}
+              />
+            );
+          })}
+        </ChoiceGroup>
       ) : null}
-      <Button variant="secondary" onClick={() => setCreating(true)}>
+      {/* Recherche qui trouve une salle à choisir : la choisir plutôt que d'en créer une en double (R-SAL-3). */}
+      {query.trim() !== '' && gyms?.some((g) => !owned.has(g.id)) ? (
+        <div role="note" className={styles.warningNote}>
+          <p>
+            <strong>Ta salle existe peut-être déjà :</strong> choisis-la plutôt que d'en créer une en double.
+          </p>
+        </div>
+      ) : null}
+      <Button variant="secondary" block onClick={() => setCreating(true)}>
+        <PlusIcon />
         Ma salle n'est pas dans la liste
       </Button>
       {visibility}
       {pick.error ? <Banner tone="error">{pick.error}</Banner> : null}
       <Button
+        block
         onClick={() => {
           if (chosen !== null) void pick.run(chosen);
         }}

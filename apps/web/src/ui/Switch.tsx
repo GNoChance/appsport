@@ -4,6 +4,7 @@ import styles from './ui.module.css';
 /**
  * Interrupteur : un vrai `<button role="switch">` (Espace et Entrée l'actionnent), `aria-checked`
  * suit l'état, le libellé le nomme et le toucher aussi, l'aide le décrit. `id` : celui du bouton.
+ * `disabled` : verrouillé (envoi en cours, état que l'API ne sait pas défaire) ; l'aide dit pourquoi.
  */
 export function Switch(p: {
   id: string;
@@ -11,6 +12,7 @@ export function Switch(p: {
   checked: boolean;
   onChange(v: boolean): void;
   help?: string;
+  disabled?: boolean;
 }) {
   const own = useId();
   const labelId = `${own}-label`;
@@ -34,6 +36,7 @@ export function Switch(p: {
         aria-checked={p.checked}
         aria-labelledby={labelId}
         aria-describedby={p.help ? helpId : undefined}
+        disabled={p.disabled}
         className={styles.switch}
         onClick={() => p.onChange(!p.checked)}
       >

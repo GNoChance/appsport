@@ -1,95 +1,93 @@
-import type { EquipmentCode } from '@rune/contracts';
-import { useEffect, useId, useState } from 'react';
-import { Link } from 'wouter';
+import { useId } from 'react';
+import { Redirect } from 'wouter';
 import { useLive } from '../../app-services';
 import { type PlaceView, useRepos } from '../../repos';
-import { Banner, Page, useAction } from '../../ui';
-import { EquipmentChecklist, EquipmentList } from './EquipmentChecklist';
+import { Page, plural } from '../../ui';
+import { EquipmentChips } from './EquipmentChips';
+import { EquipmentEditor } from './EquipmentEditor';
+import { PencilIcon } from './icons';
+import { PlaceActions } from './PlaceActions';
 import styles from './places.module.css';
+import { useSubScreen } from './SubScreen';
 
 /**
- * Fiche d'un lieu (Profil › Lieux) : le matériel d'une maison se coche ici (R-LIEU-3) ; une salle
- * renvoie à sa fiche partagée, où se modifie son matériel (R-LIEU-2).
+ * Fiche d'un lieu. Une maison (maquette D05) : son matériel, son nom, « Lieu principal » et sa suppression.
+ * Un lieu de type salle n'a pas de fiche à lui : son adresse est remplacée par celle de la fiche de la salle,
+ * qui porte ses actions (spec refonte §10.3).
  */
 export function PlaceDetail(p: { params: { id: string } }) {
   const repos = useRepos();
   const id = p.params.id;
-  const place = useLive(() => repos.places.get(id), [repos, id]);
-  if (place === undefined) return null;
-  if (place === null) {
+  const places = useLive(() => repos.places.list(), [repos]);
+  if (places === undefined) return null;
+  const place = places.find((pl) => pl.id === id);
+  if (place?.kind === 'gym' && place.gymId) return <Redirect to={`/gyms/${place.gymId}`} replace />;
+  if (place?.kind !== 'home') {
     return (
       <Page title="Lieu" back="/places">
         <p>Lieu introuvable.</p>
       </Page>
     );
   }
-  return place.kind === 'home' ? <HomeDetail place={place} /> : <GymPlaceDetail place={place} />;
+  return <HomeSheet place={place} places={places} />;
 }
 
-/** « Salle · Lyon · lieu principal », « Maison ». */
-const placeMeta = (place: PlaceView) =>
-  [place.kind === 'gym' ? 'Salle' : 'Maison', place.city, place.isPrimary ? 'lieu principal' : null]
-    .filter(Boolean)
-    .join(' · ');
-
 /**
- * Matériel d'une maison : chaque case envoie un ajout (PUT) ou un retrait (DELETE). La case suit
- * le choix pendant l'envoi et jusqu'à la lecture suivante du miroir ; un échec la remet.
+ * Fiche d'une maison : « Modifier le matériel » ouvre l'écran Matériel (brouillon, R-LIEU-3), dont le retour
+ * rend le focus au bouton.
  */
-function HomeDetail(p: { place: PlaceView }) {
+function HomeSheet(p: { place: PlaceView; places: readonly PlaceView[] }) {
   const repos = useRepos();
-  const titleId = useId();
-  const [draft, setDraft] = useState<EquipmentCode[] | null>(null);
-  const toggle = useAction(async (code: EquipmentCode, present: boolean) => {
-    await repos.places.setEquipment(p.place.id, code, present);
-    return true;
-  });
+  const { place } = p;
+  const sub = useSubScreen<'equipment'>();
+  const materialId = useId();
+  const editId = useId();
+  const n = place.equipment.length;
 
-  // Miroir relu (pull après l'envoi) : il fait foi.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: chaque lecture du lieu efface le brouillon
-  useEffect(() => setDraft(null), [p.place]);
-
-  async function change(next: EquipmentCode[]) {
-    const current = draft ?? p.place.equipment;
-    const added = next.find((c) => !current.includes(c));
-    const code = added ?? current.find((c) => !next.includes(c));
-    if (code === undefined) return;
-    setDraft(next);
-    if (!(await toggle.run(code, added !== undefined))) setDraft(null);
+  if (sub.mode === 'equipment') {
+    return (
+      <EquipmentEditor
+        kind="home"
+        placeName={place.name}
+        initial={place.equipment}
+        send={(code, present) => repos.places.setEquipment(place.id, code, present)}
+        // Chaque envoi relit le miroir (pull), que la fiche observe : rien de plus à relire.
+        reread={async () => {}}
+        onSaved={sub.close}
+        onBack={sub.close}
+      />
+    );
   }
 
   return (
-    <Page title={p.place.name} back="/places">
-      <p className={styles.meta}>{placeMeta(p.place)}</p>
-      <section aria-labelledby={titleId} className={styles.section}>
-        <h2 id={titleId}>Matériel</h2>
-        <p className={styles.hint}>Coche le matériel disponible dans ce lieu.</p>
-        {toggle.error ? <Banner tone="error">{toggle.error}</Banner> : null}
-        <EquipmentChecklist
-          kind="home"
-          value={draft ?? p.place.equipment}
-          onChange={(next) => void change(next)}
-          disabled={toggle.pending}
-        />
-      </section>
-    </Page>
-  );
-}
-
-/** Lieu de type salle : matériel de la salle en lecture, lien vers sa fiche. */
-function GymPlaceDetail(p: { place: PlaceView }) {
-  const titleId = useId();
-  return (
-    <Page title={p.place.name} back="/places">
-      <p className={styles.meta}>{placeMeta(p.place)}</p>
-      <section aria-labelledby={titleId} className={styles.section}>
-        <h2 id={titleId}>Matériel</h2>
-        <EquipmentList value={p.place.equipment} />
-        <p className={styles.hint}>
-          Le matériel d'une salle se modifie sur sa fiche, partagée par ses membres.
-        </p>
-        {p.place.gymId ? <Link href={`/gyms/${p.place.gymId}`}>Voir la salle</Link> : null}
-      </section>
-    </Page>
+    <div className={sub.back ? styles.screenBack : undefined}>
+      <Page title={place.name} back="/places">
+        <p className={styles.subtitle}>{`Maison · ${n} ${plural(n, 'équipement', 'équipements')}`}</p>
+        <div className={`stagger ${styles.stack}`}>
+          <section aria-labelledby={materialId} className={styles.card}>
+            <div className={styles.cardHead}>
+              <h2 id={materialId} className={styles.cardTitle}>
+                Matériel
+              </h2>
+              <span className={styles.countBadge}>
+                {n}
+                <span className={styles.srOnly}> {plural(n, 'équipement', 'équipements')}</span>
+              </span>
+              <button
+                id={editId}
+                type="button"
+                className={styles.smallButton}
+                onClick={() => sub.open('equipment', editId)}
+              >
+                <PencilIcon size={16} />
+                Modifier<span className={styles.srOnly}> le matériel</span>
+              </button>
+            </div>
+            <EquipmentChips kind="home" value={place.equipment} />
+          </section>
+          <PlaceActions place={place} places={p.places} />
+        </div>
+      </Page>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { defaultLoadSettings, EQUIPMENT_LABELS, type MeResponse } from '@rune/contracts';
+import { defaultLoadSettings, EQUIPMENT_LABELS, type GymDetail, type MeResponse } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PlaceDetail } from '../../src/features/places/PlaceDetail';
@@ -12,9 +12,8 @@ import { makeMe, renderApp, renderWithServices } from '../support/render';
 import { seedMirror } from '../support/seed';
 import { until } from '../support/wait';
 
-const VISIBLE = 'Visible à la salle';
 const KEEP_ONE = 'Tu dois garder au moins un lieu.';
-const MINOR_HINT = 'Désactivé par défaut pour les moins de 18 ans.';
+const PRIMARY_NOTE = "Ton lieu principal : là où tu t'entraînes le plus souvent.";
 
 const GYM_PLACE = {
   id: 'p-1',
@@ -35,6 +34,28 @@ const HOME_PLACE = {
   isPrimary: false,
   visibleAtGym: null,
   loadSettings: defaultLoadSettings('home'),
+};
+
+const GYM_DETAIL: GymDetail = {
+  id: 'g-1',
+  name: 'Basic Fit',
+  city: 'Lyon',
+  loadSettings: defaultLoadSettings('gym'),
+  deletedAt: null,
+  equipment: ['flat_bench', 'barbell'],
+  canEdit: true,
+  visibleMembers: ['lea', 'max'],
+  history: [
+    {
+      at: '2026-10-06T12:04:00.000Z',
+      action: 'add_equipment',
+      authorUsername: 'max',
+      detail: { code: 'box' },
+    },
+    { at: '2026-10-05T10:00:00.000Z', action: 'update_info', authorUsername: null, detail: {} },
+    { at: '2026-10-04T10:00:00.000Z', action: 'create', authorUsername: 'max', detail: {} },
+    { at: '2026-10-03T10:00:00.000Z', action: 'create', authorUsername: 'max', detail: {} },
+  ],
 };
 
 /**
@@ -72,254 +93,72 @@ async function renderPlaces(
   return rendered;
 }
 
-async function renderDetail(id: string, o: { api?: FakeApi } = {}) {
+async function renderHome(o: { api?: FakeApi; garagePrimary?: boolean } = {}) {
   const db = createTestLocalDb();
-  await seedPlaces(db);
-  return renderWithServices(<PlaceDetail params={{ id }} />, { db, api: o.api });
+  await seedPlaces(db, { garagePrimary: o.garagePrimary });
+  const rendered = await renderWithServices(<PlaceDetail params={{ id: 'p-2' }} />, { db, api: o.api });
+  await screen.findByRole('heading', { level: 1, name: 'Garage' });
+  await settle();
+  return rendered;
 }
 
-/** Élément de liste du lieu nommé `name`. */
-function place(name: string) {
+/** Carte du lieu nommé `name` dans « Mes lieux ». */
+function card(name: string) {
   const item = screen.getByRole('link', { name }).closest('li');
   if (!item) throw new Error(`lieu ${name} introuvable`);
   return within(item);
 }
 
+const region = (name: string) => within(screen.getByRole('region', { name }));
 const sent = (api: FakeApi, method: string, path: string) =>
   api.calls.filter((c) => c.method === method && c.path === path).map((c) => c.body);
 
-describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
-  it("le principal d'abord avec le badge « Principal », puis les autres", async () => {
+describe('PlacesPage : Salles › Mes lieux (maquette D01)', () => {
+  it("le principal d'abord avec « Principal » ; la salle mène à sa fiche, la maison à la sienne", async () => {
     // « Garage » principale vient après « Basic Fit » par l'id, le nom et l'ordre d'écriture.
     await renderPlaces({ garagePrimary: true });
-    const names = screen.getAllByRole('listitem').map((li) => li.querySelector('a')?.textContent);
-    expect(names).toEqual(['Garage', 'Basic Fit']);
-    expect(place('Garage').getByText('Principal')).toBeTruthy();
-    expect(place('Basic Fit').queryByText('Principal')).toBeNull();
-    expect(place('Basic Fit').getByText('Salle · Lyon')).toBeTruthy();
-    expect(place('Garage').getByText('Maison')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Garage' }).getAttribute('href')).toBe('/places/p-2');
+    expect(screen.getByRole('heading', { level: 1, name: 'Salles' })).toBeTruthy();
+    const places = region('Mes lieux');
+    expect(places.getByText('2 lieux')).toBeTruthy();
+    const names = places.getAllByRole('link').map((a) => a.getAttribute('href'));
+    expect(names).toEqual(['/places/p-2', '/gyms/g-1']);
+    expect(card('Garage').getByText('Principal')).toBeTruthy();
+    expect(card('Basic Fit').queryByText('Principal')).toBeNull();
+    expect(card('Basic Fit').getByText('Salle · Lyon')).toBeTruthy();
+    expect(card('Garage').getByText('Maison · 1 équipement')).toBeTruthy();
+    expect(screen.getByText(PRIMARY_NOTE)).toBeTruthy();
   });
 
-  it('« Définir comme principal » → PATCH { isPrimary: true } ; absent sur le principal', async () => {
-    const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
+  it('carte de la salle : son matériel, et les membres visibles relus en ligne', async () => {
+    const api = createFakeApi().on('GET', '/api/gyms/:id', { status: 200, body: GYM_DETAIL });
     await renderPlaces({ api });
-    expect(place('Basic Fit').queryByRole('button', { name: 'Définir comme principal' })).toBeNull();
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Définir comme principal' }));
-    await until(() => sent(api, 'PATCH', '/api/places/p-2').length === 1);
-    expect(sent(api, 'PATCH', '/api/places/p-2')).toEqual([{ isPrimary: true }]);
+    expect(card('Basic Fit').getByText('équipements')).toBeTruthy();
+    expect(card('Basic Fit').getByText('2')).toBeTruthy();
+    expect(await card('Basic Fit').findByText('2 membres visibles')).toBeTruthy();
   });
 
-  it("renommer une maison → PATCH { name }, 30 caractères au plus ; pas de renommage d'une salle", async () => {
-    const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
+  it('« Dernières modifications » : les 3 dernières de la salle principale, et « Voir la salle »', async () => {
+    const api = createFakeApi().on('GET', '/api/gyms/:id', { status: 200, body: GYM_DETAIL });
     await renderPlaces({ api });
-    expect(place('Basic Fit').queryByRole('button', { name: 'Renommer' })).toBeNull();
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
-    const name = place('Garage').getByLabelText('Nom du lieu') as HTMLInputElement;
-    expect(name.value).toBe('Garage');
-    expect(name.maxLength).toBe(30);
-    fireEvent.change(name, { target: { value: 'Cave' } });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Enregistrer' }));
-    await until(() => sent(api, 'PATCH', '/api/places/p-2').length === 1);
-    expect(sent(api, 'PATCH', '/api/places/p-2')).toEqual([{ name: 'Cave' }]);
-    await until(() => place('Garage').queryByLabelText('Nom du lieu') === null);
+    const activity = within(await screen.findByRole('region', { name: 'Dernières modifications' }));
+    const items = activity.getAllByRole('listitem');
+    expect(items).toHaveLength(3);
+    expect(items[0]?.textContent).toContain('Matériel ajouté : Box ou step stable');
+    expect(items[0]?.textContent).toContain('modifié par max');
+    expect(items[1]?.textContent).toContain('modifié par un membre');
+    expect(activity.getByRole('link', { name: 'Voir la salle' }).getAttribute('href')).toBe('/gyms/g-1');
   });
 
-  it('renommer hors ligne : « Nécessite le réseau », le formulaire garde la saisie', async () => {
+  it('hors ligne : ni membres ni historique, rien d’inventé', async () => {
     const api = createFakeApi();
-    await renderPlaces({ api });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
     api.setOffline('reject');
-    fireEvent.change(place('Garage').getByLabelText('Nom du lieu'), { target: { value: 'Cave' } });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Enregistrer' }));
-    expect((await place('Garage').findByRole('alert')).textContent).toBe('Nécessite le réseau');
-    expect((place('Garage').getByLabelText('Nom du lieu') as HTMLInputElement).value).toBe('Cave');
-  });
-
-  it('« Renommer » : le focus va au champ, puis revient à « Renommer » après « Annuler » ou « Enregistrer »', async () => {
-    const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
     await renderPlaces({ api });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
-    expect(document.activeElement).toBe(place('Garage').getByLabelText('Nom du lieu'));
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Annuler' }));
-    expect(document.activeElement).toBe(place('Garage').getByRole('button', { name: 'Renommer' }));
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
-    fireEvent.change(place('Garage').getByLabelText('Nom du lieu'), { target: { value: 'Cave' } });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Enregistrer' }));
-    await until(() => document.activeElement === place('Garage').queryByRole('button', { name: 'Renommer' }));
-  });
-
-  it('renommage : « Enregistrer » et « Annuler » décrits par le nom du lieu', async () => {
-    await renderPlaces();
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
-    const nameId = screen.getByRole('link', { name: 'Garage' }).id;
-    for (const name of ['Enregistrer', 'Annuler']) {
-      const described = place('Garage').getByRole('button', { name }).getAttribute('aria-describedby');
-      expect(described?.split(' ')).toContain(nameId);
-    }
-  });
-
-  it('nom vide : message local, aucune requête', async () => {
-    const api = createFakeApi();
-    await renderPlaces({ api });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Renommer' }));
-    fireEvent.change(place('Garage').getByLabelText('Nom du lieu'), { target: { value: '  ' } });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Enregistrer' }));
-    expect(place('Garage').getByText('Donne un nom à ce lieu.')).toBeTruthy();
-    expect(sent(api, 'PATCH', '/api/places/p-2')).toEqual([]);
-  });
-
-  it('« Visible à la salle » décoché → PATCH { visibleAtGym: false } (R-VIS-3) ; pas de case pour une maison', async () => {
-    const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
-    const { db } = await renderPlaces({ api });
-    expect(place('Garage').queryByRole('checkbox')).toBeNull();
-    const visible = place('Basic Fit').getByRole('checkbox', { name: VISIBLE }) as HTMLInputElement;
-    expect(visible.checked).toBe(true);
-    expect(screen.queryByText(MINOR_HINT)).toBeNull();
-    fireEvent.click(visible);
-    await until(() => sent(api, 'PATCH', '/api/places/p-1').length === 1);
-    expect(sent(api, 'PATCH', '/api/places/p-1')).toEqual([{ visibleAtGym: false }]);
-    // Envoi réussi, miroir pas encore relu : la case garde le choix.
-    await until(() => !visible.disabled);
-    expect(visible.checked).toBe(false);
-    // Miroir relu (un autre appareil a remis la visibilité) : il fait foi.
-    await seedMirror(db, 'place', [{ ...GYM_PLACE, visibleAtGym: true }]);
-    await until(() => visible.checked);
-  });
-
-  it("« Visible à la salle » : décrite par le nom du lieu et par l'aide « Coché : … »", async () => {
-    await renderPlaces();
-    const visible = place('Basic Fit').getByRole('checkbox', { name: VISIBLE });
-    const described = visible.getAttribute('aria-describedby')?.split(' ') ?? [];
-    expect(described).toContain(screen.getByRole('link', { name: 'Basic Fit' }).id);
-    const hint = place('Basic Fit').getByText('Coché : ton pseudo apparaît dans « Qui va à cette salle ».');
-    expect(described).toContain(hint.id);
-  });
-
-  it('« Visible à la salle » hors ligne : « Nécessite le réseau », la case revient', async () => {
-    const api = createFakeApi();
-    await renderPlaces({ api });
-    api.setOffline('reject');
-    const visible = place('Basic Fit').getByRole('checkbox', { name: VISIBLE }) as HTMLInputElement;
-    fireEvent.click(visible);
-    expect((await place('Basic Fit').findByRole('alert')).textContent).toBe('Nécessite le réseau');
-    expect(visible.checked).toBe(true);
-  });
-
-  it('mineur : la case reste au choix, avec la raison du défaut (P-MIN-6)', async () => {
-    await renderPlaces({ me: makeMe({ ageBand: 'minor' }) });
-    const visible = place('Basic Fit').getByRole('checkbox', { name: VISIBLE }) as HTMLInputElement;
-    expect(visible.disabled).toBe(false);
-    expect(place('Basic Fit').getByText(MINOR_HINT)).toBeTruthy();
-  });
-
-  it('hors ligne : « Nécessite le réseau »', async () => {
-    const api = createFakeApi();
-    await renderPlaces({ api });
-    api.setOffline('reject');
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Définir comme principal' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
-  });
-
-  it('« Supprimer » une maison → confirmation → DELETE {}', async () => {
-    const api = createFakeApi().on('DELETE', '/api/places/:id', { status: 204 });
-    await renderPlaces({ api });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Supprimer' }));
-    const dialog = within(await screen.findByRole('dialog', { name: 'Supprimer Garage ?' }));
-    expect(dialog.queryByRole('group', { name: 'Nouveau lieu principal' })).toBeNull();
-    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
-    await until(() => sent(api, 'DELETE', '/api/places/p-2').length === 1);
-    expect(sent(api, 'DELETE', '/api/places/p-2')).toEqual([{}]);
-    await until(() => screen.queryByRole('dialog') === null);
-  });
-
-  it('« Supprimer » le principal : choix du nouveau lieu principal → DELETE { newPrimaryId } (R-LIEU-4)', async () => {
-    const api = createFakeApi().on('DELETE', '/api/places/:id', { status: 204 });
-    await renderPlaces({ api });
-    fireEvent.click(place('Basic Fit').getByRole('button', { name: 'Supprimer' }));
-    const dialog = within(await screen.findByRole('dialog', { name: 'Supprimer Basic Fit ?' }));
-    const choices = within(dialog.getByRole('group', { name: 'Nouveau lieu principal' }));
-    expect(choices.getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual(['Garage']);
-    expect((dialog.getByRole('button', { name: 'Supprimer' }) as HTMLButtonElement).disabled).toBe(true);
-    choose('Garage');
-    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
-    await until(() => sent(api, 'DELETE', '/api/places/p-1').length === 1);
-    expect(sent(api, 'DELETE', '/api/places/p-1')).toEqual([{ newPrimaryId: 'p-2' }]);
-  });
-
-  it('suppression : le focus va au lieu restant ; « Annuler » le rend à « Supprimer »', async () => {
-    const api = createFakeApi();
-    const { db } = await renderPlaces({ api });
-    // Le pull qui suit la suppression retire le lieu du miroir.
-    api.on('DELETE', '/api/places/:id', async () => {
-      await seedMirror(db, 'place', [{ ...HOME_PLACE, deletedAt: '2026-10-06T12:00:00.000Z' }]);
-      return { status: 204 };
-    });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Supprimer' }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Annuler' }));
-    expect(document.activeElement).toBe(place('Garage').getByRole('button', { name: 'Supprimer' }));
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Supprimer' }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Supprimer' }));
-    await until(() => screen.queryByRole('link', { name: 'Garage' }) === null);
-    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Basic Fit' }));
-  });
-
-  it('boîte de suppression : une relecture de la liste ou un envoi ne reprend pas le focus', async () => {
-    const api = createFakeApi().on('DELETE', '/api/places/:id', {
-      status: 409,
-      body: { error: 'primary_required' },
-    });
-    const { db } = await renderPlaces({ api });
-    fireEvent.click(place('Basic Fit').getByRole('button', { name: 'Supprimer' }));
-    const dialog = within(await screen.findByRole('dialog'));
-    const garage = dialog.getByRole('radio', { name: 'Garage' });
-    fireEvent.click(garage);
-    garage.focus();
-    // Pull en arrière-plan : la liste des lieux est relue et rendue de nouveau.
-    await seedMirror(db, 'home_equipment', [
-      { id: 'p-2:table', ownerId: 'u-1', placeId: 'p-2', equipmentCode: 'table' },
-    ]);
     await settle();
-    expect(document.activeElement).toBe(garage);
-    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
-    await dialog.findByRole('alert');
-    expect(document.activeElement).toBe(garage);
+    expect(screen.queryByText(/membres? visibles?/)).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Dernières modifications' })).toBeNull();
   });
 
-  it('un seul lieu : « Supprimer » désactivé, « Tu dois garder au moins un lieu. »', async () => {
-    await renderPlaces({ single: true });
-    const remove = place('Basic Fit').getByRole('button', { name: 'Supprimer' }) as HTMLButtonElement;
-    expect(remove.disabled).toBe(true);
-    const reason = place('Basic Fit').getByText(KEEP_ONE);
-    expect(remove.getAttribute('aria-describedby')?.split(' ')).toContain(reason.id);
-  });
-
-  it('409 last_place : même message', async () => {
-    const api = createFakeApi().on('DELETE', '/api/places/:id', {
-      status: 409,
-      body: { error: 'last_place' },
-    });
-    await renderPlaces({ api });
-    fireEvent.click(place('Garage').getByRole('button', { name: 'Supprimer' }));
-    const dialog = within(await screen.findByRole('dialog'));
-    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
-    expect((await dialog.findByRole('alert')).textContent).toBe(KEEP_ONE);
-  });
-
-  it("409 primary_required : « Choisis d'abord un nouveau lieu principal. »", async () => {
-    const api = createFakeApi().on('DELETE', '/api/places/:id', {
-      status: 409,
-      body: { error: 'primary_required' },
-    });
-    await renderPlaces({ api });
-    fireEvent.click(place('Basic Fit').getByRole('button', { name: 'Supprimer' }));
-    const dialog = within(await screen.findByRole('dialog'));
-    choose('Garage');
-    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
-    expect((await dialog.findByRole('alert')).textContent).toBe("Choisis d'abord un nouveau lieu principal.");
-  });
-
-  it('« Ajouter une salle » → GymPicker (non principal, visible par défaut pour un adulte)', async () => {
+  it('« Ajouter une salle » : son écran, le GymPicker (non principal, visible pour un adulte), puis la liste', async () => {
     const api = createFakeApi()
       .on('GET', '/api/gyms', {
         status: 200,
@@ -328,6 +167,8 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
       .on('POST', '/api/places', { status: 201, body: { id: 'p-3' } });
     await renderPlaces({ api });
     fireEvent.click(button('Ajouter une salle'));
+    const title = screen.getByRole('heading', { level: 1, name: 'Ajouter une salle' });
+    expect(document.activeElement).toBe(title);
     const gym = 'Fitness Park · Lyon · 0 membre visible';
     await screen.findByRole('radio', { name: gym });
     expect(checkbox('Apparaître dans « Qui va à cette salle »').checked).toBe(true);
@@ -337,39 +178,17 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
     expect(sent(api, 'POST', '/api/places')).toEqual([
       { kind: 'gym', gymId: 'g-2', isPrimary: false, visibleAtGym: true },
     ]);
-    await until(() => screen.queryByRole('button', { name: 'Valider' }) === null);
+    await screen.findByRole('heading', { level: 1, name: 'Salles' });
     await until(() => document.activeElement === screen.queryByRole('button', { name: 'Ajouter une salle' }));
   });
 
-  it('« Ajouter une salle » : le focus va au titre du formulaire, puis revient au bouton après « Annuler »', async () => {
+  it('« Retour » de « Ajouter une salle » : la liste, le focus rendu au bouton', async () => {
     const api = createFakeApi().on('GET', '/api/gyms', { status: 200, body: [] });
     await renderPlaces({ api });
     fireEvent.click(button('Ajouter une salle'));
-    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Ajouter une salle' }));
-    fireEvent.click(button('Annuler'));
+    fireEvent.click(button('Retour'));
+    expect(screen.getByRole('heading', { level: 1, name: 'Salles' })).toBeTruthy();
     expect(document.activeElement).toBe(button('Ajouter une salle'));
-  });
-
-  it('« Ajouter une maison » : le focus va au titre du formulaire, puis revient au bouton après « Annuler »', async () => {
-    await renderPlaces();
-    fireEvent.click(button('Ajouter une maison'));
-    expect(document.activeElement).toBe(
-      screen.getByRole('heading', { level: 2, name: 'Ajouter une maison' }),
-    );
-    fireEvent.click(button('Annuler'));
-    expect(document.activeElement).toBe(button('Ajouter une maison'));
-  });
-
-  it('« Ajouter une maison » hors ligne : « Nécessite le réseau », le formulaire garde la saisie', async () => {
-    const api = createFakeApi();
-    await renderPlaces({ api });
-    fireEvent.click(button('Ajouter une maison'));
-    api.setOffline('reject');
-    fill('Nom du lieu', 'Garage 2');
-    fireEvent.click(button('Ajouter la maison'));
-    expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
-    expect(button('Ajouter la maison')).toBeTruthy();
-    expect((screen.getByLabelText('Nom du lieu') as HTMLInputElement).value).toBe('Garage 2');
   });
 
   it('« Ajouter une salle » pour un mineur : case décochée par défaut', async () => {
@@ -380,10 +199,13 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
     expect(checkbox('Apparaître dans « Qui va à cette salle »').checked).toBe(false);
   });
 
-  it('« Ajouter une maison » → POST { kind: home, name, equipment, isPrimary: false }', async () => {
+  it('« Ajouter une maison » → POST { kind: home, name, equipment, isPrimary: false }, puis la liste', async () => {
     const api = createFakeApi().on('POST', '/api/places', { status: 201, body: { id: 'p-3' } });
     await renderPlaces({ api });
     fireEvent.click(button('Ajouter une maison'));
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { level: 1, name: 'Ajouter une maison' }),
+    );
     const name = screen.getByLabelText('Nom du lieu') as HTMLInputElement;
     expect(name.value).toBe('Maison');
     fill('Nom du lieu', 'Garage 2');
@@ -399,57 +221,174 @@ describe('PlacesPage (02 §11 Lieux, R-LIEU-1 à R-LIEU-4)', () => {
         isPrimary: false,
       },
     ]);
-    await until(() => screen.queryByRole('button', { name: 'Ajouter la maison' }) === null);
+    await screen.findByRole('heading', { level: 1, name: 'Salles' });
     await until(
       () => document.activeElement === screen.queryByRole('button', { name: 'Ajouter une maison' }),
     );
   });
+
+  it('« Ajouter une maison » : nom vide, message local et aucune requête', async () => {
+    const api = createFakeApi();
+    await renderPlaces({ api });
+    fireEvent.click(button('Ajouter une maison'));
+    fill('Nom du lieu', '  ');
+    fireEvent.click(button('Ajouter la maison'));
+    expect(screen.getByText('Donne un nom à ce lieu.')).toBeTruthy();
+    expect(sent(api, 'POST', '/api/places')).toEqual([]);
+  });
+
+  it('« Ajouter une maison » hors ligne : « Nécessite le réseau », le formulaire garde la saisie', async () => {
+    const api = createFakeApi();
+    await renderPlaces({ api });
+    fireEvent.click(button('Ajouter une maison'));
+    api.setOffline('reject');
+    fill('Nom du lieu', 'Garage 2');
+    fireEvent.click(button('Ajouter la maison'));
+    expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    expect(button('Ajouter la maison')).toBeTruthy();
+    expect((screen.getByLabelText('Nom du lieu') as HTMLInputElement).value).toBe('Garage 2');
+  });
 });
 
-describe('PlaceDetail', () => {
-  it('maison : cocher → PUT …/equipment/<code> {} ; décocher → DELETE (R-LIEU-3)', async () => {
-    const api = createFakeApi()
-      .on('PUT', '/api/places/:id/equipment/:code', { status: 204 })
-      .on('DELETE', '/api/places/:id/equipment/:code', { status: 204 });
-    const { db } = await renderDetail('p-2', { api });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Garage' })).toBeTruthy();
-    expect(checkbox(EQUIPMENT_LABELS.chair).checked).toBe(true);
-    fireEvent.click(checkbox(EQUIPMENT_LABELS.dumbbells));
-    await until(() => sent(api, 'PUT', '/api/places/p-2/equipment/dumbbells').length === 1);
-    expect(sent(api, 'PUT', '/api/places/p-2/equipment/dumbbells')).toEqual([{}]);
-    await until(() => !checkbox(EQUIPMENT_LABELS.chair).disabled);
-    // Envoi réussi, miroir pas encore relu : la case garde le choix.
-    expect(checkbox(EQUIPMENT_LABELS.dumbbells).checked).toBe(true);
-    // Miroir relu sans haltères (retirés depuis un autre appareil) : il fait foi.
-    await seedMirror(db, 'home_equipment', [
-      { id: 'p-2:chair', ownerId: 'u-1', placeId: 'p-2', equipmentCode: 'chair' },
+describe('PlaceDetail : fiche d’une maison (maquette D05)', () => {
+  it('nom, « Maison · 1 équipement », matériel par catégorie et catégories vides', async () => {
+    await renderHome();
+    expect(screen.getByText('Maison · 1 équipement')).toBeTruthy();
+    const material = region('Matériel');
+    expect(material.getByText('Chaise ou banc stable')).toBeTruthy();
+    const empty = within(material.getByRole('list', { name: 'Catégories sans matériel coché' }));
+    expect(empty.getAllByRole('listitem').map((li) => li.firstChild?.textContent)).toEqual([
+      'Petit matériel',
+      'Bancs et supports',
+      'Charges libres',
+      'Poulies et machines',
     ]);
-    await until(() => !checkbox(EQUIPMENT_LABELS.dumbbells).checked);
-    fireEvent.click(checkbox(EQUIPMENT_LABELS.chair));
-    await until(() => sent(api, 'DELETE', '/api/places/p-2/equipment/chair').length === 1);
+    expect(button('Modifier le matériel')).toBeTruthy();
   });
 
-  it('maison hors ligne : « Nécessite le réseau », la case revient', async () => {
+  it('« Nom du lieu » : feuille de renommage, focus au champ, PATCH { name }, 30 caractères au plus', async () => {
+    const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
+    await renderHome({ api });
+    const row = button('Nom du lieu');
+    row.focus();
+    fireEvent.click(row);
+    const sheet = within(await screen.findByRole('dialog', { name: 'Renommer le lieu' }));
+    const name = sheet.getByLabelText('Nom du lieu') as HTMLInputElement;
+    expect(document.activeElement).toBe(name);
+    expect(name.value).toBe('Garage');
+    expect(name.maxLength).toBe(30);
+    fireEvent.change(name, { target: { value: 'Cave' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Enregistrer' }));
+    await until(() => sent(api, 'PATCH', '/api/places/p-2').length === 1);
+    expect(sent(api, 'PATCH', '/api/places/p-2')).toEqual([{ name: 'Cave' }]);
+    await until(() => screen.queryByRole('dialog') === null);
+    await until(() => document.activeElement === row);
+  });
+
+  it('renommage : nom vide, message local et aucune requête', async () => {
     const api = createFakeApi();
-    await renderDetail('p-2', { api });
-    await screen.findByRole('heading', { level: 1, name: 'Garage' });
-    api.setOffline('reject');
-    fireEvent.click(checkbox(EQUIPMENT_LABELS.dumbbells));
-    expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
-    expect(checkbox(EQUIPMENT_LABELS.dumbbells).checked).toBe(false);
+    await renderHome({ api });
+    fireEvent.click(button('Nom du lieu'));
+    const sheet = within(await screen.findByRole('dialog', { name: 'Renommer le lieu' }));
+    fireEvent.change(sheet.getByLabelText('Nom du lieu'), { target: { value: '  ' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Enregistrer' }));
+    expect(sheet.getByText('Donne un nom à ce lieu.')).toBeTruthy();
+    expect(sent(api, 'PATCH', '/api/places/p-2')).toEqual([]);
   });
 
-  it('salle : matériel en lecture, lien « Voir la salle », aucune case', async () => {
-    await renderDetail('p-1');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Basic Fit' })).toBeTruthy();
-    expect(screen.getByText(EQUIPMENT_LABELS.barbell)).toBeTruthy();
-    expect(screen.getByText(EQUIPMENT_LABELS.flat_bench)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Voir la salle' }).getAttribute('href')).toBe('/gyms/g-1');
-    expect(screen.queryByRole('checkbox')).toBeNull();
+  it('renommage hors ligne : « Nécessite le réseau », la feuille garde la saisie', async () => {
+    const api = createFakeApi();
+    await renderHome({ api });
+    fireEvent.click(button('Nom du lieu'));
+    const sheet = within(await screen.findByRole('dialog', { name: 'Renommer le lieu' }));
+    api.setOffline('reject');
+    fireEvent.change(sheet.getByLabelText('Nom du lieu'), { target: { value: 'Cave' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Enregistrer' }));
+    expect((await sheet.findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    expect((sheet.getByLabelText('Nom du lieu') as HTMLInputElement).value).toBe('Cave');
+  });
+
+  it('« Lieu principal » hors ligne : « Nécessite le réseau », l’interrupteur revient', async () => {
+    const api = createFakeApi();
+    await renderHome({ api });
+    api.setOffline('reject');
+    const primary = screen.getByRole('switch', { name: 'Lieu principal' });
+    fireEvent.click(primary);
+    expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    await until(() => primary.getAttribute('aria-checked') === 'false');
+    expect(screen.getByText(PRIMARY_NOTE)).toBeTruthy();
+  });
+
+  it('« Supprimer ce lieu » → confirmation → DELETE {} → retour à la liste', async () => {
+    const api = createFakeApi().on('DELETE', '/api/places/:id', { status: 204 });
+    const view = await renderHome({ api });
+    const danger = region('Zone sensible');
+    expect(
+      danger.getByText('Le lieu sera retiré de ta liste. Les séances passées y restent rattachées.'),
+    ).toBeTruthy();
+    fireEvent.click(danger.getByRole('button', { name: 'Supprimer ce lieu' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Supprimer Garage ?' }));
+    expect(dialog.queryByRole('group', { name: 'Nouveau lieu principal' })).toBeNull();
+    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
+    await until(() => sent(api, 'DELETE', '/api/places/p-2').length === 1);
+    expect(sent(api, 'DELETE', '/api/places/p-2')).toEqual([{}]);
+    await until(() => view.location() === '/places');
+  });
+
+  it('supprimer le lieu principal : choix du nouveau lieu principal → DELETE { newPrimaryId } (R-LIEU-4)', async () => {
+    const api = createFakeApi().on('DELETE', '/api/places/:id', { status: 204 });
+    await renderHome({ api, garagePrimary: true });
+    fireEvent.click(button('Supprimer ce lieu'));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Supprimer Garage ?' }));
+    const choices = within(dialog.getByRole('group', { name: 'Nouveau lieu principal' }));
+    expect(choices.getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual(['Basic Fit']);
+    expect((dialog.getByRole('button', { name: 'Supprimer' }) as HTMLButtonElement).disabled).toBe(true);
+    choose('Basic Fit');
+    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
+    await until(() => sent(api, 'DELETE', '/api/places/p-2').length === 1);
+    expect(sent(api, 'DELETE', '/api/places/p-2')).toEqual([{ newPrimaryId: 'p-1' }]);
+  });
+
+  it('boîte de suppression : « Annuler » rend le focus à « Supprimer ce lieu »', async () => {
+    await renderHome();
+    const remove = button('Supprimer ce lieu');
+    remove.focus();
+    fireEvent.click(remove);
+    const dialog = within(await screen.findByRole('dialog'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Annuler' }));
+    await until(() => screen.queryByRole('dialog') === null);
+    expect(document.activeElement).toBe(remove);
+  });
+
+  it('409 last_place : « Tu dois garder au moins un lieu. »', async () => {
+    const api = createFakeApi().on('DELETE', '/api/places/:id', {
+      status: 409,
+      body: { error: 'last_place' },
+    });
+    await renderHome({ api });
+    fireEvent.click(button('Supprimer ce lieu'));
+    const dialog = within(await screen.findByRole('dialog'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
+    expect((await dialog.findByRole('alert')).textContent).toBe(KEEP_ONE);
+  });
+
+  it("409 primary_required : « Choisis d'abord un nouveau lieu principal. »", async () => {
+    const api = createFakeApi().on('DELETE', '/api/places/:id', {
+      status: 409,
+      body: { error: 'primary_required' },
+    });
+    await renderHome({ api, garagePrimary: true });
+    fireEvent.click(button('Supprimer ce lieu'));
+    const dialog = within(await screen.findByRole('dialog'));
+    choose('Basic Fit');
+    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
+    expect((await dialog.findByRole('alert')).textContent).toBe("Choisis d'abord un nouveau lieu principal.");
   });
 
   it('lieu inconnu : « Lieu introuvable. »', async () => {
-    await renderDetail('p-9');
+    const db = createTestLocalDb();
+    await seedPlaces(db);
+    await renderWithServices(<PlaceDetail params={{ id: 'p-9' }} />, { db });
     expect(await screen.findByText('Lieu introuvable.')).toBeTruthy();
   });
 });
@@ -459,7 +398,7 @@ describe('routes des lieux', () => {
     const db = createTestLocalDb();
     await seedPlaces(db);
     await renderApp({ path: '/places', db });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Lieux' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Salles' })).toBeTruthy();
     fireEvent.click(screen.getByRole('link', { name: 'Garage' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Garage' })).toBeTruthy();
   });

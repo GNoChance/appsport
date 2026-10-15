@@ -716,6 +716,16 @@
   background: var(--accent-text);
 }
 
+/* Verrouillé : il se voit (GUIDE, Disabled), son libellé ne promet plus de toucher. */
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.switchRow:has(.switch:disabled) .switchLabel {
+  cursor: default;
+}
+
 /*
  * Couleurs forcées (contraste élevé Windows) : les fonds disparaissent, on redessine piste et bouton.
  * Le rembourrage passe à 2 px pour faire place à la bordure (border-box) : le bouton de 24 px tient dans la

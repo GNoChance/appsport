@@ -1,14 +1,15 @@
-import { defaultLoadSettings, EQUIPMENT_LABELS, type GymDetail } from '@rune/contracts';
+import { defaultLoadSettings, type GymDetail, type MeResponse } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { GymPage, historyLine } from '../../src/features/places/GymPage';
+import { actionText } from '../../src/features/places/GymHistory';
+import { GymPage } from '../../src/features/places/GymPage';
 import type { AppDb } from '../../src/local-db/db';
 import { useRepos } from '../../src/repos';
-import { fill } from '../support/auth';
+import { settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
-import { button, checkbox } from '../support/onboarding';
-import { renderApp, renderWithServices } from '../support/render';
+import { button, choose, seedPrimaryGym } from '../support/onboarding';
+import { makeMe, renderApp, renderWithServices } from '../support/render';
 import { seedMirror } from '../support/seed';
 import { until } from '../support/wait';
 
@@ -16,6 +17,8 @@ type HistoryEntry = GymDetail['history'][number];
 
 const RIGHTS_TEXT = 'Seuls les membres qui ont cette salle parmi leurs lieux peuvent la modifier.';
 const NOBODY = "Personne n'est visible pour l'instant.";
+const EDIT_INFO = 'Modifier le nom ou la ville';
+const EDIT_EQUIPMENT = 'Modifier le matériel';
 
 /** 12 entrées, de la plus récente à la plus ancienne (le serveur en rend au plus 10 ; l'écran borne aussi). */
 const HISTORY: HistoryEntry[] = [
@@ -49,11 +52,16 @@ function detail(o: Partial<GymDetail> = {}): GymDetail {
   };
 }
 
-async function renderGym(o: { detail?: GymDetail; api?: FakeApi } = {}) {
+async function renderGym(o: { detail?: GymDetail; api?: FakeApi; db?: AppDb; me?: MeResponse } = {}) {
   const api = o.api ?? createFakeApi();
   api.on('GET', '/api/gyms/:id', { status: 200, body: o.detail ?? detail() });
-  const rendered = await renderWithServices(<GymPage params={{ id: 'g-1' }} />, { api });
+  const rendered = await renderWithServices(<GymPage params={{ id: 'g-1' }} />, {
+    api,
+    db: o.db,
+    me: o.me,
+  });
   await screen.findByRole('heading', { level: 1 });
+  await settle();
   return rendered;
 }
 
@@ -73,11 +81,33 @@ async function seedGymMirror(db: AppDb, o: { deletedAt?: string } = {}) {
   await seedMirror(db, 'gym_equipment', [{ id: 'g-1:barbell', gymId: 'g-1', equipmentCode: 'barbell' }]);
 }
 
-const section = (name: string) => within(screen.getByRole('region', { name }));
+/** g-1 parmi les lieux de l'utilisateur (p-1, principal et visible) ; `garage` : une maison p-2 en plus. */
+async function dbWithPlace(o: { garage?: boolean } = {}) {
+  const db = createTestLocalDb();
+  await seedPrimaryGym(db);
+  if (o.garage) {
+    await seedMirror(db, 'place', [
+      {
+        id: 'p-2',
+        ownerId: 'u-1',
+        kind: 'home',
+        gymId: null,
+        name: 'Garage',
+        isPrimary: false,
+        visibleAtGym: null,
+        loadSettings: defaultLoadSettings('home'),
+      },
+    ]);
+  }
+  return db;
+}
+
+const region = (name: string) => within(screen.getByRole('region', { name }));
 const sent = (api: FakeApi, method: string, path: string) =>
   api.calls.filter((c) => c.method === method && c.path === path).map((c) => c.body);
+const gets = (api: FakeApi) => api.calls.filter((c) => c.method === 'GET' && c.path === '/api/gyms/g-1');
 
-describe('historyLine (R-SAL-6)', () => {
+describe('actionText (R-SAL-6)', () => {
   const entry = (o: Partial<HistoryEntry>): HistoryEntry => ({
     at: '2026-10-06T12:05:00.000Z',
     action: 'create',
@@ -86,175 +116,181 @@ describe('historyLine (R-SAL-6)', () => {
     ...o,
   });
 
-  it("date à l'heure de Paris, action, auteur", () => {
-    expect(historyLine(entry({ action: 'add_equipment', detail: { code: 'kettlebell' } }))).toBe(
-      '06/10/2026 à 14:05 — Matériel ajouté : Kettlebell — modifié par lea',
-    );
-  });
-
-  it('libellés des actions', () => {
-    const action = (o: Partial<HistoryEntry>) => historyLine(entry(o)).split(' — ')[1];
-    expect(action({ action: 'create' })).toBe('Création de la salle');
-    expect(action({ action: 'update_info', detail: { city: { from: 'Lyon', to: 'Villeurbanne' } } })).toBe(
-      'Nom ou ville modifiés',
-    );
-    expect(action({ action: 'remove_equipment', detail: { code: 'flat_bench' } })).toBe(
+  it('libellés des actions, matériel en libellé court', () => {
+    expect(actionText(entry({ action: 'create' }))).toBe('Création de la salle');
+    expect(
+      actionText(entry({ action: 'update_info', detail: { city: { from: 'Lyon', to: 'Villeurbanne' } } })),
+    ).toBe('Nom ou ville modifiés');
+    expect(actionText(entry({ action: 'remove_equipment', detail: { code: 'flat_bench' } }))).toBe(
       'Matériel retiré : Banc plat',
     );
-    expect(action({ action: 'update_load_settings' })).toBe('Réglages de charge modifiés');
-    expect(action({ action: 'add_equipment', detail: { code: 'inconnu' } })).toBe('Matériel ajouté');
-  });
-
-  it('auteur absent (compte supprimé ou invisible) : « un membre »', () => {
-    expect(historyLine(entry({ authorUsername: null }))).toBe(
-      '06/10/2026 à 14:05 — Création de la salle — modifié par un membre',
+    expect(actionText(entry({ action: 'add_equipment', detail: { code: 'resistance_band' } }))).toBe(
+      'Matériel ajouté : Élastiques',
+    );
+    expect(actionText(entry({ action: 'update_load_settings' }))).toBe('Réglages de charge modifiés');
+    expect(actionText(entry({ action: 'add_equipment', detail: { code: 'inconnu' } }))).toBe(
+      'Matériel ajouté',
     );
   });
 });
 
-describe('GymPage (R-SAL-4, R-SAL-6, R-VIS-1 à R-VIS-4)', () => {
-  it('nom, ville, matériel, « Qui va à cette salle » et les 10 dernières modifications', async () => {
+describe('GymPage : fiche de la salle (maquette D02, R-SAL-4, R-SAL-6, R-VIS-1 à R-VIS-4)', () => {
+  it('nom, ville, matériel par catégorie, « Qui va à cette salle » et les 10 dernières modifications', async () => {
     await renderGym();
     expect(screen.getByRole('heading', { level: 1, name: 'Basic Fit' })).toBeTruthy();
-    expect(screen.getByText('Lyon')).toBeTruthy();
-    expect(checkbox(EQUIPMENT_LABELS.barbell).checked).toBe(true);
-    const members = section('Qui va à cette salle').getAllByRole('listitem');
-    expect(members.map((li) => li.textContent)).toEqual(['lea', 'max']);
-    const history = section('Dernières modifications').getAllByRole('listitem');
+    expect(screen.getByText('Salle · Lyon')).toBeTruthy();
+    expect(screen.getByText('Partagée avec le cercle')).toBeTruthy();
+    const material = region('Matériel');
+    expect(material.getByText('Barre droite et disques')).toBeTruthy();
+    expect(material.getByRole('list', { name: 'Petit matériel' })).toBeTruthy();
+    // Utilisateur « lea » visible : il se reconnaît dans la liste.
+    expect(region('Qui va à cette salle').getByText('max et toi')).toBeTruthy();
+    const history = region('Dernières modifications').getAllByRole('listitem');
     expect(history).toHaveLength(10);
-    expect(history[0]?.textContent).toContain('un membre');
+    expect(history[0]?.textContent).toContain('Nom ou ville modifiés');
+    expect(history[0]?.textContent).toContain('modifié par un membre');
+    expect(history[0]?.textContent).toContain('06/10/2026 à 14:05');
     expect(history[1]?.textContent).toContain('modifié par lea');
     expect(history[1]?.textContent).toContain('Matériel ajouté : Barre droite et disques');
+    expect(history[1]?.querySelector('time')?.getAttribute('datetime')).toBe('2026-10-06T12:04:00.000Z');
   });
 
-  it('droit de modifier : « Modifier » → PATCH { name } puis la fiche est relue', async () => {
+  it('membres visibles sans l’utilisateur : leurs pseudos seulement', async () => {
+    await renderGym({ detail: detail({ visibleMembers: ['max', 'nora', 'sam'] }) });
+    expect(region('Qui va à cette salle').getByText('max, nora et sam')).toBeTruthy();
+  });
+
+  it('droit de modifier : « Modifier le nom ou la ville » → feuille → PATCH { name } puis la fiche est relue', async () => {
     const api = createFakeApi().on('PATCH', '/api/gyms/:id', { status: 204 });
     await renderGym({ api });
-    fireEvent.click(button('Modifier'));
-    expect((screen.getByLabelText('Nom de la salle') as HTMLInputElement).value).toBe('Basic Fit');
-    expect((screen.getByLabelText('Ville') as HTMLInputElement).value).toBe('Lyon');
-    fill('Nom de la salle', 'Basic Fit Part-Dieu');
-    fireEvent.click(button('Enregistrer'));
+    fireEvent.click(button(EDIT_INFO));
+    const sheet = within(await screen.findByRole('dialog', { name: 'Modifier la salle' }));
+    expect((sheet.getByLabelText('Nom de la salle') as HTMLInputElement).value).toBe('Basic Fit');
+    expect((sheet.getByLabelText('Ville') as HTMLInputElement).value).toBe('Lyon');
+    fireEvent.change(sheet.getByLabelText('Nom de la salle'), { target: { value: 'Basic Fit Part-Dieu' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Enregistrer' }));
     await until(() => sent(api, 'PATCH', '/api/gyms/g-1').length === 1);
     expect(sent(api, 'PATCH', '/api/gyms/g-1')).toEqual([{ name: 'Basic Fit Part-Dieu' }]);
-    await until(() => api.calls.filter((c) => c.method === 'GET' && c.path === '/api/gyms/g-1').length === 2);
-    await until(() => screen.queryByLabelText('Nom de la salle') === null);
+    await until(() => gets(api).length === 2);
+    await until(() => screen.queryByRole('dialog') === null);
   });
 
   it('ville trop courte : message local, aucune requête', async () => {
     const api = createFakeApi();
     await renderGym({ api });
-    fireEvent.click(button('Modifier'));
-    fill('Ville', 'L');
-    fireEvent.click(button('Enregistrer'));
-    expect(screen.getByText('2 à 60 caractères.')).toBeTruthy();
+    fireEvent.click(button(EDIT_INFO));
+    const sheet = within(await screen.findByRole('dialog'));
+    fireEvent.change(sheet.getByLabelText('Ville'), { target: { value: 'L' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Enregistrer' }));
+    expect(sheet.getByText('2 à 60 caractères.')).toBeTruthy();
     expect(sent(api, 'PATCH', '/api/gyms/g-1')).toEqual([]);
   });
 
-  it('droit de modifier : « Kettlebell » coché → PUT ; « Banc plat » décoché → DELETE (R-SAL-5)', async () => {
-    const api = createFakeApi()
-      .on('PUT', '/api/gyms/:id/equipment/:code', { status: 204 })
-      .on('DELETE', '/api/gyms/:id/equipment/:code', { status: 204 });
-    await renderGym({ api });
-    expect(screen.queryByRole('checkbox', { name: EQUIPMENT_LABELS.chair })).toBeNull();
-    fireEvent.click(checkbox(EQUIPMENT_LABELS.kettlebell));
-    await until(() => sent(api, 'PUT', '/api/gyms/g-1/equipment/kettlebell').length === 1);
-    await until(() => !checkbox(EQUIPMENT_LABELS.flat_bench).disabled);
-    fireEvent.click(checkbox(EQUIPMENT_LABELS.flat_bench));
-    await until(() => sent(api, 'DELETE', '/api/gyms/g-1/equipment/flat_bench').length === 1);
-  });
-
-  it('matériel hors ligne : « Nécessite le réseau » dans Matériel, la case revient', async () => {
+  it('« Enregistrer » hors ligne : « Nécessite le réseau », la feuille reste ouverte avec la saisie', async () => {
     const api = createFakeApi();
     await renderGym({ api });
+    fireEvent.click(button(EDIT_INFO));
+    const sheet = within(await screen.findByRole('dialog'));
     api.setOffline('reject');
-    fireEvent.click(checkbox(EQUIPMENT_LABELS.kettlebell));
-    expect((await section('Matériel').findByRole('alert')).textContent).toBe('Nécessite le réseau');
-    await until(() => !checkbox(EQUIPMENT_LABELS.kettlebell).disabled);
-    expect(checkbox(EQUIPMENT_LABELS.kettlebell).checked).toBe(false);
+    fireEvent.change(sheet.getByLabelText('Nom de la salle'), { target: { value: 'Basic Fit Part-Dieu' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Enregistrer' }));
+    expect((await sheet.findByRole('alert')).textContent).toBe('Nécessite le réseau');
+    expect((sheet.getByLabelText('Nom de la salle') as HTMLInputElement).value).toBe('Basic Fit Part-Dieu');
+    expect(gets(api)).toHaveLength(1);
   });
 
-  it('« Enregistrer » hors ligne : « Nécessite le réseau », le formulaire reste ouvert avec la saisie', async () => {
-    const api = createFakeApi();
-    await renderGym({ api });
-    fireEvent.click(button('Modifier'));
-    api.setOffline('reject');
-    fill('Nom de la salle', 'Basic Fit Part-Dieu');
-    fireEvent.click(button('Enregistrer'));
-    expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
-    expect((screen.getByLabelText('Nom de la salle') as HTMLInputElement).value).toBe('Basic Fit Part-Dieu');
-    expect(api.calls.filter((c) => c.method === 'GET' && c.path === '/api/gyms/g-1')).toHaveLength(1);
-  });
-
-  it('409 gym_duplicate : « Cette salle existe déjà. », le formulaire reste ouvert', async () => {
+  it('409 gym_duplicate : « Cette salle existe déjà. », la feuille reste ouverte', async () => {
     const api = createFakeApi().on('PATCH', '/api/gyms/:id', {
       status: 409,
       body: { error: 'gym_duplicate', gymId: 'g-2' },
     });
     await renderGym({ api });
-    fireEvent.click(button('Modifier'));
-    fill('Nom de la salle', 'Fitness Park');
-    fireEvent.click(button('Enregistrer'));
-    expect((await screen.findByRole('alert')).textContent).toBe('Cette salle existe déjà.');
-    expect((screen.getByLabelText('Nom de la salle') as HTMLInputElement).value).toBe('Fitness Park');
+    fireEvent.click(button(EDIT_INFO));
+    const sheet = within(await screen.findByRole('dialog'));
+    fireEvent.change(sheet.getByLabelText('Nom de la salle'), { target: { value: 'Fitness Park' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Enregistrer' }));
+    expect((await sheet.findByRole('alert')).textContent).toBe('Cette salle existe déjà.');
+    expect((sheet.getByLabelText('Nom de la salle') as HTMLInputElement).value).toBe('Fitness Park');
   });
 
-  it("« Modifier » : seuls les champs changés depuis l'ouverture partent, même après une relecture de la fiche (R-SAL-5)", async () => {
-    const api = createFakeApi()
-      .on('PUT', '/api/gyms/:id/equipment/:code', { status: 204 })
-      .on('PATCH', '/api/gyms/:id', { status: 204 });
+  it('feuille de la salle : seuls les champs changés depuis l’ouverture partent (R-SAL-5)', async () => {
+    const api = createFakeApi().on('PATCH', '/api/gyms/:id', { status: 204 });
     await renderGym({ api });
-    fireEvent.click(button('Modifier'));
-    // Un autre membre renomme la salle ; la fiche est relue après l'ajout du kettlebell.
-    api.on('GET', '/api/gyms/:id', { status: 200, body: detail({ name: 'Basic Fit Part-Dieu' }) });
-    fireEvent.click(checkbox(EQUIPMENT_LABELS.kettlebell));
-    await screen.findByRole('heading', { level: 1, name: 'Basic Fit Part-Dieu' });
-    fill('Ville', 'Villeurbanne');
-    fireEvent.click(button('Enregistrer'));
+    fireEvent.click(button(EDIT_INFO));
+    const sheet = within(await screen.findByRole('dialog'));
+    fireEvent.change(sheet.getByLabelText('Ville'), { target: { value: 'Villeurbanne' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Enregistrer' }));
     await until(() => sent(api, 'PATCH', '/api/gyms/g-1').length === 1);
     expect(sent(api, 'PATCH', '/api/gyms/g-1')).toEqual([{ city: 'Villeurbanne' }]);
   });
 
-  it('matériel relu : la fiche du serveur remplace le choix affiché (R-SAL-5)', async () => {
-    const api = createFakeApi().on('PUT', '/api/gyms/:id/equipment/:code', { status: 204 });
-    await renderGym({ api });
-    fireEvent.click(checkbox(EQUIPMENT_LABELS.kettlebell));
-    await until(() => api.calls.filter((c) => c.method === 'GET' && c.path === '/api/gyms/g-1').length === 2);
-    // La fiche relue (sans kettlebell : un autre membre l'a retiré entre-temps) fait foi.
-    await until(() => !checkbox(EQUIPMENT_LABELS.kettlebell).checked);
-    await until(() => !checkbox(EQUIPMENT_LABELS.kettlebell).disabled);
-    expect(checkbox(EQUIPMENT_LABELS.kettlebell).checked).toBe(false);
-  });
-
-  it('« Modifier » : le focus va au nom, puis revient à « Modifier » après « Annuler » ou « Enregistrer »', async () => {
+  it('feuille de la salle : le focus va au nom, puis revient au bouton après « Annuler » ou « Enregistrer »', async () => {
     const api = createFakeApi().on('PATCH', '/api/gyms/:id', { status: 204 });
     await renderGym({ api });
-    fireEvent.click(button('Modifier'));
-    expect(document.activeElement).toBe(screen.getByLabelText('Nom de la salle'));
-    fireEvent.click(button('Annuler'));
-    expect(document.activeElement).toBe(button('Modifier'));
-    fireEvent.click(button('Modifier'));
-    fill('Ville', 'Villeurbanne');
-    fireEvent.click(button('Enregistrer'));
-    await until(() => document.activeElement === screen.queryByRole('button', { name: 'Modifier' }));
+    const edit = button(EDIT_INFO);
+    edit.focus();
+    fireEvent.click(edit);
+    const sheet = within(await screen.findByRole('dialog'));
+    expect(document.activeElement).toBe(sheet.getByLabelText('Nom de la salle'));
+    fireEvent.click(sheet.getByRole('button', { name: 'Annuler' }));
+    await until(() => screen.queryByRole('dialog') === null);
+    expect(document.activeElement).toBe(edit);
+    fireEvent.click(edit);
+    const again = within(await screen.findByRole('dialog'));
+    fireEvent.change(again.getByLabelText('Ville'), { target: { value: 'Villeurbanne' } });
+    fireEvent.click(again.getByRole('button', { name: 'Enregistrer' }));
+    await until(() => screen.queryByRole('dialog') === null);
+    await until(() => document.activeElement === screen.queryByRole('button', { name: EDIT_INFO }));
   });
 
-  it('sans droit : ni « Modifier » ni case, la raison, la liste des membres visibles (R-VIS-2)', async () => {
+  it('« Modifier le matériel » : l’écran Matériel, le focus sur son titre ; « Retour » le rend au bouton', async () => {
+    await renderGym();
+    fireEvent.click(button(EDIT_EQUIPMENT));
+    const title = await screen.findByRole('heading', { level: 1, name: 'Matériel' });
+    expect(document.activeElement).toBe(title);
+    expect(screen.getByText('Basic Fit')).toBeTruthy();
+    expect(screen.getByRole('note').textContent).toBe(
+      'Fiche partagée avec le cercle : chaque changement apparaît dans son historique.',
+    );
+    // Salle : pas d'objets du quotidien (R-EQ-3).
+    expect(screen.queryByRole('button', { name: /^Objets du quotidien/ })).toBeNull();
+    fireEvent.click(button('Retour'));
+    await screen.findByRole('heading', { level: 1, name: 'Basic Fit' });
+    expect(document.activeElement).toBe(button(EDIT_EQUIPMENT));
+  });
+
+  it('écran Matériel : une catégorie se déplie et se replie, son compte coché sur le total', async () => {
+    await renderGym();
+    fireEvent.click(button(EDIT_EQUIPMENT));
+    await screen.findByRole('heading', { level: 1, name: 'Matériel' });
+    const small = screen.getByRole('button', { name: /^Petit matériel/ });
+    expect(small.getAttribute('aria-expanded')).toBe('true');
+    expect(small.textContent).toContain('1 sur 6');
+    const benches = screen.getByRole('button', { name: /^Bancs et supports/ });
+    expect(benches.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('checkbox', { name: 'Banc plat' })).toBeNull();
+    fireEvent.click(benches);
+    expect(benches.getAttribute('aria-expanded')).toBe('true');
+    expect((screen.getByRole('checkbox', { name: 'Banc plat' }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(benches);
+    expect(screen.queryByRole('checkbox', { name: 'Banc plat' })).toBeNull();
+  });
+
+  it('sans droit : ni modification du nom ni du matériel, la raison, la liste des membres visibles (R-VIS-2)', async () => {
     await renderGym({ detail: detail({ canEdit: false }) });
-    expect(screen.queryByRole('button', { name: 'Modifier' })).toBeNull();
-    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: EDIT_INFO })).toBeNull();
+    expect(screen.queryByRole('button', { name: EDIT_EQUIPMENT })).toBeNull();
     expect(screen.getByText(RIGHTS_TEXT)).toBeTruthy();
-    expect(screen.getByText(EQUIPMENT_LABELS.barbell)).toBeTruthy();
-    const members = section('Qui va à cette salle').getAllByRole('listitem');
-    expect(members.map((li) => li.textContent)).toEqual(['lea', 'max']);
+    expect(region('Matériel').getByText('Barre droite et disques')).toBeTruthy();
+    expect(region('Qui va à cette salle').getByText('max et toi')).toBeTruthy();
   });
 
   it("personne de visible : « Personne n'est visible pour l'instant. » (R-VIS-4)", async () => {
     await renderGym({ detail: detail({ visibleMembers: [] }) });
-    expect(section('Qui va à cette salle').getByText(NOBODY)).toBeTruthy();
+    expect(region('Qui va à cette salle').getByText(NOBODY)).toBeTruthy();
   });
 
-  it('hors ligne : dernière version connue du miroir, aucune case, « Liste disponible en ligne »', async () => {
+  it('hors ligne : dernière version connue du miroir, rien à modifier, « Liste disponible en ligne »', async () => {
     const db = createTestLocalDb();
     await seedGymMirror(db);
     const api = createFakeApi();
@@ -262,17 +298,17 @@ describe('GymPage (R-SAL-4, R-SAL-6, R-VIS-1 à R-VIS-4)', () => {
     await renderWithServices(<GymPage params={{ id: 'g-1' }} />, { api, db });
     expect(await screen.findByRole('heading', { level: 1, name: 'Basic Fit' })).toBeTruthy();
     expect(screen.getByText('Hors ligne : dernière version connue.')).toBeTruthy();
-    expect(screen.getByText(EQUIPMENT_LABELS.barbell)).toBeTruthy();
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Modifier' })).toBeNull();
+    expect(region('Matériel').getByText('Barre droite et disques')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: EDIT_EQUIPMENT })).toBeNull();
+    expect(screen.queryByRole('button', { name: EDIT_INFO })).toBeNull();
     expect(screen.queryByText(RIGHTS_TEXT)).toBeNull();
-    expect(section('Qui va à cette salle').getByText('Liste disponible en ligne')).toBeTruthy();
+    expect(region('Qui va à cette salle').getByText('Liste disponible en ligne')).toBeTruthy();
     expect(screen.queryByText(NOBODY)).toBeNull();
-    expect(section('Dernières modifications').getByText('Historique disponible en ligne')).toBeTruthy();
+    expect(region('Dernières modifications').getByText('Historique disponible en ligne')).toBeTruthy();
     expect(screen.queryByText('Aucune modification.')).toBeNull();
   });
 
-  it("hors ligne avec un droit de modifier : ni « Modifier » ni case (l'écran ne s'en remet pas au dépôt)", async () => {
+  it("hors ligne avec un droit de modifier : rien à modifier (l'écran ne s'en remet pas au dépôt)", async () => {
     /** Dépôt qui rendrait une fiche hors ligne marquée modifiable. */
     function OfflineEditable() {
       const repos = useRepos();
@@ -282,9 +318,9 @@ describe('GymPage (R-SAL-4, R-SAL-6, R-VIS-1 à R-VIS-4)', () => {
     await renderWithServices(<OfflineEditable />);
     expect(await screen.findByRole('heading', { level: 1, name: 'Basic Fit' })).toBeTruthy();
     expect(screen.getByText('Hors ligne : dernière version connue.')).toBeTruthy();
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Modifier' })).toBeNull();
-    expect(section('Dernières modifications').getByText('Historique disponible en ligne')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: EDIT_EQUIPMENT })).toBeNull();
+    expect(screen.queryByRole('button', { name: EDIT_INFO })).toBeNull();
+    expect(region('Dernières modifications').getByText('Historique disponible en ligne')).toBeTruthy();
     expect(screen.queryByText('Aucune modification.')).toBeNull();
   });
 
@@ -326,14 +362,80 @@ describe('GymPage (R-SAL-4, R-SAL-6, R-VIS-1 à R-VIS-4)', () => {
     expect(screen.queryByText(RIGHTS_TEXT)).toBeNull();
     expect(screen.queryByRole('region', { name: 'Qui va à cette salle' })).toBeNull();
     expect(screen.queryByText(NOBODY)).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Modifier' })).toBeNull();
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.getByText(EQUIPMENT_LABELS.barbell)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: EDIT_INFO })).toBeNull();
+    expect(screen.queryByRole('button', { name: EDIT_EQUIPMENT })).toBeNull();
+    expect(region('Matériel').getByText('Barre droite et disques')).toBeTruthy();
+  });
+
+  it('salle hors de mes lieux : ni interrupteurs ni zone sensible', async () => {
+    await renderGym();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Zone sensible' })).toBeNull();
   });
 
   it('/gyms/:id dans la coquille', async () => {
     const api = createFakeApi().on('GET', '/api/gyms/:id', { status: 200, body: detail() });
     await renderApp({ path: '/gyms/g-1', api });
     expect(await screen.findByRole('heading', { level: 1, name: 'Basic Fit' })).toBeTruthy();
+  });
+});
+
+describe('GymPage : le lieu de l’utilisateur à cette salle (spec refonte §10.3, R-VIS-3, R-LIEU-1, R-LIEU-4)', () => {
+  it('« Visible » hors ligne : « Nécessite le réseau », l’interrupteur revient', async () => {
+    const api = createFakeApi();
+    await renderGym({ api, db: await dbWithPlace() });
+    api.setOffline('reject');
+    const visible = region('Qui va à cette salle').getByRole('switch', { name: 'Visible' });
+    fireEvent.click(visible);
+    expect((await region('Qui va à cette salle').findByRole('alert')).textContent).toBe(
+      'Nécessite le réseau',
+    );
+    await until(() => visible.getAttribute('aria-checked') === 'true');
+  });
+
+  it('« Visible » : le choix s’affiche jusqu’à la relecture du miroir, qui fait foi', async () => {
+    const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
+    const db = await dbWithPlace();
+    await renderGym({ api, db });
+    const visible = region('Qui va à cette salle').getByRole('switch', { name: 'Visible' });
+    fireEvent.click(visible);
+    await until(() => sent(api, 'PATCH', '/api/places/p-1').length === 1);
+    await until(() => !(visible as HTMLButtonElement).disabled);
+    expect(visible.getAttribute('aria-checked')).toBe('false');
+    // Miroir relu (un autre appareil a remis la visibilité) : il fait foi.
+    await seedPrimaryGym(db);
+    await until(() => visible.getAttribute('aria-checked') === 'true');
+  });
+
+  it('mineur : « Visible » reste au choix, avec la raison du défaut (P-MIN-6)', async () => {
+    await renderGym({ db: await dbWithPlace(), me: makeMe({ ageBand: 'minor' }) });
+    const visible = region('Qui va à cette salle').getByRole('switch', {
+      name: 'Visible',
+    }) as HTMLButtonElement;
+    expect(visible.disabled).toBe(false);
+    const hint = screen.getByText('Désactivé par défaut pour les moins de 18 ans.');
+    expect(visible.getAttribute('aria-describedby')?.split(' ')).toContain(hint.id);
+  });
+
+  it('un seul lieu : « Supprimer ce lieu » désactivé, « Tu dois garder au moins un lieu. »', async () => {
+    await renderGym({ db: await dbWithPlace() });
+    const remove = region('Zone sensible').getByRole('button', {
+      name: 'Supprimer ce lieu',
+    }) as HTMLButtonElement;
+    expect(remove.disabled).toBe(true);
+    const reason = screen.getByText('Tu dois garder au moins un lieu.');
+    expect(remove.getAttribute('aria-describedby')?.split(' ')).toContain(reason.id);
+  });
+
+  it('supprimer la salle principale : choix du nouveau lieu principal → DELETE { newPrimaryId } → la liste', async () => {
+    const api = createFakeApi().on('DELETE', '/api/places/:id', { status: 204 });
+    const view = await renderGym({ api, db: await dbWithPlace({ garage: true }) });
+    fireEvent.click(button('Supprimer ce lieu'));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Supprimer Basic Fit ?' }));
+    choose('Garage');
+    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
+    await until(() => sent(api, 'DELETE', '/api/places/p-1').length === 1);
+    expect(sent(api, 'DELETE', '/api/places/p-1')).toEqual([{ newPrimaryId: 'p-2' }]);
+    await until(() => view.location() === '/places');
   });
 });
