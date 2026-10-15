@@ -235,6 +235,17 @@ describe('MembersPage : une carte par membre (02 §6, P-ADM-1, spec refonte §10
       expect(current).toEqual([name]);
     }
   });
+
+  it('sous-navigation sur /Admin/Members/ (casse et barre finale, que les routes acceptent) : « Membres » reste la section affichée', async () => {
+    const api = createFakeApi().on('GET', '/api/admin/members', { status: 200, body: [BASTIEN] });
+    await renderApp({ path: '/Admin/Members/', me: ADMIN, api });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Membres du cercle' })).toBeTruthy();
+    const current = within(screen.getByRole('navigation', { name: 'Administration' }))
+      .getAllByRole('link')
+      .filter((l) => l.getAttribute('aria-current') === 'page')
+      .map((l) => l.textContent);
+    expect(current).toEqual(['Membres']);
+  });
 });
 
 describe('MembersPage : feuille des actions (spec refonte §10.5)', () => {
@@ -375,10 +386,12 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     fireEvent.click(dialog().getByRole('button', { name: "J'ai transmis le lien" }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByText(CODE)).toBeNull();
+    expect(document.body.textContent).not.toContain(CODE);
     expect(screen.queryByText(LINK)).toBeNull();
     // Rouvert : rien de l'ancien lien, il faut en générer un nouveau.
     open('ines.m', 'Lien de réinitialisation');
     expect(dialog().queryByText(CODE)).toBeNull();
+    expect(document.body.textContent).not.toContain(CODE);
     expect(dialog().getByRole('button', { name: 'Générer' })).toBeTruthy();
   });
 
@@ -422,6 +435,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     await until(() => memberLoads(api) === 2);
     fireEvent.click(dialog().getByRole('button', { name: "J'ai transmis le lien" }));
     expect(screen.queryByText(CODE)).toBeNull();
+    expect(document.body.textContent).not.toContain(CODE);
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
     expect(JSON.stringify(await Promise.all(db.tables.map((t) => t.toArray())))).not.toContain(CODE);
@@ -438,6 +452,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     await dialog().findByText(CODE);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByText(CODE)).toBeNull();
+    expect(document.body.textContent).not.toContain(CODE);
   });
 
   it('double clic sur « Générer » : une seule requête, rien ne ferme pendant l’envoi', async () => {

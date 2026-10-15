@@ -185,7 +185,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
       INVITATION_NOTE_MAX,
     );
     create('2009-05-01', 'pour Léa');
-    expect(await screen.findAllByText(CODE)).toBeTruthy();
+    expect(await screen.findAllByText(CODE)).toHaveLength(3);
     expect(sent(api, 'POST', '/api/admin/invitations')).toEqual([
       { birthDate: '2009-05-01', note: 'pour Léa' },
     ]);
@@ -208,6 +208,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     await until(() => loads(api) === 2);
     fireEvent.click(screen.getByRole('button', { name: "J'ai noté le code" }));
     expect(screen.queryByText(CODE)).toBeNull();
+    expect(document.body.textContent).not.toContain(CODE);
     expect(screen.queryByTestId('share-message')).toBeNull();
     // Le formulaire revient, vide, pour l'invitation suivante ; le focus passe à son titre.
     expect((screen.getByLabelText('Date de naissance') as HTMLInputElement).value).toBe('');
@@ -246,7 +247,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
     expect(submit.disabled).toBe(true);
     reply.resolve();
-    expect(await screen.findAllByText(CODE)).toBeTruthy();
+    expect(await screen.findAllByText(CODE)).toHaveLength(3);
     expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
   });
 
@@ -285,6 +286,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     fireEvent.click(nav().getByRole('link', { name: 'Invitations' }));
     await screen.findByRole('list', { name: 'Invitations envoyées' });
     expect(screen.queryByText(CODE)).toBeNull();
+    expect(document.body.textContent).not.toContain(CODE);
     expect(screen.queryByTestId('share-message')).toBeNull();
     expect(document.body.textContent).not.toContain(link);
     expect(screen.getByRole('button', { name: "Créer l'invitation" })).toBeTruthy();
@@ -303,6 +305,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     await renderWithServices(<InvitationsPage />, { api, me: ADMIN, db });
     await screen.findByRole('list', { name: 'Invitations envoyées' });
     expect(screen.queryByText(CODE)).toBeNull();
+    expect(document.body.textContent).not.toContain(CODE);
     expect(document.body.textContent).not.toContain(link);
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
@@ -352,7 +355,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     // Le refus du partage arrive après le clic : on le laisse aboutir avant de regarder.
     await settle();
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getAllByText(CODE)).toBeTruthy();
+    expect(screen.getAllByText(CODE)).toHaveLength(3);
   });
 
   it('partage refusé (autre qu’une annulation) : « Partage impossible : copie le message. », message gardé', async () => {
@@ -397,7 +400,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
       expect(screen.getByTestId('share-message').textContent).toBe(
         buildInvitationShareMessage(window.location.origin, link, CODE),
       );
-      expect(screen.getAllByText(CODE)).toBeTruthy();
+      expect(screen.getAllByText(CODE)).toHaveLength(3);
     },
   );
 
