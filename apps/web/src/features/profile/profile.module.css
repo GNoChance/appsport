@@ -133,10 +133,13 @@ span.lock svg {
   height: 18px;
 }
 
-/* Mode prudent : une carte avec son icône, l'interrupteur et sa note dedans (maquette C02). */
+/*
+ * Mode prudent : une carte avec son icône, le libellé et sa note en colonne, l'interrupteur à droite, le tout
+ * centré (maquette C02).
+ */
 .cautious {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) 14px var(--space-3) var(--space-3);
   border-radius: var(--radius-card);
@@ -144,9 +147,18 @@ span.lock svg {
   background: var(--surface);
 }
 
+/*
+ * Colonne du texte (le bloc de la case de l'onboarding) : l'interrupteur en sort pour se placer à droite, centré
+ * sur le libellé et ses notes ; la colonne lui garde sa place (52 px de cible et 14 px d'écart, comme le
+ * `Switch` de la boîte à outils) : la note ne passe pas dessous.
+ */
 .cautious > :last-child {
+  position: relative;
   flex: 1;
   min-width: 0;
+  min-height: 44px;
+  justify-content: center;
+  padding-inline-end: calc(52px + 14px);
 }
 
 .cautiousIcon {
@@ -162,36 +174,47 @@ span.lock svg {
 
 /*
  * La case du mode prudent (celle de l'onboarding, `role="switch"`) prend ici l'allure de l'interrupteur de la
- * boîte à outils (maquette C02) : libellé en gras, piste de 50 × 30 à droite ; tout le libellé reste la cible.
+ * boîte à outils (maquette C02) : libellé en gras au-dessus de sa note ; le libellé reste une cible.
  */
 .cautious label:has(> input[role="switch"]) {
-  flex-direction: row-reverse;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
+  min-height: 0;
   font-weight: 600;
   line-height: 1.3;
   cursor: pointer;
 }
 
+/*
+ * La case elle-même est la cible de 52 × 44 (cible tactile ≥ 44 px) ; elle dessine la piste de 50 × 30
+ * (::before) et le bouton de 24 px qui glisse de 20 px (::after), comme le `Switch` de la boîte à outils.
+ */
 .cautious input[role="switch"] {
   appearance: none;
-  position: relative;
-  flex: none;
-  width: 50px;
-  height: 30px;
-  margin: 0;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 52px;
+  height: 44px;
+  margin-block: auto;
+  margin-inline: 0;
   border-radius: 999px;
-  background: var(--field-border);
+  background: transparent;
   cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease);
 }
 
 .cautious input[role="switch"]::before {
   content: "";
   position: absolute;
-  top: 3px;
-  left: 3px;
+  inset: 7px 1px;
+  border-radius: 999px;
+  background: var(--field-border);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.cautious input[role="switch"]::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: 4px;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -201,11 +224,11 @@ span.lock svg {
     background-color var(--dur-fast) var(--ease);
 }
 
-.cautious input[role="switch"]:checked {
+.cautious input[role="switch"]:checked::before {
   background: var(--accent);
 }
 
-.cautious input[role="switch"]:checked::before {
+.cautious input[role="switch"]:checked::after {
   transform: translateX(20px);
   background: var(--accent-text);
 }
@@ -221,25 +244,30 @@ span.lock svg {
   outline-offset: 2px;
 }
 
+/* Mouvement réduit (spec refonte §7) : le bouton change de couleur sans glisser, comme dans la boîte à outils. */
+@media (prefers-reduced-motion: reduce) {
+  .cautious input[role="switch"]::after {
+    transition-property: background-color;
+  }
+}
+
 /* Couleurs forcées : piste et bouton redessinés, comme l'interrupteur de la boîte à outils. */
 @media (forced-colors: active) {
-  .cautious input[role="switch"] {
+  .cautious input[role="switch"]::before {
     border: 1px solid ButtonText;
   }
 
-  .cautious input[role="switch"]::before {
-    top: 2px;
-    left: 2px;
+  .cautious input[role="switch"]::after {
     forced-color-adjust: none;
     background: ButtonText;
   }
 
-  .cautious input[role="switch"]:checked {
+  .cautious input[role="switch"]:checked::before {
     forced-color-adjust: none;
     background: Highlight;
   }
 
-  .cautious input[role="switch"]:checked::before {
+  .cautious input[role="switch"]:checked::after {
     background: HighlightText;
   }
 }
