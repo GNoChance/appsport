@@ -306,6 +306,39 @@ describe('Chips', () => {
     expect(px(rule('.chip')?.get('min-height'))).toBeGreaterThanOrEqual(44);
     expect(checkedLabels()).toEqual(['60 min']);
   });
+
+  it('option désactivée et expliquée (comme ChoiceList) : radio désactivé, décrit par son explication, atténué', () => {
+    render(
+      <>
+        <p id="pourquoi-non">Ton objectif demande un sport.</p>
+        <Chips
+          name="practice"
+          legend="Pratiques-tu un autre sport régulièrement ?"
+          value="yes"
+          onChange={() => {}}
+          options={[
+            { value: 'no', label: 'Non', disabled: true, describedBy: 'pourquoi-non' },
+            { value: 'yes', label: 'Oui' },
+          ]}
+        />
+      </>,
+    );
+    const group = screen.getByRole('group', { name: 'Pratiques-tu un autre sport régulièrement ?' });
+    const no = within(group).getByRole('radio', {
+      name: 'Non',
+      description: 'Ton objectif demande un sport.',
+    }) as HTMLInputElement;
+    expect(no.disabled).toBe(true);
+    // Les autres options restent libres et sans description.
+    const yes = within(group).getByRole('radio', { name: 'Oui', checked: true }) as HTMLInputElement;
+    expect(yes.disabled).toBe(false);
+    expect(yes.hasAttribute('aria-describedby')).toBe(false);
+    // Atténuée à l'écran aussi, pas seulement pour les lecteurs d'écran.
+    const dimmed = css.filter(
+      (b) => b.media === null && b.selector.split(', ').includes('.chip:has(.overlayInput:disabled)'),
+    );
+    expect(dimmed.some((b) => b.declarations.has('opacity'))).toBe(true);
+  });
 });
 
 describe('Switch', () => {

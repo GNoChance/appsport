@@ -1,12 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { COACH_IDS, type CoachId } from '@rune/contracts';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { coachText } from '../../src/features/coach/coach-lines';
+import { awakeningQuests } from '../../src/features/onboarding/AwakeningQuests';
 import { ReadyStep } from '../../src/features/onboarding/ReadyStep';
 import type { AppDb } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
+import type { TrainingProfileView } from '../../src/repos';
+import { settle } from '../support/auth';
 import { type CssBlock, normalizeSelector, parseCssBlocks } from '../support/css-blocks';
 import { createFakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
@@ -71,17 +74,27 @@ async function openReady(o: { coach?: CoachId; pullAgoMs?: number } = {}) {
 
 const quest = (name: string) => screen.getByRole('checkbox', { name });
 const isDone = (name: string) => quest(name).getAttribute('aria-checked') === 'true';
+const IN_PROGRESS = "Quêtes d'éveil en cours. Ta progression commencera au rang E.";
 
 describe('« Éveil terminé » (spec refonte §7, §10.1)', () => {
   it('fenêtre du Système « Éveil terminé. », quêtes 3/3 cochées en lecture seule, rang E', async () => {
     await openReady();
-    expect(await screen.findByRole('heading', { name: 'Éveil terminé.' })).toBeTruthy();
+    // La fenêtre du Système elle-même (groupe nommé par son titre), pas un titre seul : étiquette, rang et
+    // quêtes sont dedans.
+    const win = await screen.findByRole('group', { name: 'Éveil terminé.' });
+    expect(within(win).getByText('SYSTÈME')).toBeTruthy();
+    expect(within(win).getByRole('heading', { name: 'Éveil terminé.' })).toBeTruthy();
+    expect(within(win).getByRole('img', { name: 'Rang E' })).toBeTruthy();
+    expect(
+      within(win)
+        .getAllByRole('checkbox')
+        .map((c) => c.textContent),
+    ).toEqual([...QUESTS]);
     await until(() => QUESTS.every(isDone));
     for (const name of QUESTS) expect(quest(name).getAttribute('aria-readonly')).toBe('true');
-    expect(screen.getByText("Quêtes d'éveil")).toBeTruthy();
-    expect(screen.getByText('3/3')).toBeTruthy();
-    expect(screen.getByText("Quêtes d'éveil remplies. Ta progression commence au rang E.")).toBeTruthy();
-    expect(screen.getByRole('img', { name: 'Rang E' })).toBeTruthy();
+    expect(within(win).getByText("Quêtes d'éveil")).toBeTruthy();
+    expect(within(win).getByText('3/3')).toBeTruthy();
+    expect(within(win).getByText("Quêtes d'éveil remplies. Ta progression commence au rang E.")).toBeTruthy();
     await until(() => !button('Commencer').disabled);
   });
 
@@ -110,19 +123,40 @@ describe('« Éveil terminé » (spec refonte §7, §10.1)', () => {
     expect(button('Commencer').disabled).toBe(true);
   });
 
-  it('vrais états : sans lieu principal ni niveau, ces quêtes restent décochées', async () => {
+  /** Écran « C'est prêt » seul, profil `fields`, prêt hors ligne, sans lieu principal. */
+  async function openReadyAlone(fields: Parameters<typeof seedProfile>[1]) {
     const db = createTestLocalDb();
     const me = newcomer({ onboardingStep: 'health' });
-    await seedProfile(db, { goal: 'muscle', experience: null, daysPerWeek: 3, sessionMinutes: 45 });
+    await seedProfile(db, fields);
     await seedReadiness(db, HOUR);
     await renderWithServices(<ReadyStep onBack={() => {}} onIncomplete={() => {}} />, { me, db });
+    // Profil lu (le récapitulatif montre l'objectif), puis les autres lectures abouties : l'état vérifié est le
+    // vrai, pas celui d'avant les lectures (tout non atteint).
+    await screen.findByText('Prendre du muscle');
     await until(() => isDone('Prêt hors ligne'));
+    await settle();
+  }
+
+  it('vrais états : sans lieu principal ni niveau, ces quêtes restent décochées', async () => {
+    await openReadyAlone({ goal: 'muscle', experience: null, daysPerWeek: 3, sessionMinutes: 45 });
     expect(isDone('Profil complété')).toBe(false);
     expect(isDone('Lieu principal choisi')).toBe(false);
     expect(screen.getByText('1/3')).toBeTruthy();
+    expect(screen.getByText(IN_PROGRESS)).toBeTruthy();
+  });
+
+  it('vrais états, contre-épreuve : niveau donné, « Profil complété » cochée ; sans lieu principal, 2/3', async () => {
+    await openReadyAlone({ goal: 'muscle', experience: 'none', daysPerWeek: 3, sessionMinutes: 45 });
+    expect(isDone('Profil complété')).toBe(true);
+    expect(isDone('Lieu principal choisi')).toBe(false);
+    expect(screen.getByText('2/3')).toBeTruthy();
+    expect(screen.getByText(IN_PROGRESS)).toBeTruthy();
   });
 
   it('mouvement réduit : « Commencer », la fenêtre, le rang et les quêtes sont là dès le premier rendu', async () => {
+    // Aucun composant de l'écran ne lit la media query : ce réglage ne fait que planter le décor. Le mouvement
+    // réduit lui-même (fondus courts, sans retard ni étincelles) est vérifié sur la feuille de style plus bas
+    // (« mouvement de la célébration ») : happy-dom n'anime rien.
     reducedMotion();
     const me = newcomer({ onboardingStep: 'health' });
     const db = createTestLocalDb();
@@ -130,12 +164,73 @@ describe('« Éveil terminé » (spec refonte §7, §10.1)', () => {
     await seedPrimaryGym(db);
     await seedReadiness(db, HOUR);
     await renderWithServices(<ReadyStep onBack={() => {}} onIncomplete={() => {}} />, { me, db });
-    // Premier rendu : aucune lecture de la base n'a encore abouti, aucune minuterie n'a tourné.
-    expect(button('Commencer')).toBeTruthy();
+    // Premier rendu, avec son témoin : aucune lecture de la base n'a encore abouti (0/3, quêtes en cours,
+    // « Commencer » pas encore actif), aucune minuterie n'a tourné. Tout est déjà là.
+    expect(screen.getByText('0/3')).toBeTruthy();
+    expect(screen.getByText(IN_PROGRESS)).toBeTruthy();
+    expect(button('Commencer').disabled).toBe(true);
     expect(screen.getByRole('heading', { name: 'Éveil terminé.' })).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Rang E' })).toBeTruthy();
     expect(screen.getAllByRole('checkbox').map((c) => c.textContent)).toEqual([...QUESTS]);
     await until(() => QUESTS.every(isDone));
+  });
+});
+
+describe('awakeningQuests : vrais états seulement (spec refonte §10.2)', () => {
+  /** Profil complet : coach, objectif, niveau et disponibilité donnés. */
+  const COMPLETE: TrainingProfileView = {
+    coach: 'skald',
+    goal: 'muscle',
+    experience: 'none',
+    daysPerWeek: 3,
+    sessionMinutes: 45,
+    sportCode: null,
+    sportOtherLabel: null,
+    cautiousMode: false,
+  };
+  const REQUIRED = ['coach', 'goal', 'experience', 'daysPerWeek', 'sessionMinutes'] as const;
+  const done = (s: Parameters<typeof awakeningQuests>[0]) =>
+    Object.fromEntries(awakeningQuests(s).map((q) => [q.label, q.done]));
+  const others = { hasPrimaryPlace: true, offlineReady: true };
+
+  it('trois quêtes, dans l’ordre de la maquette', () => {
+    expect(awakeningQuests({ profile: COMPLETE, ...others }).map((q) => q.label)).toEqual([...QUESTS]);
+  });
+
+  it.each<[string, TrainingProfileView | null | undefined]>([
+    ['profil pas encore lu', undefined],
+    ['aucun profil', null],
+    ...REQUIRED.map((field): [string, TrainingProfileView] => [
+      `${field} manquant`,
+      { ...COMPLETE, [field]: null },
+    ]),
+  ])('%s : « Profil complété » non cochée, les autres suivent leur état', (_, profile) => {
+    expect(done({ profile, ...others })).toEqual({
+      'Profil complété': false,
+      'Lieu principal choisi': true,
+      'Prêt hors ligne': true,
+    });
+  });
+
+  it('profil complet (sport et mode prudent facultatifs) : « Profil complété » cochée', () => {
+    expect(done({ profile: COMPLETE, hasPrimaryPlace: false, offlineReady: false })).toEqual({
+      'Profil complété': true,
+      'Lieu principal choisi': false,
+      'Prêt hors ligne': false,
+    });
+  });
+
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])('lieu principal %s, prêt hors ligne %s : chaque case suit son état', (hasPrimaryPlace, offlineReady) => {
+    expect(done({ profile: COMPLETE, hasPrimaryPlace, offlineReady })).toEqual({
+      'Profil complété': true,
+      'Lieu principal choisi': hasPrimaryPlace,
+      'Prêt hors ligne': offlineReady,
+    });
   });
 });
 

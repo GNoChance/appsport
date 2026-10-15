@@ -44,9 +44,12 @@ async function openReady(pullAgoMs: number) {
   return { ...rendered, api };
 }
 
+/** Quête d'éveil `name` cochée (sans lever si l'écran n'est pas affiché). */
+const questDone = (name: string) =>
+  screen.queryByRole('checkbox', { name })?.getAttribute('aria-checked') === 'true';
 /** Quête « Prêt hors ligne » de la célébration : cochée quand le voyant est au vert (R-SYN-33). */
-const offlineReady = () =>
-  screen.queryByRole('checkbox', { name: 'Prêt hors ligne' })?.getAttribute('aria-checked') === 'true';
+const offlineReady = () => questDone('Prêt hors ligne');
+const IN_PROGRESS = "Quêtes d'éveil en cours. Ta progression commencera au rang E.";
 
 describe('ReadyStep (E8, R-SYN-33)', () => {
   it('récapitulatif, voyant vert, « Commencer » → fin de l’onboarding, événement, accueil', async () => {
@@ -100,8 +103,13 @@ describe('ReadyStep (E8, R-SYN-33)', () => {
     window.addEventListener(ONBOARDING_COMPLETED_EVENT, count);
     await until(offlineReady);
     await until(() => !button('Commencer').disabled);
-    // Disponibilité effacée depuis un autre appareil, sans nouveau pull : l'écran reste « C'est prêt ».
+    await until(() => questDone('Profil complété'));
+    // Disponibilité effacée depuis un autre appareil, sans nouveau pull : l'écran reste « C'est prêt », et la
+    // quête « Profil complété » se décoche (vrais états).
     await seedProfile(db, { goal: 'muscle', experience: 'none', daysPerWeek: null, sessionMinutes: 45 });
+    await until(() => !questDone('Profil complété'));
+    expect(screen.getByText(IN_PROGRESS)).toBeTruthy();
+    expect(screen.queryByText('3/3')).toBeNull();
     fireEvent.click(button('Commencer'));
     await until(() => currentStep() === 'availability');
     expect(screen.getByText(INCOMPLETE)).toBeTruthy();
