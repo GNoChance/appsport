@@ -92,7 +92,7 @@ const shellLayout = (page: Page) =>
           return [...range.getClientRects()];
         });
     const pill = document.querySelector('[data-testid="connection-status"]');
-    const avatar = document.querySelector('a[aria-label="Mon profil"]')?.getBoundingClientRect();
+    const avatar = document.querySelector('header a[aria-label="Profil"]')?.getBoundingClientRect();
     const bar = document.querySelector('[data-testid="tab-bar"]')?.getBoundingClientRect();
     if (!pill || !avatar || !bar) return null;
     const pillText = textRects(pill);
@@ -171,7 +171,8 @@ test('barre d’onglets : ni sur le dernier contrôle ni sur le focus ; lisible 
     });
     await tab(page, 'Accueil').click();
     await page.waitForURL((url) => url.pathname === '/');
-    await expect(page.getByRole('link', { name: 'Mon profil' })).toBeVisible();
+    // Le rond de l'initiale, dans l'en-tête (l'onglet Profil porte le même nom, vers la même page).
+    await expect(page.getByRole('banner').getByRole('link', { name: 'Profil', exact: true })).toBeVisible();
     await settle(page);
     const layout = await shellLayout(page);
     expect(layout, 'en-tête de l’accueil et barre d’onglets affichés').not.toBeNull();

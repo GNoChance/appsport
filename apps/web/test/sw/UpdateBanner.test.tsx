@@ -254,7 +254,8 @@ describe('cadres (AppShell, PublicShell)', () => {
     swControllerStore.set(fakeController({ available: true, forced: false }));
     await renderApp({ path: '/' });
     const shown = await screen.findByTestId('update-banner');
-    const header = screen.getByRole('link', { name: 'Mon profil' }).closest('header');
+    // L'en-tête de l'accueil, celui de la pastille (les pages ont aussi leur `<header>`).
+    const header = screen.getByTestId('connection-status').closest('header');
     const main = screen.getByRole('main');
     expect(header?.compareDocumentPosition(shown)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(shown.compareDocumentPosition(main)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);

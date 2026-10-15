@@ -140,10 +140,14 @@ async function renderAppWithHistory(opts: Parameters<typeof createTestServices>[
 
 const mainNav = () => screen.getByRole('navigation', { name: 'Navigation principale' });
 const tab = (name: string) => within(mainNav()).getByRole('link', { name });
-/** En-tête de l'accueil : celui qui porte le rond de l'initiale (les pages ont aussi leur `<header>`). */
+/**
+ * En-tête de l'accueil : celui de la pastille (les pages ont aussi leur `<header>`), une fois le rond de
+ * l'initiale affiché (le compte est lu). Le rond est trouvé par sa destination : son nom est vérifié à part.
+ */
 const homeHeader = async () => {
-  const header = (await screen.findByRole('link', { name: 'Mon profil' })).closest('header');
+  const header = (await screen.findByTestId('connection-status')).closest('header');
   if (!header) throw new Error('en-tête de l’accueil absent');
+  await until(() => header.querySelector('a[href="/profile"]') !== null);
   return header;
 };
 const current = () =>
@@ -370,9 +374,20 @@ describe('coquille', () => {
     const header = await homeHeader();
     expect(within(header).getByRole('link', { name: 'Rune' }).getAttribute('href')).toBe('/');
     expect(within(header).getByTestId('connection-status').textContent).toBe('En ligne');
-    const avatar = within(header).getByRole('link', { name: 'Mon profil' });
+    const avatar = within(header).getByRole('link', { name: 'Profil' });
     expect(avatar.getAttribute('href')).toBe('/profile');
     expect(avatar.textContent).toBe('L');
+  });
+
+  it('un nom, une destination (WCAG 3.2.4) : le rond et l’onglet « Profil » mènent au Profil, pas de « Mon profil »', async () => {
+    media();
+    await renderApp({ path: '/' });
+    const header = await homeHeader();
+    // « Mon profil » est la ligne du hub qui mène à /profile/edit : le rond de l'accueil ne porte pas ce nom.
+    expect(within(header).queryByRole('link', { name: 'Mon profil' })).toBeNull();
+    const links = screen.getAllByRole('link', { name: 'Profil' });
+    expect(links).toHaveLength(2);
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/profile', '/profile']);
   });
 
   it("l'en-tête n'affiche plus « 0 en attente » ni les compteurs", async () => {
@@ -397,7 +412,9 @@ describe('coquille', () => {
     media();
     await renderApp({ path: '/profile/health' });
     await screen.findByRole('heading', { level: 1, name: 'Santé' });
-    expect(screen.queryByRole('link', { name: 'Mon profil' })).toBeNull();
+    // Ni pastille ni rond de l'initiale : seul l'onglet Profil porte ce nom.
+    expect(screen.queryByTestId('connection-status')).toBeNull();
+    expect(screen.getAllByRole('link', { name: 'Profil' }).filter((a) => !mainNav().contains(a))).toEqual([]);
     const back = screen.getByRole('link', { name: 'Retour' });
     expect(back.getAttribute('href')).toBe('/profile');
     // La taille d'une cible ne se lit que dans la feuille : la classe posée, puis sa règle.
@@ -463,7 +480,7 @@ describe('coquille', () => {
     expect(within(screen.getByTestId('side-nav')).getByRole('link', { name: 'Rune' })).toBeTruthy();
     expect(within(header).queryByRole('link', { name: 'Rune' })).toBeNull();
     expect(within(header).getByTestId('connection-status').textContent).toBe('En ligne');
-    expect(within(header).getByRole('link', { name: 'Mon profil' }).getAttribute('href')).toBe('/profile');
+    expect(within(header).getByRole('link', { name: 'Profil' }).getAttribute('href')).toBe('/profile');
     // Seuls à droite de l'en-tête, sans la marque pour les y pousser.
     expect(declarationsOf(shellCss(), '.headerEnd')?.get('margin-inline-start')).toBe('auto');
   });

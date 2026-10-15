@@ -49,6 +49,8 @@ export function AppShell(p: { children: ReactNode }) {
  * rond de l'initiale vers le Profil. Les pages internes ont leur Retour et leur titre (`PageHeader`).
  * `brand` faux sur PC : la navigation latérale porte déjà la marque (une seule annonce, un seul arrêt de
  * tabulation) ; pastille et initiale restent seules, à droite.
+ * Le rond s'appelle « Profil », comme l'onglet qui mène au même hub : « Mon profil » est la ligne du hub vers
+ * /profile/edit (un nom, une destination, WCAG 3.2.4).
  */
 function HomeHeader(p: { brand: boolean }) {
   const me = useMe();
@@ -64,7 +66,7 @@ function HomeHeader(p: { brand: boolean }) {
       <div className={shell.headerEnd}>
         <ConnectionPill />
         {me ? (
-          <Link href="/profile" aria-label="Mon profil" className={shell.avatar}>
+          <Link href="/profile" aria-label="Profil" className={shell.avatar}>
             <span aria-hidden="true">{me.username.charAt(0).toUpperCase()}</span>
           </Link>
         ) : null}
