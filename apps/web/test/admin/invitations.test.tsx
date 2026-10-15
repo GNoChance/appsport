@@ -3,6 +3,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvitationsPage } from '../../src/features/admin/InvitationsPage';
 import { buildInvitationShareMessage } from '../../src/features/admin/share-message';
+import uiStyles from '../../src/ui/ui.module.css';
 import { fill, settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
@@ -46,6 +47,13 @@ const item = (i: number) => {
 const sent = (api: FakeApi, method: string, path: string) =>
   api.calls.filter((c) => c.method === method && c.path === path).map((c) => c.body);
 const loads = (api: FakeApi) => sent(api, 'GET', '/api/admin/invitations').length;
+/** Description d'un élément : les textes visés par `aria-describedby`, dans l'ordre, séparés par « · ». */
+const description = (el: HTMLElement) =>
+  (el.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? `(${id} absent)`)
+    .join(' · ');
 
 function createdApi(): { api: FakeApi; link: string } {
   const link = `${window.location.origin}/invite#${CODE}`;
@@ -107,8 +115,25 @@ describe('InvitationsPage : liste (R-INV-7)', () => {
       'Sans noteUtiliséeCréée le 06/10/2026Utilisée par un ancien membre',
     ]);
     const revoke = item(0).getByRole('button', { name: 'Révoquer' });
-    expect(revoke.getAttribute('aria-describedby')).toBe(item(0).getByText('pour Léa').id);
+    expect(description(revoke)).toBe('pour Léa · Créée le 06/10/2026 · Expire le 13/10/2026');
     for (const i of [1, 2, 3, 4]) expect(item(i).queryByRole('button', { name: 'Révoquer' })).toBeNull();
+  });
+
+  it('deux invitations « Sans note » en attente : chaque « Révoquer » est décrit aussi par ses dates', async () => {
+    await renderInvitations({
+      list: [
+        invitation({ id: 'i-1' }),
+        invitation({
+          id: 'i-2',
+          createdAt: '2026-10-08T10:00:00.000Z',
+          expiresAt: '2026-10-15T10:00:00.000Z',
+        }),
+      ],
+    });
+    expect([0, 1].map((i) => description(item(i).getByRole('button', { name: 'Révoquer' })))).toEqual([
+      'Sans note · Créée le 06/10/2026 · Expire le 13/10/2026',
+      'Sans note · Créée le 08/10/2026 · Expire le 15/10/2026',
+    ]);
   });
 
   it('aucune invitation en attente : pas de compte dans l’en-tête', async () => {
@@ -129,10 +154,15 @@ describe('InvitationsPage : liste (R-INV-7)', () => {
     expect(screen.queryByText('Chargement…')).toBeNull();
   });
 
-  it('aucune invitation : « Aucune invitation pour l’instant. »', async () => {
+  it('aucune invitation : état vide de la boîte à outils, « Aucune invitation pour l’instant. » et une phrase', async () => {
     const api = createFakeApi().on('GET', '/api/admin/invitations', { status: 200, body: [] });
     await renderWithServices(<InvitationsPage />, { api, me: ADMIN });
-    expect(await screen.findByText("Aucune invitation pour l'instant.")).toBeTruthy();
+    // Spec refonte §6 (états et listes) : icône décorative dans son cercle, titre, une phrase.
+    const empty = (await screen.findByText("Aucune invitation pour l'instant.")).parentElement as HTMLElement;
+    expect(empty.classList.contains(uiStyles.empty as string)).toBe(true);
+    expect(within(empty).getByText('Chaque invitation créée apparaît ici, avec son état.')).toBeTruthy();
+    expect(empty.querySelector('[aria-hidden="true"] > svg')).not.toBeNull();
+    expect(screen.queryByRole('list', { name: 'Invitations envoyées' })).toBeNull();
   });
 
   it('invitation utilisée entre-temps (409 conflict) : message, liste relue avec le nouvel état', async () => {
@@ -260,10 +290,10 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     expect(screen.queryByRole('heading', { name: 'Nouvelle invitation' })).toBeNull();
     expect(screen.queryByRole('button', { name: "Créer l'invitation" })).toBeNull();
     expect(screen.queryByLabelText('Date de naissance')).toBeNull();
-    // Le focus passe à la fenêtre (le bouton « Créer l'invitation » a disparu).
-    expect(screen.getByRole('group', { name: 'Invitation créée.' }).contains(document.activeElement)).toBe(
-      true,
-    );
+    // Le focus passe au titre de la fenêtre (le bouton « Créer l'invitation » a disparu) : le lecteur d'écran
+    // dit « Invitation créée. », puis lit l'échéance avant le code (R-INV-3).
+    const panel = within(screen.getByRole('group', { name: 'Invitation créée.' }));
+    expect(document.activeElement).toBe(panel.getByRole('heading', { level: 2, name: 'Invitation créée.' }));
     // La liste reste dessous.
     expect(screen.getByRole('list', { name: 'Invitations envoyées' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: "J'ai noté le code" }));

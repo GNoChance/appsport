@@ -428,6 +428,18 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * Nom d'une salle : seul chemin vers sa fiche, donc une cible de 44 px de haut sur toute la largeur de la carte
+ * (le nom, en .cardTitle, garde son ellipse). Les marges négatives prennent l'espace gagné sur le rembourrage de
+ * la carte et sur l'écart du dessous : le nom reste à sa place, seule la zone de tap grandit.
+ */
+.gymLink {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -8px 0 -6px;
+}
+
 .gymActions {
   display: flex;
   flex-wrap: wrap;

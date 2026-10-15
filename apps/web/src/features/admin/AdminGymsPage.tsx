@@ -9,7 +9,8 @@ import {
 import { type RefObject, useCallback, useId, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useRepos } from '../../repos';
-import { Button, Field, plural } from '../../ui';
+import { Button, EmptyState, Field, plural } from '../../ui';
+import { GymIcon } from '../places/icons';
 import { AdminPage } from './AdminPage';
 import styles from './admin.module.css';
 import { ActionDialog, LoadFailure, Loading, useServerData } from './admin-ui';
@@ -44,7 +45,17 @@ export function AdminGymsPage() {
         </Field>
         {loading ? <Loading /> : null}
         {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
-        {gyms && gyms.length === 0 ? <p>Aucune salle trouvée.</p> : null}
+        {gyms && gyms.length === 0 ? (
+          <EmptyState
+            icon={<GymIcon />}
+            title="Aucune salle trouvée."
+            text={
+              query.trim()
+                ? 'Essaie un autre nom ou une autre ville.'
+                : "Une salle apparaît ici dès qu'un membre la crée depuis ses lieux."
+            }
+          />
+        ) : null}
         {gyms && gyms.length > 0 ? (
           <ul aria-labelledby={headingId} className={`stagger ${styles.cards}`}>
             {gyms.map((g) => (
@@ -85,14 +96,17 @@ export function AdminGymsPage() {
   );
 }
 
-/** Carte d'une salle : nom (vers sa fiche), ville et membres visibles ; ses actions sont décrites par son nom. */
+/**
+ * Carte d'une salle : nom (vers sa fiche ; seul chemin vers elle, donc un lien de 44 px de haut, le nom coupé
+ * d'une ellipse), ville et membres visibles ; ses actions sont décrites par son nom.
+ */
 function GymCard(p: { gym: GymSummary; onEdit(): void; onDelete(): void }) {
   const g = p.gym;
   const nameId = useId();
   return (
     <li className={`${styles.card} ${styles.gymCard}`}>
-      <Link id={nameId} href={`/gyms/${g.id}`} className={styles.cardTitle}>
-        {g.name}
+      <Link id={nameId} href={`/gyms/${g.id}`} className={styles.gymLink}>
+        <span className={styles.cardTitle}>{g.name}</span>
       </Link>
       <span className={styles.meta}>
         {g.city} · {g.visibleMemberCount} {plural(g.visibleMemberCount, 'membre visible', 'membres visibles')}

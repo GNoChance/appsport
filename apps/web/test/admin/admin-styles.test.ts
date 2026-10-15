@@ -30,8 +30,12 @@ describe('admin.module.css : jetons, cibles tactiles et mouvement (spec refonte 
     expect(css).not.toMatch(/var\(--color-/);
   });
 
-  it('cibles de 44 px : sous-navigation, « Actions pour … », « Fermer » de la feuille, boutons compacts', () => {
+  it('cibles de 44 px : sous-navigation, « Actions pour … », « Fermer » de la feuille, boutons compacts, nom d’une salle', () => {
     expect(rule('.nav a').get('min-height')).toBe('44px');
+    // Le nom d'une salle est le seul chemin vers sa fiche : son lien fait 44 px de haut, texte centré.
+    expect(rule('.gymLink').get('min-height')).toBe('44px');
+    expect(rule('.gymLink').get('display')).toBe('flex');
+    expect(rule('.gymLink').get('align-items')).toBe('center');
     for (const selector of ['.moreButton', '.closeButton']) {
       expect(rule(selector).get('width'), selector).toBe('44px');
       expect(rule(selector).get('height'), selector).toBe('44px');

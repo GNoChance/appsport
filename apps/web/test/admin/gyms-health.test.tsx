@@ -2,7 +2,9 @@ import type { GymSummary, OpsStatus } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { AdminGymsPage } from '../../src/features/admin/AdminGymsPage';
+import adminStyles from '../../src/features/admin/admin.module.css';
 import { BACKUP_LATE_MS, DISK_WARN_PCT, ServerHealthPage } from '../../src/features/admin/ServerHealthPage';
+import uiStyles from '../../src/ui/ui.module.css';
 import { fill } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
 import { DEFAULT_NOW, makeMe, renderWithServices } from '../support/render';
@@ -43,11 +45,39 @@ describe('AdminGymsPage (02 §6, R-SAL-4, R-SAL-7)', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: 'Salles' })).toBeTruthy();
     expect(searches(api)).toEqual(['']);
-    expect(gym('Basic Fit').getByRole('link', { name: 'Basic Fit' }).getAttribute('href')).toBe('/gyms/g-1');
+    const link = gym('Basic Fit').getByRole('link', { name: 'Basic Fit' });
+    expect(link.getAttribute('href')).toBe('/gyms/g-1');
+    // Seul chemin vers la fiche : une cible de 44 px de haut (règle .gymLink, admin-styles.test.ts).
+    expect(link.classList.contains(adminStyles.gymLink as string)).toBe(true);
+    // « Modifier » et « Supprimer » disent de quelle salle il s'agit : décrits par son nom.
+    expect(link.id).not.toBe('');
+    for (const name of ['Modifier', 'Supprimer']) {
+      const button = gym('Basic Fit').getByRole('button', { name });
+      expect(button.getAttribute('aria-describedby'), name).toBe(link.id);
+    }
     expect(gym('Basic Fit').getByText('Lyon · 2 membres visibles')).toBeTruthy();
     expect(gym('Fitness Park').getByText('Villeurbanne · 0 membre visible')).toBeTruthy();
     fill('Rechercher une salle', 'basic');
     await until(() => searches(api).includes('basic'));
+  });
+
+  it.each([
+    ['aucune salle', '', "Une salle apparaît ici dès qu'un membre la crée depuis ses lieux."],
+    ['recherche sans résultat', 'zzz', 'Essaie un autre nom ou une autre ville.'],
+  ])('%s : état vide de la boîte à outils, « Aucune salle trouvée. » et une phrase', async (_, q, text) => {
+    const api = createFakeApi().on('GET', '/api/gyms', { status: 200, body: q ? GYMS : [] });
+    await renderWithServices(<AdminGymsPage />, { api, me: ADMIN });
+    if (q) {
+      await screen.findByRole('list', { name: 'Salles' });
+      api.on('GET', '/api/gyms', { status: 200, body: [] });
+      fill('Rechercher une salle', q);
+    }
+    // Spec refonte §6 (états et listes) : icône décorative dans son cercle, titre, une phrase.
+    const empty = (await screen.findByText('Aucune salle trouvée.')).parentElement as HTMLElement;
+    expect(empty.classList.contains(uiStyles.empty as string)).toBe(true);
+    expect(within(empty).getByText(text)).toBeTruthy();
+    expect(empty.querySelector('[aria-hidden="true"] > svg')).not.toBeNull();
+    expect(screen.queryByRole('list', { name: 'Salles' })).toBeNull();
   });
 
   it('lecture en cours : « Chargement… », puis la liste', async () => {

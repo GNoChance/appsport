@@ -666,6 +666,29 @@ describe('SystemPanel (la voix du Système)', () => {
     expect(copy.textContent?.trim()).toBe('SYSTÈME');
   });
 
+  it('titleRef : le titre peut prendre le focus (la fenêtre s’annonce par son titre) ; sans lui, rien ne change', () => {
+    function Focused() {
+      const titleRef = useRef<HTMLHeadingElement>(null);
+      useLayoutEffect(() => titleRef.current?.focus(), []);
+      return (
+        <SystemPanel title="Invitation créée." titleRef={titleRef}>
+          x
+        </SystemPanel>
+      );
+    }
+    render(
+      <>
+        <Focused />
+        <SystemPanel title="Quête remplie.">y</SystemPanel>
+      </>,
+    );
+    const title = screen.getByRole('heading', { name: 'Invitation créée.' });
+    expect(document.activeElement).toBe(title);
+    // Focalisable par le script seulement : jamais un arrêt de plus dans le parcours au clavier.
+    expect(title.getAttribute('tabindex')).toBe('-1');
+    expect(screen.getByRole('heading', { name: 'Quête remplie.' }).hasAttribute('tabindex')).toBe(false);
+  });
+
   it('headingLevel : le titre suit le plan de la page (h3 dans une feuille ou une section en h2)', () => {
     render(
       <SystemPanel title="Quête remplie." headingLevel={3}>

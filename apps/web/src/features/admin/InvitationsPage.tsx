@@ -6,6 +6,7 @@ import {
   Banner,
   Button,
   CopyButton,
+  EmptyState,
   Field,
   formatDate,
   formatDateTime,
@@ -15,7 +16,7 @@ import {
 import { AdminPage } from './AdminPage';
 import styles from './admin.module.css';
 import { ActionDialog, LoadFailure, Loading, SECRET_SHOWN_ONCE, useServerData } from './admin-ui';
-import { WarningIcon } from './icons';
+import { MailIcon, WarningIcon } from './icons';
 import { buildInvitationShareMessage } from './share-message';
 
 const BIRTH_DATE_REQUIRED = 'Saisis la date de naissance.';
@@ -96,7 +97,13 @@ export function InvitationsPage() {
         </div>
         {loading ? <Loading /> : null}
         {error ? <LoadFailure message={error} onRetry={() => void reload()} /> : null}
-        {invitations && invitations.length === 0 ? <p>Aucune invitation pour l'instant.</p> : null}
+        {invitations && invitations.length === 0 ? (
+          <EmptyState
+            icon={<MailIcon />}
+            title="Aucune invitation pour l'instant."
+            text="Chaque invitation créée apparaît ici, avec son état."
+          />
+        ) : null}
         {invitations && invitations.length > 0 ? (
           <ul aria-labelledby={listHeadingId} className={`stagger ${styles.cards}`}>
             {invitations.map((i) => (
@@ -128,10 +135,14 @@ export function InvitationsPage() {
   );
 }
 
-/** Carte d'une invitation (maquette E03) ; « Révoquer » est décrit par la note, pour dire laquelle. */
+/**
+ * Carte d'une invitation (maquette E03) ; « Révoquer » est décrit par la note et les dates, pour dire laquelle
+ * (deux invitations « Sans note » se distinguent par leurs dates).
+ */
 function InvitationCard(p: { invitation: InvitationSummary; onRevoke(): void }) {
   const i = p.invitation;
-  const titleId = useId();
+  const id = useId();
+  const [titleId, createdId, detailId] = [`${id}-note`, `${id}-created`, `${id}-detail`];
   const badge = STATE_BADGES[i.state];
   const detail = invitationDetail(i);
   return (
@@ -143,11 +154,22 @@ function InvitationCard(p: { invitation: InvitationSummary; onRevoke(): void }) 
           </span>
           <Badge tone={badge.tone}>{badge.label}</Badge>
         </div>
-        <span className={styles.meta}>Créée le {formatDate(i.createdAt)}</span>
-        {detail ? <span className={styles.meta}>{detail}</span> : null}
+        <span id={createdId} className={styles.meta}>
+          Créée le {formatDate(i.createdAt)}
+        </span>
+        {detail ? (
+          <span id={detailId} className={styles.meta}>
+            {detail}
+          </span>
+        ) : null}
       </div>
       {i.state === 'pending' ? (
-        <Button variant="danger" className={styles.compact} aria-describedby={titleId} onClick={p.onRevoke}>
+        <Button
+          variant="danger"
+          className={styles.compact}
+          aria-describedby={[titleId, createdId, detail ? detailId : null].filter(Boolean).join(' ')}
+          onClick={p.onRevoke}
+        >
           Révoquer
         </Button>
       ) : null}
@@ -219,15 +241,16 @@ function InvitationForm(p: { onCreated(r: CreateInvitationResponse): void }) {
  * Invitation créée (R-INV-3, R-INV-9, maquette E04), dans une fenêtre du Système : note et échéance, code, puis le
  * message de partage (le lien seul sur sa dernière ligne, le code jamais coupé en fin de ligne), affichés une seule
  * fois ; « Partager » si l'appareil sait partager, « Copier le message » toujours. Partage ou copie impossible : un
- * message le dit, le message reste affiché et se sélectionne d'un geste. Le focus passe au code ; « J'ai noté le
- * code » efface tout de l'écran.
+ * message le dit, le message reste affiché et se sélectionne d'un geste. Le focus passe au titre de la fenêtre :
+ * le lecteur d'écran dit ce qui s'est passé, puis lit l'échéance et le code. « J'ai noté le code » efface tout
+ * de l'écran.
  */
 function CreatedInvitation(p: { created: CreateInvitationResponse; onDone(): void }) {
   const { code, link, invitation } = p.created;
   const message = buildInvitationShareMessage(window.location.origin, link, code);
   const canShare = typeof navigator.share === 'function';
   const [failure, setFailure] = useState<string | null>(null);
-  const focusOnMount = useCallback((el: HTMLDivElement | null) => el?.focus(), []);
+  const focusOnMount = useCallback((el: HTMLHeadingElement | null) => el?.focus(), []);
   const messageId = useId();
   const validity = `jusqu'au ${formatDateTime(invitation.expiresAt)}.`;
 
@@ -243,10 +266,10 @@ function CreatedInvitation(p: { created: CreateInvitationResponse; onDone(): voi
 
   return (
     <div className="enter-up">
-      <SystemPanel title="Invitation créée.">
+      <SystemPanel title="Invitation créée." titleRef={focusOnMount}>
         <div className={styles.createdBody}>
           <p>{invitation.note ? `${invitation.note} · valable ${validity}` : `Valable ${validity}`}</p>
-          <div ref={focusOnMount} tabIndex={-1} className={styles.codeBox}>
+          <div className={styles.codeBox}>
             <span className={styles.codeLabel}>Code</span>
             <span className={styles.code}>{code}</span>
             <span className={styles.codeWarning}>
