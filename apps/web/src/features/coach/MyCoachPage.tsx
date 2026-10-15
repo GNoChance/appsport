@@ -36,36 +36,43 @@ const ignore = () => {};
  * (entraînement et nutrition), son nom, son tempérament et un aperçu de sa voix étiqueté, puis la mention que
  * la vraie conversation viendra plus tard. « Changer de coach » ouvre une feuille avec les trois choix ;
  * confirmer l'enregistre sur le serveur (`setCoach`, classe E). Le coach confirmé s'affiche tout de suite,
- * jusqu'à la relecture du profil (pull après l'envoi), avec « <coach> est ton nouveau coach. ».
+ * jusqu'à la relecture du profil (pull après l'envoi), avec « <coach> est ton nouveau coach. », qui reste tant
+ * qu'une relecture ne le contredit pas. Sur un nouvel appareil avant le premier pull, le miroir vide ne dit pas
+ * « pas de coach » : ni coach ni « Changer de coach » tant que le profil n'est pas connu.
  */
 export function MyCoachPage() {
   const me = useMe();
-  const { coach: saved, loaded } = useTrainingProfile();
+  const { coach: saved, loaded, known } = useTrainingProfile();
   const [chosen, setChosen] = useState<CoachId | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [announced, setAnnounced] = useState<CoachId | null>(null);
   const [sheet, setSheet] = useState(false);
   const changeId = useId();
   const closeSheet = useCallback(() => setSheet(false), []);
   useFocusAfterClose(sheet, () => document.getElementById(changeId));
 
-  // Toute relecture du coach enregistré fait de nouveau foi.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: chaque lecture du profil efface le choix affiché
-  useEffect(() => setChosen(null), [saved]);
+  // Toute relecture du coach enregistré fait de nouveau foi : le choix affiché s'efface, et l'annonce aussi
+  // quand la relecture la contredit (un autre appareil a choisi un autre coach depuis).
+  useEffect(() => {
+    setChosen(null);
+    setAnnounced((c) => (c === saved ? c : null));
+  }, [saved]);
 
   // Rien avant la lecture du profil : la feuille ouverte trop tôt n'aurait pas le coach actuel.
   if (!me || !loaded) return null;
   const coach = chosen ?? saved;
+  // L'annonce ne vaut que pour le coach affiché, dès le rendu qui le change (avant l'effet qui l'efface).
+  const notice = announced !== null && announced === coach ? announced : null;
 
   function changed(next: CoachId) {
     setChosen(next);
-    setNotice(`${COACH_NAMES[next]} est ton nouveau coach.`);
+    setAnnounced(next);
     setSheet(false);
   }
 
   return (
     <Page title="Mon coach" back="/profile">
-      {notice ? <Banner tone="info">{notice}</Banner> : null}
-      {coach ? <CoachHero key={coach} coach={coach} pseudo={me.username} /> : null}
+      {notice ? <Banner tone="info">{`${COACH_NAMES[notice]} est ton nouveau coach.`}</Banner> : null}
+      {known && coach ? <CoachHero key={coach} coach={coach} pseudo={me.username} /> : null}
       <p className={styles.later}>
         <svg
           aria-hidden="true"
@@ -83,24 +90,28 @@ export function MyCoachPage() {
         </svg>
         <span>{COACH_LATER_TEXT}</span>
       </p>
-      <Button
-        id={changeId}
-        variant="secondary"
-        block
-        onClick={() => {
-          setNotice(null);
-          setSheet(true);
-        }}
-      >
-        Changer de coach
-      </Button>
-      <ChangeCoachSheet
-        open={sheet}
-        current={coach}
-        pseudo={me.username}
-        onClose={closeSheet}
-        onChanged={changed}
-      />
+      {known ? (
+        <>
+          <Button
+            id={changeId}
+            variant="secondary"
+            block
+            onClick={() => {
+              setAnnounced(null);
+              setSheet(true);
+            }}
+          >
+            Changer de coach
+          </Button>
+          <ChangeCoachSheet
+            open={sheet}
+            current={coach}
+            pseudo={me.username}
+            onClose={closeSheet}
+            onChanged={changed}
+          />
+        </>
+      ) : null}
     </Page>
   );
 }
@@ -160,7 +171,8 @@ type SheetProps = {
  * Feuille « Changer de coach » : les trois coachs en cartes, l'actuel coché ; la confirmation, désactivée tant
  * que le choix est l'actuel, enregistre le nouveau coach. Pendant l'envoi, cartes et boutons sont figés et
  * Échap ne ferme pas ; un échec (hors ligne, serveur) laisse la feuille ouverte avec le message. Fermée, rien
- * n'est monté : chaque ouverture repart du coach actuel.
+ * n'est monté : chaque ouverture repart du coach actuel. Tant que rien n'est choisi, le coché suit le coach
+ * actuel, même relu pendant que la feuille est ouverte (un autre appareil en a changé).
  */
 function ChangeCoachSheet(p: SheetProps) {
   return p.open ? <OpenCoachSheet {...p} /> : null;
@@ -168,7 +180,8 @@ function ChangeCoachSheet(p: SheetProps) {
 
 function OpenCoachSheet(p: SheetProps) {
   const repos = useRepos();
-  const [pick, setPick] = useState<CoachId | null>(p.current);
+  const [picked, setPicked] = useState<CoachId | null>(null);
+  const pick = picked ?? p.current;
   const save = useAction(async (coach: CoachId) => {
     await repos.profile.setCoach(coach);
     return true;
@@ -208,7 +221,7 @@ function OpenCoachSheet(p: SheetProps) {
           value={pick}
           disabled={save.pending}
           onChange={(coach) => {
-            setPick(coach);
+            setPicked(coach);
             save.reset();
           }}
         />
