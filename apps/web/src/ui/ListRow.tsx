@@ -51,6 +51,8 @@ function Chevron() {
  * - `emphasis="value"` : ligne d'état ou de réponse (maquettes C02, C03, C05), le libellé en petit au-dessus et
  *   la valeur en gras ; par défaut, le libellé est en gras et la valeur en petit (ligne qui mène ailleurs,
  *   C01). Le nom et la description ne changent pas.
+ * - `tone="accent"` : ligne d'action qui ouvre un formulaire sur place (« Ajouter une limitation », maquette C04),
+ *   libellé en accent et sans chevron.
  */
 export function ListRow(p: {
   icon?: ReactNode;
@@ -60,7 +62,7 @@ export function ListRow(p: {
   href?: string;
   onClick?(): void;
   badge?: ReactNode;
-  tone?: 'danger';
+  tone?: 'danger' | 'accent';
   emphasis?: 'value';
 }) {
   const id = useId();
@@ -90,7 +92,7 @@ export function ListRow(p: {
           {p.badge}
         </span>
       ) : null}
-      {interactive && p.tone !== 'danger' ? <Chevron /> : null}
+      {interactive && p.tone === undefined ? <Chevron /> : null}
     </>
   );
   const named = {

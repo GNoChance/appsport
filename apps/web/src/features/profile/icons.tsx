@@ -142,6 +142,27 @@ export const GaugeIcon = () => (
   </Stroke>
 );
 
+export const PencilIcon = () => (
+  <Stroke>
+    <path d="M4 20h4L19 9l-4-4L4 16z" />
+    <path d="m13.5 6.5 4 4" />
+  </Stroke>
+);
+
+export const TrashIcon = () => (
+  <Stroke>
+    <path d="M4 7h16" />
+    <path d="M9 7V4.5h6V7" />
+    <path d="m6 7 1 13h10l1-13" />
+  </Stroke>
+);
+
+export const PlusIcon = () => (
+  <Stroke>
+    <path d="M12 5v14M5 12h14" />
+  </Stroke>
+);
+
 export const SignalIcon = () => (
   <Stroke>
     <path d="M2 8.8a15 15 0 0 1 20 0" />

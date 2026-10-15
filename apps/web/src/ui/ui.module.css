@@ -961,6 +961,11 @@ button.row:focus-visible {
   color: var(--danger);
 }
 
+/* Ligne d'action (maquette C04, « Ajouter une limitation ») : libellé en accent, sans chevron. */
+.row[data-tone="accent"] {
+  color: var(--accent);
+}
+
 /* État vide (GUIDE, Empty state) : icône de 48 px dans un cercle teinté d'accent, titre, phrase, action. */
 .empty {
   display: flex;

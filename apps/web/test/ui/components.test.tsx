@@ -501,6 +501,21 @@ describe('ListGroup et ListRow', () => {
     expect(screen.getByText('En ligne')).toBeTruthy();
   });
 
+  it('tone="accent" (maquette C04) : ligne d’action en accent, sans chevron, nommée par son libellé', () => {
+    const onClick = vi.fn();
+    render(
+      <ListGroup>
+        <ListRow label="Ajouter une limitation" tone="accent" onClick={onClick} />
+      </ListGroup>,
+    );
+    const add = screen.getByRole('button', { name: 'Ajouter une limitation' });
+    fireEvent.click(add);
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(add.getAttribute('data-tone')).toBe('accent');
+    expect(add.querySelector('[data-chevron]')).toBeNull();
+    expect(rule('.row[data-tone="accent"]')?.get('color')).toBe('var(--accent)');
+  });
+
   it('emphasis="value" (maquettes C02, C03, C05) : petit libellé au-dessus, valeur en gras, nom et description inchangés', () => {
     render(
       <ListGroup>

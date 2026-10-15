@@ -2,9 +2,10 @@ import { type ReactNode, type RefObject, useCallback, useEffect, useId, useRef, 
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
 import { Badge, Banner, Button, formatDate, HealthWarning, ListGroup, ListRow, Page } from '../../ui';
-import { HealthConsentPanel, LimitationsEditor, ScreeningQuestions } from '../onboarding/HealthStep';
-import { ShieldIcon } from '../profile/icons';
+import { HealthConsentPanel, ScreeningQuestions } from '../onboarding/HealthStep';
+import { GaugeIcon, ShieldIcon } from '../profile/icons';
 import { ConsentWithdrawDialog } from './ConsentWithdrawDialog';
+import { HealthLimitations } from './HealthLimitations';
 import { consentLabel, WITHDRAW_LIST_TEXT } from './messages';
 import styles from './privacy.module.css';
 
@@ -13,10 +14,11 @@ const SCREENING_TITLE = "Questionnaire d'alerte";
 
 /**
  * Profil › Santé (02 §11, E7, spec refonte §10.4, maquette C04) : sans accord, l'accord est proposé, puis les
- * questions s'affichent en auto-vérification dans leur propre section (P-CST-2) ; avec accord, son état en tête,
- * dernière réponse au questionnaire (« Répondre de nouveau »), limitations modifiables (P-DRT-2), puis, isolé en
- * bas, le retrait de l'accord (R-CST-5), avec ses textes, sa confirmation et le mot de passe ressaisi. Le mode
- * prudent se règle dans Mon profil seulement.
+ * questions s'affichent en auto-vérification dans leur propre section (P-CST-2), suivies de la ligne « Mode
+ * prudent » qui mène à Mon profil (E7.4) ; avec accord, son état en tête, dernière réponse au questionnaire
+ * (« Répondre de nouveau »), limitations ouvertes depuis une ligne (P-DRT-2), puis, isolé en bas, le retrait de
+ * l'accord (R-CST-5), avec ses textes, sa confirmation et le mot de passe ressaisi. Le mode prudent se règle
+ * dans Mon profil seulement.
  */
 export function HealthSection() {
   const me = useMe();
@@ -53,7 +55,7 @@ export function HealthSection() {
             />
           </ListGroup>
           <ScreeningSection />
-          <LimitationsEditor editable headingLevel={2} />
+          <HealthLimitations />
         </>
       ) : (
         <>
@@ -62,6 +64,14 @@ export function HealthSection() {
           </Section>
           <Section title={SCREENING_TITLE}>
             <ScreeningQuestions record={false} />
+            <ListGroup>
+              <ListRow
+                icon={<GaugeIcon />}
+                label="Mode prudent"
+                value="Dans Mon profil"
+                href="/profile/edit"
+              />
+            </ListGroup>
           </Section>
         </>
       )}
