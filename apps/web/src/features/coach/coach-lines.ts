@@ -86,15 +86,15 @@ export function coachText(
 
 /**
  * Ligne du jour de l'accueil : `daily[jourParis % daily.length]`, `{pseudo}` et `{jours}` (`daysPerWeek` du
- * profil) remplacés. Sans rythme connu, une ligne qui dit `{jours}` cède la place à la suivante : jamais de
- * valeur inventée à l'écran.
+ * profil, que l'accueil passe) remplacés. Sans rythme connu (null ou omis), une ligne qui dit `{jours}` cède la
+ * place à la suivante : jamais de valeur inventée à l'écran.
  */
 export function coachLine(
   coach: CoachId,
   _moment: 'daily',
   date: Date,
   pseudo: string,
-  daysPerWeek: number | null,
+  daysPerWeek: number | null = null,
 ): string {
   const lines = COACHES[coach].daily;
   const day = parisDayNumber(date);

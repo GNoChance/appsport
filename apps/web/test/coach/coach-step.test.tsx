@@ -1,5 +1,6 @@
-import { COACH_IDS, type CoachId } from '@rune/contracts';
+import { COACH_IDS, type CoachId, type TrainingProfilePatch } from '@rune/contracts';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoachIntro } from '../../src/features/coach/CoachIntro';
 import { COACHES, coachLine, coachText } from '../../src/features/coach/coach-lines';
@@ -89,14 +90,27 @@ const readable = (text: string) =>
   screen.queryAllByText(text).filter((el) => el.closest('[aria-hidden="true"]') === null);
 const REDUCE = '(prefers-reduced-motion: reduce)';
 
-/** Réglages du téléphone simulés : les media queries listées répondent vrai, les autres faux. */
+/**
+ * Réglages du téléphone simulés : les media queries listées répondent vrai, les autres faux. `change` les
+ * modifie en cours de test et prévient les écouteurs, comme le téléphone quand l'utilisateur change un réglage.
+ */
 function phoneSettings(...matching: string[]) {
+  let current = matching;
+  const listeners = new Set<() => void>();
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: matching.includes(query),
+    matches: current.includes(query),
     media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: (_type: string, fn: () => void) => listeners.add(fn),
+    removeEventListener: (_type: string, fn: () => void) => listeners.delete(fn),
   }));
+  return {
+    change(...next: string[]) {
+      current = next;
+      act(() => {
+        for (const fn of listeners) fn();
+      });
+    },
+  };
 }
 
 afterEach(() => {
@@ -111,7 +125,25 @@ async function openFlow(me = newcomer(), prepare?: (db: AppDb) => Promise<void>)
   const server = serveProfile(api, db, me);
   await prepare?.(db);
   const rendered = await renderApp({ path: '/onboarding', me, db, api });
-  return { ...rendered, server };
+  return { ...rendered, server, me };
+}
+
+/**
+ * Le PATCH du profil reste en vol jusqu'à `release()`, puis le serveur répond `status` (200 : coach enregistré
+ * et miroir à jour, comme le pull qui suit l'envoi).
+ */
+function holdPatch(t: Awaited<ReturnType<typeof openFlow>>, status = 200) {
+  const gate = Promise.withResolvers<void>();
+  const sent: TrainingProfilePatch[] = [];
+  t.api.on('PATCH', PROFILE_PATH, async (req) => {
+    const body = req.body as TrainingProfilePatch;
+    sent.push(body);
+    await gate.promise;
+    if (status !== 200) return { status, body: { error: 'internal' } };
+    await seedProfile(t.db, body);
+    return { status: 200, body: t.me };
+  });
+  return { sent, release: () => gate.resolve() };
 }
 
 /** Le titre de l'écran, nommé avec l'indicateur d'étape, a le focus. */
@@ -229,6 +261,77 @@ describe('étape coach de l’onboarding (spec refonte §8, §10.1)', () => {
     expect(screen.queryByRole('button', { name: "C'est parti" })).toBeNull();
   });
 
+  it('pendant l’envoi, les cartes sont figées : la présentation montre le coach enregistré', async () => {
+    const t = await openFlow();
+    const held = holdPatch(t);
+    await until(() => currentStep() === 'coach');
+    await screen.findByRole('radio', { name: 'Le Skald' });
+    choose('Le Skald');
+    fireEvent.click(button('Continuer'));
+    // PATCH en vol : une autre carte ne peut plus être choisie.
+    expect(radio('Le Scribe').disabled).toBe(true);
+    choose('Le Scribe');
+    expect(isChecked('Le Skald')).toBe(true);
+    held.release();
+    await screen.findByRole('button', { name: "C'est parti" });
+    await until(() => hasFocus('Étape 1 sur 9 Le Skald'));
+    expect(held.sent).toEqual([{ coach: 'skald' }]);
+  });
+
+  it('pendant l’envoi qui échoue, le message s’affiche à côté du coach envoyé', async () => {
+    const t = await openFlow();
+    const held = holdPatch(t, 500);
+    await until(() => currentStep() === 'coach');
+    await screen.findByRole('radio', { name: 'Le Skald' });
+    choose('Le Skald');
+    fireEvent.click(button('Continuer'));
+    choose('Le Scribe');
+    held.release();
+    expect((await screen.findByRole('alert')).textContent).toBe('Le serveur a rencontré une erreur.');
+    expect(isChecked('Le Skald')).toBe(true);
+    expect(radio('Le Scribe').disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: "C'est parti" })).toBeNull();
+    expect(held.sent).toEqual([{ coach: 'skald' }]);
+  });
+
+  it('un pull manqué après l’envoi : revenir au coach que le miroir affiche le renvoie quand même', async () => {
+    const me = newcomer();
+    const t = await openFlow(me);
+    // Le serveur enregistre chaque PATCH ; seul le premier est suivi d'un pull réussi (miroir à jour).
+    const sent: TrainingProfilePatch[] = [];
+    t.api.on('PATCH', PROFILE_PATH, async (req) => {
+      sent.push(req.body as TrainingProfilePatch);
+      if (sent.length === 1) await seedProfile(t.db, req.body as TrainingProfilePatch);
+      return { status: 200, body: me };
+    });
+    await until(() => currentStep() === 'coach');
+    await screen.findByRole('radio', { name: 'Le Skald' });
+    for (const name of ['Le Skald', 'Le Scribe', 'Le Skald']) {
+      choose(name);
+      fireEvent.click(button('Continuer'));
+      await until(() => hasFocus(`Étape 1 sur 9 ${name}`));
+      fireEvent.click(button('Retour'));
+      await until(() => hasFocus('Étape 1 sur 9 Choisis ton coach'));
+    }
+    // Le serveur garde Le Scribe tant que Le Skald n'est pas renvoyé, même si le miroir dit Le Skald.
+    expect(sent).toEqual([{ coach: 'skald' }, { coach: 'scribe' }, { coach: 'skald' }]);
+  });
+
+  it('cascade d’entrée sur une enveloppe : la carte qui fait le ressort n’est pas un élément de la cascade', async () => {
+    await openFlow();
+    await until(() => currentStep() === 'coach');
+    await screen.findByRole('radio', { name: 'Le Skald' });
+    const cascade = [...document.querySelectorAll('.stagger > *')];
+    expect(cascade).toHaveLength(COACH_IDS.length);
+    for (const r of screen.getAllByRole('radio')) {
+      // Changer de coach change l'animation de la carte (ressort) : elle ne doit pas porter l'entrée en cascade.
+      const card = r.closest('label');
+      expect(card).not.toBeNull();
+      expect(cascade.includes(card as Element)).toBe(false);
+      expect(cascade.some((item) => item.contains(r))).toBe(true);
+    }
+  });
+
   it('reprise sans coach : l’étape coach d’abord, puis l’écran enregistré (disponibilité, 7 sur 9)', async () => {
     const t = await openFlow(newcomer({ onboardingStep: 'availability' }), async (db) => {
       await seedProfile(db, { coach: null, goal: 'muscle', experience: 'none' });
@@ -242,6 +345,19 @@ describe('étape coach de l’onboarding (spec refonte §8, §10.1)', () => {
     fireEvent.click(await screen.findByRole('button', { name: "C'est parti" }));
     await until(() => currentStep() === 'availability');
     expect(screen.getByText('Étape 7 sur 9')).toBeTruthy();
+    expect(t.server.patches).toEqual([{ coach: 'scribe' }]);
+
+    // Revenu au coach par « Retour », écran après écran : sa suite redevient l'objectif, plus la disponibilité.
+    while (currentStep() !== 'coach') {
+      const from = currentStep();
+      fireEvent.click(await screen.findByRole('button', { name: 'Retour' }));
+      await until(() => currentStep() !== from);
+    }
+    await until(() => isChecked('Le Scribe'));
+    fireEvent.click(button('Continuer'));
+    fireEvent.click(await screen.findByRole('button', { name: "C'est parti" }));
+    await until(() => currentStep() === 'goal');
+    expect(screen.getByText('Étape 2 sur 9')).toBeTruthy();
     expect(t.server.patches).toEqual([{ coach: 'scribe' }]);
   });
 
@@ -281,10 +397,13 @@ function advanceUntil(cond: () => boolean, maxMs: number): number {
   return elapsed;
 }
 
+/** Présentation rendue sous StrictMode, comme dans l'appli (main.tsx) : effets montés, démontés, remontés. */
 function renderIntro(coach: CoachId = 'skald') {
   const onBack = vi.fn();
   const onStart = vi.fn();
-  const view = render(<CoachIntro coach={coach} pseudo="lea" onBack={onBack} onStart={onStart} />);
+  const view = render(<CoachIntro coach={coach} pseudo="lea" onBack={onBack} onStart={onStart} />, {
+    wrapper: StrictMode,
+  });
   return { ...view, onBack, onStart };
 }
 
@@ -381,6 +500,32 @@ describe('présentation du coach (CoachIntro)', () => {
     fireEvent.click(button('Retour'));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  it('mouvement réduit : la démonstration nutrition se joue quand même, une seule fois, puis revient', () => {
+    vi.useFakeTimers();
+    phoneSettings(REDUCE);
+    renderIntro('skald');
+    // Texte entier dès le montage : sous StrictMode, l'effet de la démonstration est monté deux fois d'emblée.
+    advanceUntil(nutritionShown, 5_000);
+    expect(readable(coachText('skald', 'nutri', 'lea'))).toHaveLength(1);
+    advanceUntil(() => !nutritionShown(), 10_000);
+    expect(pressed('Entraînement')).toBe('true');
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(nutritionShown()).toBe(false);
+  });
+
+  it('démonstration déjà jouée : un réglage du mouvement changé ensuite ne la rejoue pas', () => {
+    vi.useFakeTimers();
+    const phone = phoneSettings(REDUCE);
+    renderIntro('skald');
+    advanceUntil(nutritionShown, 5_000);
+    advanceUntil(() => !nutritionShown(), 10_000);
+    // Mouvement réduit désactivé : le texte se dévoile de nouveau, mais la démonstration ne revient pas.
+    phone.change();
+    expect(() => advanceUntil(nutritionShown, 30_000)).toThrow('condition jamais remplie');
+  });
 });
 
 describe('textes des coachs (coach-lines)', () => {
@@ -438,6 +583,14 @@ describe('textes des coachs (coach-lines)', () => {
   it('ligne du jour du Scribe sans rythme connu : la ligne suivante, jamais « {jours} » ni une valeur inventée', () => {
     expect(coachLine('scribe', 'daily', new Date('2026-10-16T10:00:00Z'), 'lea', null)).toBe(
       'Point du jour : ton profil est à jour.',
+    );
+  });
+
+  it('coachLine à quatre arguments (signature du brief) : rythme inconnu, comme null', () => {
+    const day16 = new Date('2026-10-16T10:00:00Z');
+    expect(coachLine('scribe', 'daily', day16, 'lea')).toBe('Point du jour : ton profil est à jour.');
+    expect(coachLine('skald', 'daily', day16, 'lea')).toBe(
+      "Le premier chapitre de ta saga s'ouvre aujourd'hui, lea. Les grands récits commencent toujours ainsi.",
     );
   });
 
