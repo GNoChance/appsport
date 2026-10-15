@@ -117,10 +117,15 @@ async function openWithdraw() {
 describe('PrivacySettingsPage (02 §11, R-CST-5, 03 §13, maquette C05)', () => {
   it('version en vigueur vers la page, accords santé et coach, export de « tout ce que Rune garde »', async () => {
     await renderPrivacy();
-    // Dans l'écran : le pied de page de la coquille a aussi un lien « Confidentialité et règles ».
-    const policy = within(screen.getByRole('main')).getByRole('link', { name: 'Confidentialité et règles' });
+    // Le nom d'avant la refonte, qui dit l'action et reprend le libellé visible (WCAG 2.5.3) ; il le distingue
+    // du lien « Confidentialité et règles » du pied de page de la coquille.
+    const policy = screen.getByRole('link', { name: 'Lire la page Confidentialité et règles' });
     expect(policy.getAttribute('href')).toBe('/privacy');
+    expect(policy.textContent).toContain('Confidentialité et règles');
     expect(description(policy)).toBe('Version en vigueur : 1.0');
+    expect(
+      within(screen.getByRole('main')).queryByRole('link', { name: 'Confidentialité et règles' }),
+    ).toBeNull();
     const health = screen.getByRole('link', { name: 'Accord santé' });
     expect(health.getAttribute('href')).toBe('/profile/health');
     expect(description(health)).toBe('Donné le 01/10/2026');
@@ -135,7 +140,7 @@ describe('PrivacySettingsPage (02 §11, R-CST-5, 03 §13, maquette C05)', () => 
     expect(screen.getByRole('link', { name: 'Accord santé' }).getAttribute('data-emphasis')).toBe('value');
     const coach = screen.getByText('Accord coach').closest('[data-emphasis]');
     expect(coach?.getAttribute('data-emphasis')).toBe('value');
-    const policy = within(screen.getByRole('main')).getByRole('link', { name: 'Confidentialité et règles' });
+    const policy = screen.getByRole('link', { name: 'Lire la page Confidentialité et règles' });
     expect(policy.hasAttribute('data-emphasis')).toBe(false);
   });
 

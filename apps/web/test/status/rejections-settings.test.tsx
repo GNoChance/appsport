@@ -16,6 +16,8 @@ import { seedMirror } from '../support/seed';
 import { until } from '../support/wait';
 
 const AT = '2026-10-06T10:00:00.000Z';
+/** Ligne des refus dans Réglages › Synchronisation, quand il y en a : son nom dit où elle mène. */
+const REFUSED_LINK = 'Voir les éléments refusés : Refus du serveur';
 const INTRO = "Le serveur a refusé ces modifications : elles n'ont pas été enregistrées.";
 /** Rejet serveur au format de push.ts : `{ kind, fieldNames, reason }`, noms de champs seulement. */
 const rejection = (
@@ -321,7 +323,7 @@ describe('SettingsPage › Synchronisation (R-SYN-34, R-SYN-30)', () => {
     expect(infoValue('Connexion')).toBe('Hors ligne');
     expect(screen.getByTestId('pending-counter').textContent).toBe('2 en attente');
     expect(infoValue('Refus du serveur')).toBe('Aucun refus');
-    expect(screen.queryByRole('link', { name: 'Refus du serveur' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Refus du serveur/ })).toBeNull();
     act(() => sync.set({ connection: 'online', pending: 0 }));
     expect(infoValue('Connexion')).toBe('En ligne');
     expect(screen.getByTestId('pending-counter').textContent).toBe('0 en attente');
@@ -330,12 +332,14 @@ describe('SettingsPage › Synchronisation (R-SYN-34, R-SYN-30)', () => {
   it('refus : la ligne mène aux éléments refusés, « 1 refusé » puis « 2 refusés »', async () => {
     const sync = createFakeSyncEngine({ rejected: 1 });
     const view = await renderSettings({ sync });
-    const row = screen.getByRole('link', { name: 'Refus du serveur' });
+    // Le nom dit l'action et reprend le libellé visible (WCAG 2.5.3, maquette C03) ; la valeur le décrit.
+    const row = screen.getByRole('link', { name: REFUSED_LINK });
     expect(row.getAttribute('href')).toBe('/rejections');
+    expect(row.textContent).toContain('Refus du serveur');
     expect(describedBy(row)).toBe('1 refusé');
     act(() => sync.set({ rejected: 2 }));
-    expect(describedBy(screen.getByRole('link', { name: 'Refus du serveur' }))).toBe('2 refusés');
-    fireEvent.click(screen.getByRole('link', { name: 'Refus du serveur' }));
+    expect(describedBy(screen.getByRole('link', { name: REFUSED_LINK }))).toBe('2 refusés');
+    fireEvent.click(screen.getByRole('link', { name: REFUSED_LINK }));
     await screen.findByRole('heading', { level: 1, name: 'Éléments refusés' });
     expect(view.location()).toBe('/rejections');
     // Retour des refus vers les Réglages, d'où on vient.
@@ -348,9 +352,7 @@ describe('SettingsPage › Synchronisation (R-SYN-34, R-SYN-30)', () => {
       const row = screen.getByText(label, { exact: true }).closest('[data-emphasis]');
       expect(row?.getAttribute('data-emphasis'), label).toBe('value');
     }
-    expect(screen.getByRole('link', { name: 'Refus du serveur' }).getAttribute('data-emphasis')).toBe(
-      'value',
-    );
+    expect(screen.getByRole('link', { name: REFUSED_LINK }).getAttribute('data-emphasis')).toBe('value');
   });
 
   it('sans réseau : « Prêt hors ligne » quand l’appareil l’est, sinon « Pas encore prêt hors ligne »', async () => {

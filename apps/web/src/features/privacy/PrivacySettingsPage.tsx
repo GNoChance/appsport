@@ -21,9 +21,11 @@ export function PrivacySettingsPage() {
   return (
     <Page title="Confidentialité" back="/profile">
       <ListGroup>
+        {/* Le nom d'avant la refonte : il dit l'action et le distingue du lien du pied de page. */}
         <ListRow
           icon={<DocumentIcon />}
           label="Confidentialité et règles"
+          name="Lire la page Confidentialité et règles"
           value={`Version en vigueur : ${PRIVACY_POLICY_VERSION}`}
           href="/privacy"
         />

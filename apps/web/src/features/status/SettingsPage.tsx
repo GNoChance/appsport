@@ -71,6 +71,8 @@ function SyncSection() {
           <ListRow
             icon={<AlertIcon />}
             label="Refus du serveur"
+            // Le nom dit l'action, puis reprend le libellé visible (maquette C03, WCAG 2.5.3).
+            name="Voir les éléments refusés : Refus du serveur"
             emphasis="value"
             value={
               <span className={styles.refused}>{`${rejected} ${plural(rejected, 'refusé', 'refusés')}`}</span>
