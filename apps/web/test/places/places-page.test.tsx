@@ -162,7 +162,11 @@ describe('PlacesPage : Salles › Mes lieux (maquette D01)', () => {
     const api = createFakeApi();
     api.setOffline('reject');
     await renderPlaces({ api });
+    // La lecture de la salle a bien été tentée, puis s'est rabattue sur le miroir : la carte en vient.
+    await until(() => api.calls.some((c) => c.method === 'GET' && c.path === '/api/gyms/g-1'));
     await settle();
+    expect(card('Basic Fit').getByText('équipements')).toBeTruthy();
+    expect(card('Basic Fit').getByText('2')).toBeTruthy();
     expect(screen.queryByText(/membres? visibles?/)).toBeNull();
     expect(screen.queryByRole('region', { name: 'Dernières modifications' })).toBeNull();
   });

@@ -1,6 +1,7 @@
 import { defaultLoadSettings, EQUIPMENT, type EquipmentCode, type GymDetail } from '@rune/contracts';
 import { act, fireEvent, renderHook, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { changeSummary } from '../../src/features/places/EquipmentDraft';
 import { GymPage } from '../../src/features/places/GymPage';
 import { PlaceDetail } from '../../src/features/places/PlaceDetail';
 import { useSubScreen } from '../../src/features/places/SubScreen';
@@ -116,7 +117,11 @@ async function renderGym(api: FakeApi) {
 
 const region = (name: string) => within(screen.getByRole('region', { name }));
 const draftBar = () => screen.queryByRole('region', { name: 'Changements à enregistrer' });
+/** Texte exact du résumé de la barre (« 1 changement · 1 ajout »), sans ses boutons ni son erreur. */
+const summary = () => draftBar()?.querySelector('p')?.textContent ?? null;
 const gets = (api: FakeApi) => api.calls.filter((c) => c.method === 'GET' && c.path === '/api/gyms/g-1');
+const sent = (api: FakeApi, method: string, path: string) =>
+  api.calls.filter((c) => c.method === method && c.path === path).map((c) => c.body);
 
 /** « Modifier le matériel » : l'écran Matériel de la fiche. */
 async function openEditor() {
@@ -130,6 +135,27 @@ function openCategory(name: string) {
   if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
 }
 
+describe('changeSummary (maquette D03)', () => {
+  it('le nombre de changements, puis ajouts et retraits ; la partie nulle est tue', () => {
+    expect(changeSummary({ added: ['kettlebell'], removed: [] })).toEqual({
+      total: '1 changement',
+      detail: '1 ajout',
+    });
+    expect(changeSummary({ added: [], removed: ['flat_bench'] })).toEqual({
+      total: '1 changement',
+      detail: '1 retrait',
+    });
+    expect(changeSummary({ added: ['kettlebell', 'box'], removed: ['flat_bench'] })).toEqual({
+      total: '3 changements',
+      detail: '2 ajouts, 1 retrait',
+    });
+    expect(changeSummary({ added: [], removed: ['flat_bench', 'barbell'] })).toEqual({
+      total: '2 changements',
+      detail: '2 retraits',
+    });
+  });
+});
+
 describe('matériel en brouillon (spec refonte §10.3)', () => {
   it('cocher puis décocher le même équipement : 0 changement, aucun appel', async () => {
     const api = createFakeApi();
@@ -139,7 +165,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     expect(draftBar()).toBeNull();
     fireEvent.click(checkbox('Kettlebell'));
     expect(checkbox('Kettlebell').checked).toBe(true);
-    expect(draftBar()?.textContent).toContain('1 changement · 1 ajout');
+    expect(summary()).toBe('1 changement · 1 ajout');
     fireEvent.click(checkbox('Kettlebell'));
     expect(checkbox('Kettlebell').checked).toBe(false);
     expect(draftBar()).toBeNull();
@@ -155,7 +181,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     fireEvent.click(checkbox('Kettlebell'));
     openCategory('Bancs et supports');
     fireEvent.click(checkbox('Banc plat'));
-    expect(draftBar()?.textContent).toContain('2 changements · 1 ajout, 1 retrait');
+    expect(summary()).toBe('2 changements · 1 ajout, 1 retrait');
     await settle();
     expect(writes(api)).toEqual([]);
     fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
@@ -186,27 +212,37 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
 
   it('quitter la fiche sans enregistrer : aucun appel, l’état du serveur est réaffiché au retour', async () => {
     const api = createFakeApi();
-    serveGym(api);
+    const server = serveGym(api);
     const db = createTestLocalDb();
     await seedPlaces(db);
     const view = await renderApp({ path: '/gyms/g-1', db, api });
     await screen.findByRole('heading', { level: 1, name: 'Basic Fit' });
     await openEditor();
     fireEvent.click(checkbox('Kettlebell'));
-    // Retour de l'écran Matériel : la fiche montre le matériel du serveur.
+    expect(checkbox('Kettlebell').checked).toBe(true);
+    // Retour de l'écran Matériel : la fiche montre le matériel du serveur, le brouillon est abandonné.
     fireEvent.click(button('Retour'));
     await screen.findByRole('heading', { level: 1, name: 'Basic Fit' });
     expect(region('Matériel').queryByText('Kettlebell')).toBeNull();
-    // Brouillon de nouveau, puis départ de la fiche par l'onglet Salles et retour par la salle.
     await openEditor();
+    expect(checkbox('Kettlebell').checked).toBe(false);
+    expect(draftBar()).toBeNull();
+    // Brouillon de nouveau, puis départ de la fiche par l'onglet Salles.
     fireEvent.click(checkbox('Kettlebell'));
+    expect(checkbox('Kettlebell').checked).toBe(true);
+    expect(summary()).toBe('1 changement · 1 ajout');
     const tabs = within(screen.getByRole('navigation', { name: 'Navigation principale' }));
     fireEvent.click(tabs.getByRole('link', { name: 'Salles' }));
     await until(() => view.location() === '/places');
+    // Pendant l'absence, un autre membre ajoute la box sur le serveur : le retour la relit.
+    server.add('box');
     fireEvent.click(await screen.findByRole('link', { name: 'Basic Fit' }));
     await until(() => view.location() === '/gyms/g-1');
     await screen.findByRole('heading', { level: 1, name: 'Basic Fit' });
+    expect(region('Matériel').getByText('Box ou step stable')).toBeTruthy();
+    expect(region('Matériel').queryByText('Kettlebell')).toBeNull();
     await openEditor();
+    expect(checkbox('Box ou step stable').checked).toBe(true);
     expect(checkbox('Kettlebell').checked).toBe(false);
     expect(draftBar()).toBeNull();
     await settle();
@@ -229,7 +265,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     await settle();
     expect(screen.getByRole('heading', { level: 1, name: 'Matériel' })).toBeTruthy();
     expect(checkbox('Kettlebell').checked).toBe(true);
-    expect(draftBar()?.textContent).toContain('1 changement · 1 ajout');
+    expect(summary()).toBe('1 changement · 1 ajout');
   });
 
   it('réussite partielle : le reste du brouillon, l’erreur, et le compte relu sur le serveur', async () => {
@@ -245,7 +281,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
       'Le serveur a rencontré une erreur.',
     );
     // L'ajout est passé : relu sur le serveur, il ne compte plus ; le retrait refusé reste à enregistrer.
-    await until(() => draftBar()?.textContent?.includes('1 changement · 1 retrait') ?? false);
+    await until(() => summary() === '1 changement · 1 retrait');
     expect(checkbox('Kettlebell').checked).toBe(true);
     expect(checkbox('Banc plat').checked).toBe(false);
     expect(writes(api)).toEqual([
@@ -266,7 +302,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     fireEvent.click(checkbox('Chaise ou banc stable'));
     openCategory('Petit matériel');
     fireEvent.click(checkbox('Haltères fixes ou réglables'));
-    expect(draftBar()?.textContent).toContain('2 changements · 1 ajout, 1 retrait');
+    expect(summary()).toBe('2 changements · 1 ajout, 1 retrait');
     fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
     await screen.findByRole('heading', { level: 1, name: 'Garage' });
     expect(writes(api)).toEqual([
@@ -509,7 +545,9 @@ describe('fiche directe et actions du lieu (spec refonte §10.3)', () => {
     expect(screen.getByText('Actuel : Basic Fit')).toBeTruthy();
     fireEvent.click(primary);
     await until(() => writes(api).length === 1);
-    expect(api.calls.find((c) => c.method === 'PATCH')?.body).toEqual({ isPrimary: true });
+    // Sur ce lieu-ci (« Garage »), jamais sur le lieu principal actuel.
+    expect(sent(api, 'PATCH', '/api/places/p-2')).toEqual([{ isPrimary: true }]);
+    expect(sent(api, 'PATCH', '/api/places/p-1')).toEqual([]);
   });
 
   it('la case « Qui va à cette salle » porte l’interrupteur de visibilité de l’utilisateur', async () => {
