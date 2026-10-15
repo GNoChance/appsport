@@ -16,6 +16,12 @@ const SEE_DOCTOR = 'Nous te recommandons de consulter un médecin avant de comme
 const SCREENING_INCOMPLETE = 'Réponds aux 4 questions ou efface tes réponses avant de continuer.';
 const DRAFT_INCOMPLETE = 'Termine ou efface la limitation en cours avant de continuer.';
 const NOT_HEALTH_DATA = "Réglage d'entraînement, pas une donnée de santé : enregistré même sans accord.";
+// Textes de l'écran Santé mot pour mot (02-comptes E7.1 et E7.3) : l'explication de l'accord et la mention des
+// limitations, en entier.
+const CONSENT_EXPLANATION =
+  "Tes réponses au questionnaire et tes limitations sont des données de santé. Elles servent seulement à adapter tes séances et restent sur le serveur du cercle. Elles ne vont au coach qu'avec son propre accord, en plus de celui-ci. Tu peux les supprimer à tout moment.";
+const LIMITATIONS_NOTE =
+  "Facultatif : une zone sensible ou une gêne à ménager ; aucun diagnostic n'est nécessaire.";
 const SCREENING = 'PUT /api/me/health-screening';
 const PATCH = 'PATCH /api/me/training-profile';
 const consenting = (o: Partial<MeResponse> = {}) =>
@@ -58,14 +64,29 @@ const describedBy = (el: HTMLElement) =>
     .split(' ')
     .map((id) => document.getElementById(id)?.textContent);
 
+/** Élément dont le texte est exactement `text`, sans espace en trop ni en moins (mot pour mot). */
+const verbatim = (scope: { getByText(text: string): HTMLElement }, text: string) => {
+  const el = scope.getByText(text);
+  expect(el.textContent).toBe(text);
+  return el;
+};
+
+/** Aucun champ de santé sur tout l'écran (P-CST-1) : ni zone, ni côté, ni gêne, ni note, ni réponse. */
+function expectNoHealthFields() {
+  expect(screen.queryAllByRole('combobox')).toEqual([]);
+  expect(screen.queryAllByRole('textbox')).toEqual([]);
+  expect(screen.queryAllByRole('radio')).toEqual([]);
+  expect(screen.queryByLabelText('Zone')).toBeNull();
+  expect(screen.queryByLabelText('Côté')).toBeNull();
+  expect(screen.queryByLabelText('Note')).toBeNull();
+}
+
 describe('HealthStep sans accord santé (E7, P-CST-1, P-CST-2)', () => {
   it('texte de l’accord, case décochée, « J’accepte et je renseigne » désactivé', async () => {
     await renderHealth();
     expect(screen.getByText(HEALTH_CONSENT_TEXT.text)).toBeTruthy();
-    // L'explication vise le questionnaire et les limitations, pas le mode prudent (C1).
-    expect(
-      screen.getByText(/^Tes réponses au questionnaire et tes limitations sont des données de santé\./),
-    ).toBeTruthy();
+    // L'explication, en entier, vise le questionnaire et les limitations, pas le mode prudent (C1).
+    verbatim(within(screen.getByRole('region', { name: 'Accord santé' })), CONSENT_EXPLANATION);
     expect(screen.queryByText(/Les réponses de cet écran/)).toBeNull();
     const box = screen.getByRole('checkbox', { name: HEALTH_CONSENT_TEXT.text }) as HTMLInputElement;
     expect(box.checked).toBe(false);
@@ -74,15 +95,16 @@ describe('HealthStep sans accord santé (E7, P-CST-1, P-CST-2)', () => {
     expect(button("J'accepte et je renseigne").disabled).toBe(false);
   });
 
-  it('carte « Accord santé » ; limitations annoncées « Après ton accord » ; aucune voix du Système', async () => {
+  it('carte « Accord santé » ; limitations annoncées « Après ton accord », aucun champ de santé ; aucune voix du Système', async () => {
     await renderHealth();
     const consent = screen.getByRole('region', { name: 'Accord santé' });
     expect(within(consent).getByRole('heading', { level: 3, name: 'Accord santé' })).toBeTruthy();
     expect(within(consent).getByText(HEALTH_CONSENT_TEXT.text)).toBeTruthy();
     const locked = screen.getByRole('region', { name: 'Limitations' });
     expect(within(locked).getByText('Après ton accord')).toBeTruthy();
-    expect(within(locked).getByText(/aucun diagnostic n'est nécessaire/)).toBeTruthy();
-    expect(within(locked).queryByRole('combobox')).toBeNull();
+    verbatim(within(locked), LIMITATIONS_NOTE);
+    // Aucun champ de santé avant l'accord, nulle part sur l'écran (pas seulement dans cette carte).
+    expectNoHealthFields();
     // Textes légaux mot pour mot, en « vous » pour l'avertissement, hors de toute fenêtre du Système.
     expect(screen.getByText(HEALTH_WARNING_TEXT)).toBeTruthy();
     expect(screen.queryByText('SYSTÈME')).toBeNull();
@@ -93,7 +115,7 @@ describe('HealthStep sans accord santé (E7, P-CST-1, P-CST-2)', () => {
     fireEvent.click(button('Passer'));
     await screen.findByText(new RegExp(SELF_CHECK));
     for (const q of HEALTH_QUESTIONNAIRE.questions) expect(screen.getByText(q)).toBeTruthy();
-    expect(screen.queryByRole('radio')).toBeNull();
+    expectNoHealthFields();
     expect(screen.queryByRole('button', { name: 'Enregistrer mes réponses' })).toBeNull();
     expect(api.calls).toEqual([]);
   });
@@ -244,7 +266,9 @@ describe('HealthStep avec accord santé', () => {
       ]);
       return { status: 201, body: { id: 'l-1' } };
     });
-    expect(screen.getByText(/aucun diagnostic n'est nécessaire/)).toBeTruthy();
+    const editor = screen.getByRole('heading', { level: 3, name: 'Limitations' }).closest('section');
+    expect(editor).not.toBeNull();
+    verbatim(within(editor as HTMLElement), LIMITATIONS_NOTE);
     expect(screen.queryByText('Après ton accord')).toBeNull();
     await screen.findByText('Aucune');
     expect(button('Ajouter une limitation').disabled).toBe(true);
