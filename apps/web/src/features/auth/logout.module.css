@@ -1,0 +1,40 @@
+/*
+ * Feuille « Se déconnecter » (maquette C06) : deux cartes de choix, puis l'avertissement des données non
+ * envoyées (titre demi-gras, phrase, lien d'export souligné, couleur du bandeau).
+ */
+.body,
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.body {
+  gap: var(--space-4);
+}
+
+.text,
+.warningTitle {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.warningTitle {
+  font-weight: 600;
+}
+
+/* Lien du bandeau : la couleur de l'avertissement, souligné, avec une zone de toucher de 44 px. */
+.exportLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.text + .exportLink,
+.warningTitle + .text {
+  margin-top: 3px;
+}

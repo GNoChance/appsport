@@ -278,20 +278,54 @@ describe('HealthSection avec accord (E7, P-DRT-2)', () => {
   });
 });
 
-describe('HealthSection › mode prudent (E7.5, R-CST-7)', () => {
-  it('CautiousModeToggle → PATCH /api/me/training-profile { cautiousMode: false }', async () => {
-    const t = await renderHealth({ cautiousMode: true });
-    const toggle = (await screen.findByRole('switch', { name: CAUTIOUS })) as HTMLInputElement;
-    await until(() => toggle.checked);
-    fireEvent.click(toggle);
-    await until(() => t.patches.length === 1);
-    expect(t.patches).toEqual([{ cautiousMode: false }]);
+describe('HealthSection › accord, mode prudent et retrait (spec refonte §10.4, maquette C04)', () => {
+  const WITHDRAW_LIST =
+    "Seront effacés : ton indicateur de prudence (questionnaire), tes limitations et zones sensibles, et toute donnée de santé enregistrée par l'appli (douleurs, pesées, suivi nutritionnel). Le mode prudent est conservé.";
+
+  it('accord donné : sa date et « Actif » en tête de page', async () => {
+    await renderHealth();
+    const consent = screen.getByText('Accord santé').closest('li');
+    if (!consent) throw new Error('aucune ligne Accord santé');
+    expect(within(consent).getByText('Donné le 01/10/2026')).toBeTruthy();
+    expect(within(consent).getByText('Actif')).toBeTruthy();
   });
 
-  it('mineur : interrupteur imposé et désactivé', async () => {
-    await renderHealth({ me: consented({ ageBand: 'minor', birthDate: '2009-01-01' }), cautiousMode: false });
-    const toggle = (await screen.findByRole('switch', { name: CAUTIOUS })) as HTMLInputElement;
-    expect(toggle.disabled).toBe(true);
-    expect(toggle.checked).toBe(true);
+  it('le mode prudent est dans Mon profil seulement, pas dans Santé', async () => {
+    await renderHealth({ cautiousMode: true });
+    await screen.findByText(LIMITATION);
+    expect(screen.queryByRole('switch', { name: CAUTIOUS })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Mode prudent' })).toBeNull();
+  });
+
+  it("« Retirer l'accord santé » : ce qui sera effacé et le bouton danger, isolés en bas de page", async () => {
+    await renderHealth();
+    const withdraw = within(section("Retirer l'accord santé"));
+    expect(withdraw.getByText(WITHDRAW_LIST)).toBeTruthy();
+    const confirm = withdraw.getByRole('button', { name: 'Retirer mon accord santé' });
+    const controls = within(screen.getByRole('main')).getAllByRole('button');
+    expect(controls.at(-1)).toBe(confirm);
+    // L'avertissement santé reste au-dessus, mot pour mot.
+    const warning = screen.getByText(/Rune ne remplace pas un avis médical/);
+    expect(warning.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("le retrait ouvre le dialogue « Retirer l'accord santé » avec le mot de passe", async () => {
+    await renderHealth();
+    fireEvent.click(button('Retirer mon accord santé'));
+    const dialog = within(await screen.findByRole('dialog', { name: "Retirer l'accord santé" }));
+    expect(dialog.getByLabelText('Mot de passe')).toBeTruthy();
+  });
+
+  it('sans accord : ni retrait ni renvoi vers Confidentialité', async () => {
+    await renderHealth({ me: makeMe() });
+    expect(screen.queryByRole('heading', { level: 2, name: "Retirer l'accord santé" })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retirer mon accord santé' })).toBeNull();
+    expect(screen.queryByText(/se retire dans/)).toBeNull();
+  });
+
+  it('avec accord : plus de renvoi « se retire dans Confidentialité »', async () => {
+    await renderHealth();
+    expect(screen.queryByText(/se retire dans/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Confidentialité' })).toBeNull();
   });
 });

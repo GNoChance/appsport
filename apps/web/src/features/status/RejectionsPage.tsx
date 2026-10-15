@@ -70,7 +70,7 @@ export function RejectionsPage() {
   const dismiss = useAction((id: string) => repos.rejections.dismiss(id));
   const listId = useId();
   return (
-    <Page title={TITLE} back="/">
+    <Page title={TITLE} back="/settings">
       {dismiss.error ? <Banner tone="error">{dismiss.error}</Banner> : null}
       {rejections === undefined ? null : rejections.length === 0 ? (
         <p>Aucun refus.</p>

@@ -9,6 +9,7 @@ import { ServerHealthPage } from './features/admin/ServerHealthPage';
 import { InvitePage } from './features/auth/InvitePage';
 import { LoginPage } from './features/auth/LoginPage';
 import { ResetPage } from './features/auth/ResetPage';
+import { MyCoachPage } from './features/coach/MyCoachPage';
 import { HomePage } from './features/home/HomePage';
 import { OnboardingFlow } from './features/onboarding/OnboardingFlow';
 import { GymPage } from './features/places/GymPage';
@@ -17,6 +18,7 @@ import { PlacesPage } from './features/places/PlacesPage';
 import { HealthReconsentGate } from './features/privacy/HealthReconsentGate';
 import { HealthSection } from './features/privacy/HealthSection';
 import { PrivacySettingsPage } from './features/privacy/PrivacySettingsPage';
+import { ProfileHub } from './features/profile/ProfileHub';
 import { ProfilePage } from './features/profile/ProfilePage';
 import { ProgressionPage } from './features/progression/ProgressionPage';
 import { CreditsPage } from './features/public/CreditsPage';
@@ -59,6 +61,9 @@ const isAdminPath = (path: string) => {
  */
 const MOVED_PLACES = /^\/profile\/places(\/.*)?$/i;
 
+/** Mon profil : seule page servie tant que le mot de passe est à changer (R-MDP-1), le formulaire y est. */
+const PROFILE_EDIT_PATH = '/profile/edit';
+
 /** Chemin sans barre finale (`/privacy/` → `/privacy`), `/` gardé. */
 export const normalizePath = (path: string): string => path.replace(/\/+$/, '') || '/';
 
@@ -81,7 +86,7 @@ export function resolveGuard(i: {
   if (!i.loaded) return { kind: 'wait' };
   if (!i.me || !sessionValid) return { kind: 'redirect', to: '/login' };
   if (i.me.mustChangePassword) {
-    return path === '/profile' ? { kind: 'render' } : { kind: 'redirect', to: '/profile' };
+    return path === PROFILE_EDIT_PATH ? { kind: 'render' } : { kind: 'redirect', to: PROFILE_EDIT_PATH };
   }
   const onboarded = i.me.onboardingCompletedAt !== null;
   if (!onboarded && path !== '/onboarding') return { kind: 'redirect', to: '/onboarding' };
@@ -113,7 +118,9 @@ function ConnectedRoutes() {
       <Route path="/progression" component={ProgressionPage} />
       <Route path="/places" component={PlacesPage} />
       <Route path="/places/:id" component={PlaceDetail} />
-      <Route path="/profile" component={ProfilePage} />
+      <Route path="/profile" component={ProfileHub} />
+      <Route path="/profile/edit" component={ProfilePage} />
+      <Route path="/profile/coach" component={MyCoachPage} />
       <Route path="/profile/health" component={HealthSection} />
       <Route path="/profile/privacy" component={PrivacySettingsPage} />
       <Route path="/settings" component={SettingsPage} />
