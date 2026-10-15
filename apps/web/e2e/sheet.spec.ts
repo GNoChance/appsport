@@ -156,3 +156,84 @@ test('barre des changements : ses boutons reçoivent le toucher, même par-dessu
   await expect(bar).toHaveCount(0);
   await expect(chair).not.toBeChecked();
 });
+
+const DRAFT_BAR = '[aria-label="Changements à enregistrer"]';
+
+/**
+ * Fait défiler l'écran jusqu'à poser au milieu de la barre des changements une pastille (sa case) précédée d'un
+ * autre contrôle, et la marque `data-e2e-target`. `focusBefore` : le contrôle d'avant prend d'abord le focus, sans
+ * défiler (départ de la tabulation). Faux si aucune pastille ne s'y prête.
+ */
+async function chipUnderDraftBar(page: Page, focusBefore: boolean): Promise<boolean> {
+  return page.evaluate(
+    ({ selector, before }) => {
+      document.querySelector('[data-e2e-target]')?.removeAttribute('data-e2e-target');
+      const bar = document.querySelector(selector);
+      if (!bar) return false;
+      const controls = [...document.querySelectorAll<HTMLElement>('main input, main button')].filter(
+        (el) => el.getClientRects().length > 0 && !bar.contains(el) && !el.matches(':disabled'),
+      );
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      for (const [i, input] of controls.entries()) {
+        if (i === 0 || !(input instanceof HTMLInputElement) || input.type !== 'checkbox') continue;
+        if (before) controls[i - 1]?.focus({ preventScroll: true });
+        const box = bar.getBoundingClientRect();
+        const r = input.getBoundingClientRect();
+        const scroll = window.scrollY + r.top + r.height / 2 - (box.top + box.height / 2);
+        if (scroll < 0 || scroll > max) continue;
+        window.scrollTo(0, scroll);
+        const now = input.getBoundingClientRect();
+        if (now.top < box.top || now.bottom > box.bottom) continue;
+        input.dataset.e2eTarget = '';
+        return true;
+      }
+      return false;
+    },
+    { selector: DRAFT_BAR, before: focusBefore },
+  );
+}
+
+/** La pastille marquée a-t-elle le focus, et où est son bas par rapport au haut de la barre ? */
+async function targetAboveDraftBar(page: Page) {
+  return page.evaluate((selector) => {
+    const target = document.querySelector('[data-e2e-target]');
+    const bar = document.querySelector(selector);
+    if (!target || !bar) return { focused: false, gap: Number.NEGATIVE_INFINITY };
+    return {
+      focused: document.activeElement === target,
+      gap: bar.getBoundingClientRect().top - target.getBoundingClientRect().bottom,
+    };
+  }, DRAFT_BAR);
+}
+
+// WCAG 2.2, 2.4.11 : la barre des changements est opaque et collée en bas ; le contrôle qui prend le focus (tabulation,
+// focus() d'un script) ne doit jamais finir dessous. La tabulation de WebKit ne passe que par les champs de saisie.
+test('barre des changements : le focus ne finit jamais dessous (WCAG 2.2, 2.4.11)', async ({
+  server,
+  page,
+}) => {
+  await openGarage(server, page);
+  await page.getByRole('button', { name: 'Modifier le matériel', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Matériel' })).toBeVisible();
+  const collapsed = page.getByRole('button', { expanded: false });
+  while ((await collapsed.count()) > 0) await collapsed.first().click();
+  await page.getByRole('checkbox', { name: 'Chaise ou banc stable', exact: true }).check();
+  await expect(page.getByRole('region', { name: 'Changements à enregistrer' })).toContainText('1 changement');
+  await settled(page);
+
+  await test.step('focus() d’une pastille sous la barre : elle finit au-dessus', async () => {
+    expect(await chipUnderDraftBar(page, false), 'une pastille peut passer sous la barre').toBe(true);
+    await page.locator('[data-e2e-target]').focus();
+    await expect.poll(async () => (await targetAboveDraftBar(page)).gap).toBeGreaterThanOrEqual(0);
+    expect((await targetAboveDraftBar(page)).focused).toBe(true);
+  });
+
+  if (test.info().project.name === 'chromium') {
+    await test.step('tabulation jusqu’à une pastille sous la barre : elle finit au-dessus', async () => {
+      expect(await chipUnderDraftBar(page, true), 'une pastille peut passer sous la barre').toBe(true);
+      await page.keyboard.press('Tab');
+      await expect.poll(async () => (await targetAboveDraftBar(page)).focused).toBe(true);
+      await expect.poll(async () => (await targetAboveDraftBar(page)).gap).toBeGreaterThanOrEqual(0);
+    });
+  }
+});

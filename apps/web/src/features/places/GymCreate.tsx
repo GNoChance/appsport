@@ -15,6 +15,7 @@ import { useRepos } from '../../repos';
 import { Banner, Button, ChoiceList, ERROR_MESSAGES, Field, plural, useAction } from '../../ui';
 import { EquipmentChecklist, sortEquipment } from './EquipmentChecklist';
 import styles from './places.module.css';
+import { useSubScreenBusy } from './SubScreen';
 
 const GYM_PRESETS = PRESET_IDS.filter((id) => PRESETS[id].kind === 'gym');
 
@@ -82,6 +83,7 @@ export function GymCreate(p: {
     }
     p.onDone();
   });
+  useSubScreenBusy(create.pending);
 
   /** Nom ou ville modifiés : les salles proches sont à revoir. */
   const edit = (set: (v: string) => void) => (v: string) => {

@@ -1,5 +1,5 @@
 import type { EquipmentCode } from '@rune/contracts';
-import { useCallback, useRef, useState } from 'react';
+import { type RefObject, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Banner, Button, plural } from '../../ui';
 import { sortEquipment } from './EquipmentChecklist';
 import styles from './places.module.css';
@@ -85,6 +85,40 @@ export function changeSummary(changes: EquipmentChanges): { total: string; detai
   return { total: `${count} ${plural(count, 'changement', 'changements')}`, detail };
 }
 
+/** Hauteur de la barre, gardée sous la page par le scroll-padding-bottom de places.module.css. */
+const BAR_HEIGHT = '--draft-bar-height';
+
+/**
+ * Le focus ne finit jamais sous la barre (WCAG 2.2, 2.4.11). Tant qu'elle est là, la racine porte sa hauteur
+ * mesurée (suivie quand une erreur ou un gros texte la font grandir) : tabulation et Chromium s'arrêtent au-dessus
+ * d'elle. WebKit ignore scroll-padding pour focus() : quand la barre recouvre le centre du contrôle qui prend le
+ * focus, il défile au plus près, ce qui respecte la marge. Une feuille du bas posée par-dessus prend le point.
+ */
+function useFocusAboveDraftBar(bar: RefObject<HTMLElement | null>, shown: boolean) {
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!shown || !el) return;
+    const root = document.documentElement;
+    const measure = () => root.style.setProperty(BAR_HEIGHT, `${el.offsetHeight}px`);
+    measure();
+    const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    resized?.observe(el);
+    const onFocus = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || el.contains(target)) return;
+      const box = target.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      if (hit && el.contains(hit)) target.scrollIntoView({ block: 'nearest' });
+    };
+    document.addEventListener('focusin', onFocus);
+    return () => {
+      document.removeEventListener('focusin', onFocus);
+      resized?.disconnect();
+      root.style.removeProperty(BAR_HEIGHT);
+    };
+  }, [bar, shown]);
+}
+
 /**
  * Barre des changements (maquette D03) : le nombre de changements, « Annuler » et « Enregistrer », collée au
  * bas de l'écran au-dessus de la barre d'onglets. Absente tant que le brouillon ne change rien.
@@ -96,10 +130,13 @@ export function DraftBar(p: {
   onCancel(): void;
   onSave(): void;
 }) {
-  if (p.changes.added.length + p.changes.removed.length === 0) return null;
+  const ref = useRef<HTMLElement>(null);
+  const shown = p.changes.added.length + p.changes.removed.length > 0;
+  useFocusAboveDraftBar(ref, shown);
+  if (!shown) return null;
   const { total, detail } = changeSummary(p.changes);
   return (
-    <section aria-label="Changements à enregistrer" className={styles.draftBar}>
+    <section ref={ref} aria-label="Changements à enregistrer" className={styles.draftBar}>
       {p.error ? <Banner tone="error">{p.error}</Banner> : null}
       <p className={styles.draftSummary}>
         <span className={styles.draftDot} aria-hidden="true" />

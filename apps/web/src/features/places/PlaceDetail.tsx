@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { Redirect } from 'wouter';
-import { useLive } from '../../app-services';
+import { useLive, useServices } from '../../app-services';
 import { type PlaceView, useRepos } from '../../repos';
 import { Page, plural } from '../../ui';
 import { EquipmentChips } from './EquipmentChips';
@@ -38,6 +38,7 @@ export function PlaceDetail(p: { params: { id: string } }) {
  */
 function HomeSheet(p: { place: PlaceView; places: readonly PlaceView[] }) {
   const repos = useRepos();
+  const { sync } = useServices();
   const { place } = p;
   const sub = useSubScreen<'equipment'>();
   const materialId = useId();
@@ -51,8 +52,9 @@ function HomeSheet(p: { place: PlaceView; places: readonly PlaceView[] }) {
         placeName={place.name}
         initial={place.equipment}
         send={(code, present) => repos.places.setEquipment(place.id, code, present)}
-        // Chaque envoi relit le miroir (pull), que la fiche observe : rien de plus à relire.
-        reread={async () => {}}
+        // La fiche observe le miroir : la relire, c'est tirer l'état du serveur (pull). Un envoi accepté en tire
+        // déjà un, pas un envoi refusé, et ce pull peut échouer : après l'enregistrement, réussi ou non, on relit.
+        reread={() => sync.pullNow()}
         onSaved={sub.close}
         onBack={sub.close}
       />

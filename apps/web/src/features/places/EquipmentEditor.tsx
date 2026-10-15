@@ -17,7 +17,8 @@ import { SubScreen } from './SubScreen';
  * Écran Matériel d'un lieu (maquette D03) : les catégories se déplient (la première est ouverte), chaque
  * pastille coche ou décoche un matériel du brouillon, rien ne part avant « Enregistrer » (spec refonte
  * §10.3). Après l'envoi, l'état est toujours relu (`reread`) : réussi, l'écran se ferme sur la fiche à jour
- * (`onSaved`) ; en échec, le brouillon reste avec l'erreur, compté contre l'état relu. Retour l'abandonne.
+ * (`onSaved`) ; en échec, le brouillon reste avec l'erreur, compté contre l'état relu. Retour l'abandonne, sauf
+ * pendant l'envoi : il est alors sans effet, pour que l'envoi finisse sous les yeux de l'utilisateur.
  */
 export function EquipmentEditor(p: {
   kind: 'gym' | 'home';
@@ -54,7 +55,7 @@ export function EquipmentEditor(p: {
   }
 
   return (
-    <SubScreen title="Matériel" subtitle={p.placeName} onBack={p.onBack}>
+    <SubScreen title="Matériel" subtitle={p.placeName} busy={save.pending} onBack={p.onBack}>
       {p.kind === 'gym' ? (
         <div role="note" className={styles.note}>
           <PeopleIcon size={20} />
@@ -94,7 +95,8 @@ export function EquipmentEditor(p: {
 
 /**
  * Une catégorie : titre-bouton qui la déplie (compte coché sur le total, point violet tant qu'un changement
- * n'est pas enregistré), puis ses pastilles, de vraies cases à cocher.
+ * n'est pas enregistré), puis ses pastilles, de vraies cases à cocher. La pastille qu'on vient de cocher fait un
+ * petit ressort (`data-pop`, ôté à sa fin) : pas celles déjà cochées qui s'affichent.
  */
 function EditorCategory(p: {
   category: EquipmentCategory;
@@ -111,6 +113,9 @@ function EditorCategory(p: {
   const { selected } = p.draft;
   const count = codes.filter((code) => selected.has(code)).length;
   const changed = codes.some((code) => selected.has(code) !== p.initial.has(code));
+  const [popping, setPopping] = useState<EquipmentCode | null>(null);
+  // Repliée pendant un ressort, la catégorie l'arrête (display: none) : la déplier ne doit pas le rejouer.
+  if (!p.expanded && popping !== null) setPopping(null);
   return (
     <div className={styles.editorCategory}>
       <h2 className={styles.editorHeading}>
@@ -140,14 +145,23 @@ function EditorCategory(p: {
           const checked = selected.has(code);
           const dirty = checked !== p.initial.has(code);
           return (
-            <label key={code} className={styles.toggleChip} data-dirty={dirty ? '' : undefined}>
+            <label
+              key={code}
+              className={styles.toggleChip}
+              data-dirty={dirty ? '' : undefined}
+              data-pop={popping === code ? '' : undefined}
+              onAnimationEnd={() => setPopping((current) => (current === code ? null : current))}
+            >
               <input
                 type="checkbox"
                 className={styles.toggleChipInput}
                 checked={checked}
                 disabled={p.disabled}
                 aria-describedby={dirty ? p.changedId : undefined}
-                onChange={() => p.draft.toggle(code)}
+                onChange={() => {
+                  p.draft.toggle(code);
+                  setPopping((current) => (checked ? (current === code ? null : current) : code));
+                }}
               />
               <span className={styles.toggleChipGlyph} aria-hidden="true">
                 {checked ? <CheckIcon /> : <PlusIcon size={15} />}

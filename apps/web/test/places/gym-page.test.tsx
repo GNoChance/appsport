@@ -19,6 +19,8 @@ const RIGHTS_TEXT = 'Seuls les membres qui ont cette salle parmi leurs lieux peu
 const NOBODY = "Personne n'est visible pour l'instant.";
 const EDIT_INFO = 'Modifier le nom ou la ville';
 const EDIT_EQUIPMENT = 'Modifier le matériel';
+/** Nom de l'interrupteur de visibilité : « Visible » à l'écran, la suite pour les lecteurs d'écran (maquette D02). */
+const VISIBLE = 'Visible dans « Qui va à cette salle »';
 
 /** 12 entrées, de la plus récente à la plus ancienne (le serveur en rend au plus 10 ; l'écran borne aussi). */
 const HISTORY: HistoryEntry[] = [
@@ -52,10 +54,12 @@ function detail(o: Partial<GymDetail> = {}): GymDetail {
   };
 }
 
-async function renderGym(o: { detail?: GymDetail; api?: FakeApi; db?: AppDb; me?: MeResponse } = {}) {
+async function renderGym(
+  o: { detail?: GymDetail; api?: FakeApi; db?: AppDb; me?: MeResponse; id?: string } = {},
+) {
   const api = o.api ?? createFakeApi();
   api.on('GET', '/api/gyms/:id', { status: 200, body: o.detail ?? detail() });
-  const rendered = await renderWithServices(<GymPage params={{ id: 'g-1' }} />, {
+  const rendered = await renderWithServices(<GymPage params={{ id: o.id ?? 'g-1' }} />, {
     api,
     db: o.db,
     me: o.me,
@@ -99,6 +103,37 @@ async function dbWithPlace(o: { garage?: boolean } = {}) {
       },
     ]);
   }
+  return db;
+}
+
+/** Fiche de la salle g-2 « Fitness Park » (Lyon), seconde salle de l'utilisateur dans `dbWithTwoGyms`. */
+const FITNESS_PARK = detail({ id: 'g-2', name: 'Fitness Park', visibleMembers: ['max'] });
+
+/** p-1 sur g-1 (principal, visible) et p-3 sur g-2 « Fitness Park » (non principal, invisible). */
+async function dbWithTwoGyms() {
+  const db = await dbWithPlace();
+  await seedMirror(db, 'gym', [
+    {
+      id: 'g-2',
+      name: 'Fitness Park',
+      nameKey: 'fitness park',
+      city: 'Lyon',
+      cityKey: 'lyon',
+      loadSettings: defaultLoadSettings('gym'),
+    },
+  ]);
+  await seedMirror(db, 'place', [
+    {
+      id: 'p-3',
+      ownerId: 'u-1',
+      kind: 'gym',
+      gymId: 'g-2',
+      name: null,
+      isPrimary: false,
+      visibleAtGym: false,
+      loadSettings: null,
+    },
+  ]);
   return db;
 }
 
@@ -367,8 +402,11 @@ describe('GymPage : fiche de la salle (maquette D02, R-SAL-4, R-SAL-6, R-VIS-1 �
     expect(region('Matériel').getByText('Barre droite et disques')).toBeTruthy();
   });
 
-  it('salle hors de mes lieux : ni interrupteurs ni zone sensible', async () => {
-    await renderGym();
+  it('salle hors de mes lieux, alors que j’en ai une autre : ni interrupteurs ni zone sensible', async () => {
+    // Mes lieux : p-1 sur g-1 ; la fiche ouverte est celle de g-2. renderGym attend la lecture de la liste.
+    await renderGym({ db: await dbWithPlace(), id: 'g-2', detail: FITNESS_PARK });
+    expect(screen.getByRole('heading', { level: 1, name: 'Fitness Park' })).toBeTruthy();
+    expect(region('Qui va à cette salle').getByText('max')).toBeTruthy();
     expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('region', { name: 'Zone sensible' })).toBeNull();
   });
@@ -385,7 +423,7 @@ describe('GymPage : le lieu de l’utilisateur à cette salle (spec refonte §10
     const api = createFakeApi();
     await renderGym({ api, db: await dbWithPlace() });
     api.setOffline('reject');
-    const visible = region('Qui va à cette salle').getByRole('switch', { name: 'Visible' });
+    const visible = region('Qui va à cette salle').getByRole('switch', { name: VISIBLE });
     fireEvent.click(visible);
     expect((await region('Qui va à cette salle').findByRole('alert')).textContent).toBe(
       'Nécessite le réseau',
@@ -397,7 +435,7 @@ describe('GymPage : le lieu de l’utilisateur à cette salle (spec refonte §10
     const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
     const db = await dbWithPlace();
     await renderGym({ api, db });
-    const visible = region('Qui va à cette salle').getByRole('switch', { name: 'Visible' });
+    const visible = region('Qui va à cette salle').getByRole('switch', { name: VISIBLE });
     fireEvent.click(visible);
     await until(() => sent(api, 'PATCH', '/api/places/p-1').length === 1);
     await until(() => !(visible as HTMLButtonElement).disabled);
@@ -407,10 +445,43 @@ describe('GymPage : le lieu de l’utilisateur à cette salle (spec refonte §10
     await until(() => visible.getAttribute('aria-checked') === 'true');
   });
 
+  // Maquette D02 : « Visible » à l'écran, « dans « Qui va à cette salle » » lu par le lecteur d'écran ; le nom dit
+  // ce qui devient visible, même hors de la section (liste des contrôles, retour du focus).
+  it('« Visible » : nommé « Visible dans « Qui va à cette salle » », « Visible » seul à l’écran, sans aide pour un adulte', async () => {
+    await renderGym({ db: await dbWithPlace() });
+    const visible = region('Qui va à cette salle').getByRole('switch', { name: VISIBLE });
+    const label = document.getElementById(visible.getAttribute('aria-labelledby') ?? '');
+    expect(label?.firstChild?.textContent).toBe('Visible');
+    expect(label?.textContent).toBe(VISIBLE);
+    expect(visible.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('deux salles parmi mes lieux : la fiche de la seconde porte son lieu à elle (visibilité, principal, suppression)', async () => {
+    const api = createFakeApi()
+      .on('PATCH', '/api/places/:id', { status: 204 })
+      .on('DELETE', '/api/places/:id', { status: 204 });
+    await renderGym({ api, db: await dbWithTwoGyms(), id: 'g-2', detail: FITNESS_PARK });
+    const visible = region('Qui va à cette salle').getByRole('switch', { name: VISIBLE });
+    expect(visible.getAttribute('aria-checked')).toBe('false');
+    const primary = screen.getByRole('switch', { name: 'Lieu principal' }) as HTMLButtonElement;
+    expect(primary.getAttribute('aria-checked')).toBe('false');
+    expect(primary.disabled).toBe(false);
+    fireEvent.click(visible);
+    await until(() => sent(api, 'PATCH', '/api/places/p-3').length === 1);
+    expect(sent(api, 'PATCH', '/api/places/p-3')).toEqual([{ visibleAtGym: true }]);
+    await until(() => !(visible as HTMLButtonElement).disabled);
+    fireEvent.click(button('Supprimer ce lieu'));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Supprimer Fitness Park ?' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Supprimer' }));
+    await until(() => sent(api, 'DELETE', '/api/places/p-3').length === 1);
+    expect(sent(api, 'PATCH', '/api/places/p-1')).toEqual([]);
+    expect(sent(api, 'DELETE', '/api/places/p-1')).toEqual([]);
+  });
+
   it('mineur : « Visible » reste au choix, avec la raison du défaut (P-MIN-6)', async () => {
     await renderGym({ db: await dbWithPlace(), me: makeMe({ ageBand: 'minor' }) });
     const visible = region('Qui va à cette salle').getByRole('switch', {
-      name: 'Visible',
+      name: VISIBLE,
     }) as HTMLButtonElement;
     expect(visible.disabled).toBe(false);
     const hint = screen.getByText('Désactivé par défaut pour les moins de 18 ans.');

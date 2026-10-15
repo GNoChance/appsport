@@ -6,6 +6,7 @@ import { Banner, Button, ChoiceCard, ChoiceGroup, errorMessage, Field, plural, u
 import { GymCreate, gymLabel } from './GymCreate';
 import { CloseIcon, GymIcon, PlusIcon, SearchIcon } from './icons';
 import styles from './places.module.css';
+import { useSubScreenBusy } from './SubScreen';
 
 export const VISIBILITY_LABEL = 'Apparaître dans « Qui va à cette salle »';
 export const MINOR_VISIBILITY_HINT = 'Désactivé par défaut pour les moins de 18 ans.';
@@ -65,6 +66,7 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
     await repos.places.create({ kind: 'gym', gymId, isPrimary: p.isPrimary, visibleAtGym: visible });
     p.onDone();
   });
+  useSubScreenBusy(pick.pending);
 
   const visibility = (
     <div className={styles.visibility}>

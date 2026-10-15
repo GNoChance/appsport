@@ -220,7 +220,8 @@ export function GymPage(p: { params: { id: string } }) {
 /**
  * Interrupteur « Visible » de « Qui va à cette salle » (R-VIS-3 ; désactivé par défaut pour un mineur,
  * P-MIN-6, qui garde le choix) : le choix s'affiche jusqu'à la relecture du miroir, un échec le remet ; la
- * liste des membres est relue après l'envoi.
+ * liste des membres est relue après l'envoi. Son nom dit ce qui devient visible, même lu hors de la section
+ * (maquette D02 : « Visible dans « Qui va à cette salle » », la suite pour les lecteurs d'écran).
  */
 function VisibilitySwitch(p: { place: PlaceView; minor: boolean; onSaved(): Promise<void> }) {
   const repos = useRepos();
@@ -246,6 +247,7 @@ function VisibilitySwitch(p: { place: PlaceView; minor: boolean; onSaved(): Prom
         <Switch
           id={id}
           label="Visible"
+          labelSuffix="dans « Qui va à cette salle »"
           checked={draft ?? p.place.visibleAtGym === true}
           disabled={update.pending}
           help={p.minor ? MINOR_VISIBILITY_HINT : undefined}

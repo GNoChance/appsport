@@ -13,12 +13,13 @@ import { Banner, Button, ChoiceList, Field, useAction } from '../../ui';
 import { EquipmentChecklist, sortEquipment } from './EquipmentChecklist';
 import { NAME_REQUIRED } from './PlaceActions';
 import styles from './places.module.css';
+import { useSubScreenBusy } from './SubScreen';
 
 const HOME_PRESETS = PRESET_IDS.filter((id) => PRESETS[id].kind === 'home');
 
 /**
  * Ajout d'une maison (R-LIEU-3) : nom (« Maison » par défaut), préréglage, puis la liste pré-cochée. Le lieu
- * est créé, non principal, puis `onDone`.
+ * est créé, non principal, puis `onDone` ; Retour attend la fin de l'envoi.
  */
 export function HomeCreate(p: { onDone(): void }) {
   const repos = useRepos();
@@ -32,6 +33,7 @@ export function HomeCreate(p: { onDone(): void }) {
     await repos.places.create({ kind: 'home', name: name.trim(), equipment, isPrimary: false });
     p.onDone();
   });
+  useSubScreenBusy(create.pending);
 
   function choosePreset(id: PresetId) {
     setPreset(id);

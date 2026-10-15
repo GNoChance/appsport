@@ -1,8 +1,9 @@
 import { defaultLoadSettings, EQUIPMENT, type EquipmentCode, type GymDetail } from '@rune/contracts';
-import { fireEvent, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, renderHook, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GymPage } from '../../src/features/places/GymPage';
 import { PlaceDetail } from '../../src/features/places/PlaceDetail';
+import { useSubScreen } from '../../src/features/places/SubScreen';
 import type { AppDb } from '../../src/local-db/db';
 import { settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
@@ -13,6 +14,8 @@ import { seedMirror } from '../support/seed';
 import { until } from '../support/wait';
 
 const SERVER_EQUIPMENT: EquipmentCode[] = ['dumbbells', 'flat_bench', 'barbell'];
+/** Nom de l'interrupteur de visibilité : « Visible » à l'écran, la suite pour les lecteurs d'écran (maquette D02). */
+const VISIBLE = 'Visible dans « Qui va à cette salle »';
 
 function detail(o: Partial<GymDetail> = {}): GymDetail {
   return {
@@ -76,6 +79,30 @@ async function seedPlaces(db: AppDb) {
   await seedMirror(db, 'home_equipment', [
     { id: 'p-2:chair', ownerId: 'u-1', placeId: 'p-2', equipmentCode: 'chair' },
   ]);
+}
+
+/**
+ * Faux serveur du matériel de la maison p-2 : chaque appel accepté est écrit dans le miroir, comme le pull qui
+ * le suit. `fail` : réponse d'erreur pour un appel donné (« DELETE chair »…).
+ */
+function serveHome(api: FakeApi, db: AppDb, o: { fail?: Record<string, number> } = {}) {
+  for (const method of ['PUT', 'DELETE'] as const) {
+    api.on(method, '/api/places/:id/equipment/:code', async (req) => {
+      const code = req.path.split('/').at(-1) as EquipmentCode;
+      const status = o.fail?.[`${method} ${code}`];
+      if (status) return { status, body: { error: 'internal' } };
+      await seedMirror(db, 'home_equipment', [
+        {
+          id: `p-2:${code}`,
+          ownerId: 'u-1',
+          placeId: 'p-2',
+          equipmentCode: code,
+          deletedAt: method === 'DELETE' ? '2026-10-06T12:00:00.000Z' : null,
+        },
+      ]);
+      return { status: 204 };
+    });
+  }
 }
 
 async function renderGym(api: FakeApi) {
@@ -227,12 +254,11 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     ]);
   });
 
-  it('maison : le brouillon part d’un coup sur les routes du lieu', async () => {
-    const api = createFakeApi()
-      .on('PUT', '/api/places/:id/equipment/:code', { status: 204 })
-      .on('DELETE', '/api/places/:id/equipment/:code', { status: 204 });
+  it('maison : le brouillon part d’un coup sur les routes du lieu, puis la fiche montre le matériel relu', async () => {
+    const api = createFakeApi();
     const db = createTestLocalDb();
     await seedPlaces(db);
+    serveHome(api, db);
     await renderWithServices(<PlaceDetail params={{ id: 'p-2' }} />, { api, db });
     await screen.findByRole('heading', { level: 1, name: 'Garage' });
     await openEditor();
@@ -242,11 +268,193 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     fireEvent.click(checkbox('Haltères fixes ou réglables'));
     expect(draftBar()?.textContent).toContain('2 changements · 1 ajout, 1 retrait');
     fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
-    await until(() => writes(api).length === 2);
+    await screen.findByRole('heading', { level: 1, name: 'Garage' });
     expect(writes(api)).toEqual([
       'PUT /api/places/p-2/equipment/dumbbells',
       'DELETE /api/places/p-2/equipment/chair',
     ]);
+    await until(() => region('Matériel').queryByText('Haltères fixes ou réglables') !== null);
+    expect(region('Matériel').queryByText('Chaise ou banc stable')).toBeNull();
+  });
+
+  it('maison, échec d’un appel : le brouillon reste, l’erreur s’affiche, le miroir est relu', async () => {
+    const api = createFakeApi();
+    const db = createTestLocalDb();
+    await seedPlaces(db);
+    serveHome(api, db, { fail: { 'DELETE chair': 500 } });
+    const { sync } = await renderWithServices(<PlaceDetail params={{ id: 'p-2' }} />, { api, db });
+    await screen.findByRole('heading', { level: 1, name: 'Garage' });
+    await openEditor();
+    fireEvent.click(checkbox('Chaise ou banc stable'));
+    openCategory('Petit matériel');
+    fireEvent.click(checkbox('Haltères fixes ou réglables'));
+    const pulls = sync.pullCount;
+    fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
+    expect((await within(draftBar() as HTMLElement).findByRole('alert')).textContent).toBe(
+      'Le serveur a rencontré une erreur.',
+    );
+    // Le PUT a été suivi de son pull ; après l'échec du DELETE, l'écran relit encore l'état du serveur.
+    expect(sync.pullCount).toBe(pulls + 2);
+    await until(() => draftBar()?.textContent?.includes('1 changement · 1 retrait') ?? false);
+    expect(screen.getByRole('heading', { level: 1, name: 'Matériel' })).toBeTruthy();
+    expect(checkbox('Chaise ou banc stable').checked).toBe(false);
+    expect(checkbox('Haltères fixes ou réglables').checked).toBe(true);
+  });
+
+  it('« Retour » pendant l’enregistrement : ignoré ; l’envoi finit, son erreur s’affiche, le brouillon reste', async () => {
+    const api = createFakeApi();
+    serveGym(api);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    api.on('PUT', '/api/gyms/:id/equipment/:code', async () => {
+      await held;
+      return { status: 500, body: { error: 'internal' } };
+    });
+    await renderGym(api);
+    await openEditor();
+    fireEvent.click(checkbox('Kettlebell'));
+    fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
+    await until(() => writes(api).length === 1);
+    fireEvent.click(button('Retour'));
+    expect(screen.getByRole('heading', { level: 1, name: 'Matériel' })).toBeTruthy();
+    release();
+    expect((await within(draftBar() as HTMLElement).findByRole('alert')).textContent).toBe(
+      'Le serveur a rencontré une erreur.',
+    );
+    expect(checkbox('Kettlebell').checked).toBe(true);
+    // Plus rien en cours : « Retour » quitte de nouveau l'écran, sans rien envoyer de plus.
+    fireEvent.click(button('Retour'));
+    await screen.findByRole('heading', { level: 1, name: 'Basic Fit' });
+    expect(writes(api)).toEqual(['PUT /api/gyms/g-1/equipment/kettlebell']);
+  });
+
+  // Spec refonte §7 : « un choix fait un petit ressort », pas l'affichage d'une case déjà cochée.
+  it('la coche ne fait son ressort que sur un choix : ni à l’ouverture, ni au dépliage d’une catégorie', async () => {
+    const api = createFakeApi();
+    serveGym(api);
+    await renderGym(api);
+    await openEditor();
+    const popping = () => document.querySelectorAll('[data-pop]').length;
+    expect(checkbox('Haltères fixes ou réglables').checked).toBe(true);
+    expect(popping()).toBe(0);
+    openCategory('Bancs et supports');
+    expect(checkbox('Banc plat').checked).toBe(true);
+    expect(popping()).toBe(0);
+    fireEvent.click(checkbox('Kettlebell'));
+    const chip = checkbox('Kettlebell').closest('label') as HTMLElement;
+    expect(chip.hasAttribute('data-pop')).toBe(true);
+    expect(popping()).toBe(1);
+    // Fin du ressort : l'attribut s'en va, la pastille ne rejouera rien en se réaffichant.
+    fireEvent.animationEnd(chip.querySelector('[aria-hidden="true"]') as Element);
+    expect(chip.hasAttribute('data-pop')).toBe(false);
+    // Décocher ne fait pas de ressort.
+    fireEvent.click(checkbox('Banc plat'));
+    expect(popping()).toBe(0);
+    // Catégorie repliée pendant un ressort : il s'arrête là, la déplier ne le rejoue pas.
+    fireEvent.click(checkbox('Kettlebell'));
+    fireEvent.click(checkbox('Kettlebell'));
+    expect(popping()).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: /^Petit matériel/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Petit matériel/ }));
+    expect(popping()).toBe(0);
+  });
+});
+
+// WCAG 2.2, 2.4.11 : la barre collée en bas (z-index 10, opaque) ne doit pas cacher le contrôle qui a le focus.
+describe('barre des changements : le focus ne finit pas dessous (WCAG 2.2, 2.4.11)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('tant qu’elle est là, la racine garde sa hauteur mesurée, qui suit ses changements de taille', async () => {
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(110);
+    const resized: Array<() => void> = [];
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resized.push(callback);
+        }
+        observe() {}
+        disconnect() {
+          disconnect();
+        }
+      },
+    );
+    const api = createFakeApi();
+    serveGym(api);
+    await renderGym(api);
+    await openEditor();
+    const reserved = () => document.documentElement.style.getPropertyValue('--draft-bar-height');
+    expect(reserved()).toBe('');
+    fireEvent.click(checkbox('Kettlebell'));
+    expect(reserved()).toBe('110px');
+    // Une erreur ou un texte agrandi fait grandir la barre : la place gardée suit.
+    height.mockReturnValue(172);
+    act(() => {
+      for (const callback of resized) callback();
+    });
+    expect(reserved()).toBe('172px');
+    fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Annuler' }));
+    expect(reserved()).toBe('');
+    expect(disconnect).toHaveBeenCalled();
+  });
+
+  /** Écran Matériel avec un changement en attente ; ce que touche le centre d'un contrôle est simulé. */
+  async function withBar() {
+    const api = createFakeApi();
+    serveGym(api);
+    await renderGym(api);
+    await openEditor();
+    fireEvent.click(checkbox('Kettlebell'));
+    const bar = draftBar() as HTMLElement;
+    const scroll = vi.fn();
+    const chip = checkbox('Haltères fixes ou réglables');
+    const cancel = within(bar).getByRole('button', { name: 'Annuler' }) as HTMLButtonElement;
+    for (const el of [chip, cancel]) el.scrollIntoView = scroll;
+    const pointHits = (el: Element | null) => vi.spyOn(document, 'elementFromPoint').mockReturnValue(el);
+    return { chip, cancel, scroll, pointHits };
+  }
+
+  // scroll-padding-bottom suffit à la tabulation et à Chromium ; WebKit l'ignore pour focus().
+  it('la barre recouvre le centre du contrôle qui prend le focus : il défile au plus près, au-dessus d’elle', async () => {
+    const { chip, cancel, scroll, pointHits } = await withBar();
+    pointHits(cancel);
+    act(() => chip.focus());
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' });
+  });
+
+  it('contrôle visible, hors de la fenêtre, ou dans la barre elle-même : rien ne défile', async () => {
+    const { chip, cancel, scroll, pointHits } = await withBar();
+    pointHits(chip);
+    act(() => chip.focus());
+    act(() => chip.blur());
+    pointHits(null);
+    act(() => chip.focus());
+    act(() => chip.blur());
+    pointHits(cancel);
+    act(() => cancel.focus());
+    expect(scroll).not.toHaveBeenCalled();
+  });
+});
+
+describe('écrans ouverts sur place (useSubScreen)', () => {
+  // Filet : une action finie après le départ de son écran (puis la réouverture d'un autre) ne le ferme pas.
+  it('une fermeture en retard, venue d’un écran déjà quitté, ne ferme pas celui rouvert depuis', () => {
+    const { result } = renderHook(() => useSubScreen<'equipment'>());
+    act(() => result.current.open('equipment', 'modifier'));
+    const late = result.current.close;
+    act(() => result.current.close());
+    expect(result.current.mode).toBeNull();
+    act(() => result.current.open('equipment', 'modifier'));
+    act(() => late());
+    expect(result.current.mode).toBe('equipment');
+    act(() => result.current.close());
+    expect(result.current.mode).toBeNull();
   });
 });
 
@@ -308,7 +516,7 @@ describe('fiche directe et actions du lieu (spec refonte §10.3)', () => {
     const api = createFakeApi().on('PATCH', '/api/places/:id', { status: 204 });
     serveGym(api);
     await renderGym(api);
-    const visible = region('Qui va à cette salle').getByRole('switch', { name: 'Visible' });
+    const visible = region('Qui va à cette salle').getByRole('switch', { name: VISIBLE });
     expect(visible.getAttribute('aria-checked')).toBe('true');
     const before = gets(api).length;
     fireEvent.click(visible);

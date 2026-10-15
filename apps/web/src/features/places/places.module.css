@@ -38,7 +38,7 @@
   gap: var(--space-3);
 }
 
-/* Carte (GUIDE, carte) : rayon du thème, bord fin, ombre douce des maquettes en clair. */
+/* Carte (GUIDE, carte) : rayon du thème, bord fin, ombre douce des maquettes en clair, tirée de l'encre. */
 .card,
 .whoCard,
 .placeCard,
@@ -50,8 +50,24 @@
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow:
-    0 1px 2px rgb(16 21 31 / 0.06),
-    0 6px 18px rgb(16 21 31 / 0.05);
+    0 1px 2px color-mix(in srgb, var(--text) 6%, transparent),
+    0 6px 18px color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+/*
+ * En sombre et en Salle de nuit (maquettes D01 à D05 Sombre), comme sur le papier du Carnet : cartes à plat, le
+ * bord fin suffit. Une ombre tirée de l'encre claire éclairerait la page au lieu de l'assombrir.
+ */
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"], [data-theme="carnet"]))
+:is(.card, .whoCard, .placeCard, .actionsCard, .editor, .toggleCard, .similarItem) {
+  box-shadow: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme]))
+    :is(.card, .whoCard, .placeCard, .actionsCard, .editor, .toggleCard, .similarItem) {
+    box-shadow: none;
+  }
 }
 
 .card {
@@ -692,6 +708,11 @@
   padding-bottom: 14px;
 }
 
+/* La carte garde déjà 14 px en bas : la dernière entrée n'en ajoute pas (maquettes D01, D02). */
+.timelineItem:last-child {
+  padding-bottom: 0;
+}
+
 .timelineItem:not(:last-child)::before {
   content: "";
   position: absolute;
@@ -992,6 +1013,15 @@
   color: var(--text-muted);
 }
 
+/*
+ * Petit ressort de la coche (spec refonte §7, « un choix fait un petit ressort ») : seulement sur la pastille que
+ * l'utilisateur vient de cocher (`data-pop`, ôté à la fin du ressort), jamais à l'ouverture de l'écran ni au
+ * dépliage d'une catégorie.
+ */
+.toggleChip[data-pop] .toggleChipGlyph {
+  animation: places-pop var(--dur-fast) var(--ease);
+}
+
 .toggleChip:has(.toggleChipInput:checked) {
   border-color: var(--accent);
   background: var(--accent);
@@ -1001,7 +1031,6 @@
 
 .toggleChip:has(.toggleChipInput:checked) .toggleChipGlyph {
   color: inherit;
-  animation: places-pop var(--dur-fast) var(--ease);
 }
 
 .toggleChip[data-dirty] {
@@ -1039,7 +1068,9 @@
 /*
  * Barre des changements : collée au bas de l'écran, au-dessus de la barre d'onglets (16 px dessous, 68 px de
  * barre, 10 px d'air) ; au-dessus des pastilles qui défilent dessous (leur case est en z-index 1), sous les
- * feuilles du bas. Elle monte à son apparition.
+ * feuilles du bas. Elle monte à son apparition. Elle se détache de la carte qu'elle recouvre dans les 5 thèmes
+ * (maquettes D03) : liseré teinté d'accent, relief vers le haut fondu dans la page et, en thème clair, l'ombre
+ * portée douce tirée de l'encre.
  */
 .draftBar {
   position: sticky;
@@ -1050,17 +1081,50 @@
   gap: 10px;
   padding: var(--space-3);
   border-radius: calc(var(--radius-card) + 2px);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   background: var(--surface);
   box-shadow:
-    0 2px 6px rgb(16 21 31 / 0.08),
-    0 12px 30px rgb(16 21 31 / 0.12);
+    0 -8px 28px color-mix(in srgb, var(--bg) 90%, transparent),
+    0 2px 6px color-mix(in srgb, var(--text) 8%, transparent),
+    0 12px 30px color-mix(in srgb, var(--text) 12%, transparent);
   animation: places-rise var(--dur-fast) var(--ease) backwards;
+}
+
+/* En sombre (maquette D03 Sombre), une ombre tirée de l'encre claire éclairerait la carte : le relief seul. */
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"])) .draftBar {
+  box-shadow: 0 -8px 28px color-mix(in srgb, var(--bg) 90%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .draftBar {
+    box-shadow: 0 -8px 28px color-mix(in srgb, var(--bg) 90%, transparent);
+  }
 }
 
 @media (min-width: 900px) {
   .draftBar {
     bottom: var(--space-4);
+  }
+}
+
+/*
+ * Tant que la barre est là, le focus ne finit jamais dessous (WCAG 2.2, 2.4.11) : tabulation et focus() s'arrêtent
+ * au-dessus d'elle, à sa distance du bas de l'écran plus sa hauteur mesurée (--draft-bar-height, posée par
+ * DraftBar ; une estimation avant la mesure) et 12 px pour l'anneau de focus. Sur téléphone, cette place couvre
+ * aussi la barre d'onglets ; `:root` l'emporte sur `html:has(.tabBar)` de la coquille.
+ */
+:global(:root):has(.draftBar) {
+  scroll-padding-bottom: calc(
+    94px +
+    env(safe-area-inset-bottom, 0px) +
+    var(--draft-bar-height, 120px) +
+    var(--space-3)
+  );
+}
+
+@media (min-width: 900px) {
+  :global(:root):has(.draftBar) {
+    scroll-padding-bottom: calc(var(--space-4) + var(--draft-bar-height, 120px) + var(--space-3));
   }
 }
 
@@ -1286,7 +1350,7 @@
     animation-duration: var(--dur-fast);
   }
 
-  .toggleChip:has(.toggleChipInput:checked) .toggleChipGlyph {
+  .toggleChip[data-pop] .toggleChipGlyph {
     animation: none;
   }
 

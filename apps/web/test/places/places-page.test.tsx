@@ -113,6 +113,15 @@ const region = (name: string) => within(screen.getByRole('region', { name }));
 const sent = (api: FakeApi, method: string, path: string) =>
   api.calls.filter((c) => c.method === method && c.path === path).map((c) => c.body);
 
+/** Réponse retenue jusqu'à `release()` : l'action reste en cours le temps du test. */
+function hold(): { promise: Promise<void>; release(): void } {
+  let release = () => {};
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
 describe('PlacesPage : Salles › Mes lieux (maquette D01)', () => {
   it("le principal d'abord avec « Principal » ; la salle mène à sa fiche, la maison à la sienne", async () => {
     // « Garage » principale vient après « Basic Fit » par l'id, le nom et l'ordre d'écriture.
@@ -235,6 +244,74 @@ describe('PlacesPage : Salles › Mes lieux (maquette D01)', () => {
     fireEvent.click(button('Ajouter la maison'));
     expect(screen.getByText('Donne un nom à ce lieu.')).toBeTruthy();
     expect(sent(api, 'POST', '/api/places')).toEqual([]);
+  });
+
+  it('« Ajouter une maison » : « Retour » pendant l’envoi est ignoré, l’erreur s’affiche ensuite', async () => {
+    const held = hold();
+    const api = createFakeApi().on('POST', '/api/places', async () => {
+      await held.promise;
+      return { status: 500, body: { error: 'internal' } };
+    });
+    await renderPlaces({ api });
+    fireEvent.click(button('Ajouter une maison'));
+    fireEvent.click(button('Ajouter la maison'));
+    await until(() => sent(api, 'POST', '/api/places').length === 1);
+    fireEvent.click(button('Retour'));
+    expect(screen.getByRole('heading', { level: 1, name: 'Ajouter une maison' })).toBeTruthy();
+    held.release();
+    expect((await screen.findByRole('alert')).textContent).toBe('Le serveur a rencontré une erreur.');
+    // Plus rien en cours : « Retour » ramène à la liste.
+    fireEvent.click(button('Retour'));
+    expect(screen.getByRole('heading', { level: 1, name: 'Salles' })).toBeTruthy();
+  });
+
+  it('« Ajouter une salle » : « Retour » pendant « Valider » est ignoré, l’écran se ferme une fois le lieu créé', async () => {
+    const held = hold();
+    const api = createFakeApi()
+      .on('GET', '/api/gyms', {
+        status: 200,
+        body: [{ id: 'g-2', name: 'Fitness Park', city: 'Lyon', visibleMemberCount: 0 }],
+      })
+      .on('POST', '/api/places', async () => {
+        await held.promise;
+        return { status: 201, body: { id: 'p-3' } };
+      });
+    await renderPlaces({ api });
+    fireEvent.click(button('Ajouter une salle'));
+    const gym = 'Fitness Park · Lyon · 0 membre visible';
+    await screen.findByRole('radio', { name: gym });
+    choose(gym);
+    fireEvent.click(button('Valider'));
+    await until(() => sent(api, 'POST', '/api/places').length === 1);
+    fireEvent.click(button('Retour'));
+    expect(screen.getByRole('heading', { level: 1, name: 'Ajouter une salle' })).toBeTruthy();
+    held.release();
+    await screen.findByRole('heading', { level: 1, name: 'Salles' });
+  });
+
+  it('création d’une salle : « Retour » pendant « Créer la salle » est ignoré', async () => {
+    const held = hold();
+    const api = createFakeApi()
+      .on('GET', '/api/gyms', { status: 200, body: [] })
+      .on('GET', '/api/gyms/similar', { status: 200, body: [] })
+      .on('POST', '/api/gyms', async () => {
+        await held.promise;
+        return { status: 201, body: { gymId: 'g-2', placeId: 'p-3' } };
+      });
+    await renderPlaces({ api });
+    fireEvent.click(button('Ajouter une salle'));
+    fireEvent.click(button("Ma salle n'est pas dans la liste"));
+    fill('Nom de la salle', 'Fitness Park');
+    fill('Ville', 'Lyon');
+    fireEvent.click(button('Continuer'));
+    await screen.findByRole('group', { name: 'Type de salle' });
+    choose('Petite salle de quartier');
+    fireEvent.click(button('Créer la salle'));
+    await until(() => api.calls.some((c) => c.method === 'POST' && c.path === '/api/gyms'));
+    fireEvent.click(button('Retour'));
+    expect(screen.getByRole('heading', { level: 1, name: 'Ajouter une salle' })).toBeTruthy();
+    held.release();
+    await screen.findByRole('heading', { level: 1, name: 'Salles' });
   });
 
   it('« Ajouter une maison » hors ligne : « Nécessite le réseau », le formulaire garde la saisie', async () => {
