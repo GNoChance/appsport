@@ -5,7 +5,7 @@ import { InvitationsPage } from '../../src/features/admin/InvitationsPage';
 import { buildInvitationShareMessage } from '../../src/features/admin/share-message';
 import { fill, settle } from '../support/auth';
 import { createFakeApi, type FakeApi } from '../support/fake-api';
-import { makeMe, renderWithServices } from '../support/render';
+import { makeMe, renderApp, renderWithServices } from '../support/render';
 import { until } from '../support/wait';
 
 const ADMIN = makeMe({ id: 'u-1', username: 'bastien', role: 'admin' });
@@ -93,21 +93,27 @@ describe('buildInvitationShareMessage (R-INV-9)', () => {
 });
 
 describe('InvitationsPage : liste (R-INV-7)', () => {
-  it('note, date de création, état et pseudo créé ; « Révoquer » sur une invitation en attente seulement', async () => {
+  it('cartes : note, badge d’état, dates et pseudo créé ; « Révoquer » sur une invitation en attente seulement', async () => {
     await renderInvitations();
-    expect(screen.getByRole('heading', { level: 1, name: 'Invitations' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
+    expect(screen.getByText('1 en attente')).toBeTruthy();
     expect(items()).toHaveLength(5);
-    expect(item(0).getByText('pour Léa')).toBeTruthy();
-    expect(item(0).getByText('Créée le 06/10/2026')).toBeTruthy();
-    expect(item(0).getByText('En attente (expire le 13/10/2026)')).toBeTruthy();
-    expect(item(1).getByText('Utilisée par lea')).toBeTruthy();
-    expect(item(2).getByText('Sans note')).toBeTruthy();
-    expect(item(2).getByText('Révoquée')).toBeTruthy();
-    expect(item(3).getByText('Expirée')).toBeTruthy();
-    expect(item(3).getByText('Créée le 20/09/2026')).toBeTruthy();
-    expect(item(4).getByText('Utilisée par un ancien membre')).toBeTruthy();
-    expect(item(0).getByRole('button', { name: 'Révoquer' })).toBeTruthy();
+    // Note, badge, puis les dates (et le pseudo créé) : rien d'autre, jamais la date de naissance.
+    expect(items().map((li) => li.textContent)).toEqual([
+      'pour LéaEn attenteCréée le 06/10/2026Expire le 13/10/2026Révoquer',
+      'pour MaxUtiliséeCréée le 06/10/2026Utilisée par lea',
+      'Sans noteRévoquéeCréée le 06/10/2026',
+      'Sans noteExpiréeCréée le 20/09/2026',
+      'Sans noteUtiliséeCréée le 06/10/2026Utilisée par un ancien membre',
+    ]);
+    const revoke = item(0).getByRole('button', { name: 'Révoquer' });
+    expect(revoke.getAttribute('aria-describedby')).toBe(item(0).getByText('pour Léa').id);
     for (const i of [1, 2, 3, 4]) expect(item(i).queryByRole('button', { name: 'Révoquer' })).toBeNull();
+  });
+
+  it('aucune invitation en attente : pas de compte dans l’en-tête', async () => {
+    await renderInvitations({ list: LIST.slice(1) });
+    expect(screen.queryByText(/en attente/)).toBeNull();
   });
 
   it('lecture en cours : « Chargement… » plutôt qu’une liste vide', async () => {
@@ -179,23 +185,47 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
       INVITATION_NOTE_MAX,
     );
     create('2009-05-01', 'pour Léa');
-    expect(await screen.findByText(CODE)).toBeTruthy();
+    expect(await screen.findAllByText(CODE)).toBeTruthy();
     expect(sent(api, 'POST', '/api/admin/invitations')).toEqual([
       { birthDate: '2009-05-01', note: 'pour Léa' },
     ]);
-    expect(screen.getByText(link)).toBeTruthy();
-    expect(screen.getByText('Ce code ne sera plus affiché.')).toBeTruthy();
-    expect(screen.getByTestId('share-message').textContent).toBe(
-      buildInvitationShareMessage(window.location.origin, link, CODE),
-    );
+    // Fenêtre du Système (maquette E04) : note et échéance, code, message à envoyer (le lien en dernière ligne).
+    const panel = within(screen.getByRole('group', { name: 'Invitation créée.' }));
+    expect(panel.getByText("pour Léa · valable jusqu'au 13/10/2026 à 12:00.")).toBeTruthy();
+    // Le code dans sa case, puis deux fois dans le message (3e étape et lien).
+    expect(panel.getAllByText(CODE)).toHaveLength(3);
+    expect(panel.getByText('Ce code ne sera plus affiché.')).toBeTruthy();
+    const message = screen.getByTestId('share-message');
+    expect(panel.getByRole('figure', { name: 'Message à envoyer' }).contains(message)).toBe(true);
+    expect(message.textContent).toBe(buildInvitationShareMessage(window.location.origin, link, CODE));
+    expect(message.textContent?.split('\n').at(-1)).toBe(link);
+    // Dans le message, le code reste d'un seul tenant (maquette E04) : un élément à lui, que la ligne ne coupe pas.
+    expect(
+      within(message)
+        .getAllByText(CODE)
+        .map((el) => el.tagName),
+    ).toEqual(['SPAN', 'SPAN']);
     await until(() => loads(api) === 2);
-    // Le formulaire repart vide pour l'invitation suivante.
-    expect((screen.getByLabelText('Date de naissance') as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('Note (facultative)') as HTMLInputElement).value).toBe('');
     fireEvent.click(screen.getByRole('button', { name: "J'ai noté le code" }));
     expect(screen.queryByText(CODE)).toBeNull();
-    expect(screen.queryByText(link)).toBeNull();
     expect(screen.queryByTestId('share-message')).toBeNull();
+    // Le formulaire revient, vide, pour l'invitation suivante ; le focus passe à son titre.
+    expect((screen.getByLabelText('Date de naissance') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Note (facultative)') as HTMLInputElement).value).toBe('');
+    await until(
+      () => document.activeElement === screen.getByRole('heading', { level: 2, name: 'Nouvelle invitation' }),
+    );
+  });
+
+  it('sans note : « Valable jusqu’au … » seul', async () => {
+    const link = `${window.location.origin}/invite#${CODE}`;
+    const api = createFakeApi().on('POST', '/api/admin/invitations', {
+      status: 201,
+      body: { invitation: invitation({ id: 'i-9' }), code: CODE, link },
+    });
+    await renderInvitations({ api });
+    create('2009-05-01');
+    expect(await screen.findByText("Valable jusqu'au 13/10/2026 à 12:00.")).toBeTruthy();
   });
 
   it('double envoi du formulaire pendant la création : une seule invitation', async () => {
@@ -216,28 +246,48 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
     expect(submit.disabled).toBe(true);
     reply.resolve();
-    expect(await screen.findByText(CODE)).toBeTruthy();
+    expect(await screen.findAllByText(CODE)).toBeTruthy();
     expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
   });
 
-  it('code affiché : « Créer l’invitation » bloqué jusqu’à « J’ai noté le code » (le code ne se perd pas)', async () => {
+  it('code affiché : le formulaire lui laisse la place jusqu’à « J’ai noté le code » (aucune création ne l’écrase)', async () => {
     const { api } = createdApi();
     await renderInvitations({ api });
     create('2009-05-01', 'pour Léa');
-    await screen.findByText(CODE);
-    const submit = screen.getByRole('button', { name: "Créer l'invitation" }) as HTMLButtonElement;
-    const hintText = "Note d'abord le code affiché, puis appuie sur « J'ai noté le code ».";
-    expect(submit.disabled).toBe(true);
-    expect(submit.getAttribute('aria-describedby')).toBe(screen.getByText(hintText).id);
-    // Entrée dans un champ : rien ne part, le code reste.
-    fill('Date de naissance', '2009-06-01');
-    fireEvent.submit(submit.closest('form') as HTMLFormElement);
-    await settle();
-    expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
-    expect(screen.getByText(CODE)).toBeTruthy();
+    await screen.findAllByText(CODE);
+    // Maquette E04 : la fenêtre du code remplace « Nouvelle invitation » ; une autre création ne peut pas partir.
+    expect(screen.queryByRole('heading', { name: 'Nouvelle invitation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: "Créer l'invitation" })).toBeNull();
+    expect(screen.queryByLabelText('Date de naissance')).toBeNull();
+    // Le focus passe à la fenêtre (le bouton « Créer l'invitation » a disparu).
+    expect(screen.getByRole('group', { name: 'Invitation créée.' }).contains(document.activeElement)).toBe(
+      true,
+    );
+    // La liste reste dessous.
+    expect(screen.getByRole('list', { name: 'Invitations envoyées' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: "J'ai noté le code" }));
-    expect(submit.disabled).toBe(false);
-    expect(screen.queryByText(hintText)).toBeNull();
+    expect(screen.getByRole('button', { name: "Créer l'invitation" })).toBeTruthy();
+    expect(sent(api, 'POST', '/api/admin/invitations')).toHaveLength(1);
+  });
+
+  it('code jamais revu après avoir quitté la page : Membres puis Invitations, plus de code', async () => {
+    const { api, link } = createdApi();
+    api
+      .on('GET', '/api/admin/invitations', { status: 200, body: LIST })
+      .on('GET', '/api/admin/members', { status: 200, body: [] });
+    await renderApp({ path: '/admin/invitations', me: ADMIN, api });
+    await screen.findByRole('list', { name: 'Invitations envoyées' });
+    create('2009-05-01', 'pour Léa');
+    await screen.findAllByText(CODE);
+    const nav = () => within(screen.getByRole('navigation', { name: 'Administration' }));
+    fireEvent.click(nav().getByRole('link', { name: 'Membres' }));
+    await screen.findByRole('heading', { level: 2, name: 'Membres du cercle' });
+    fireEvent.click(nav().getByRole('link', { name: 'Invitations' }));
+    await screen.findByRole('list', { name: 'Invitations envoyées' });
+    expect(screen.queryByText(CODE)).toBeNull();
+    expect(screen.queryByTestId('share-message')).toBeNull();
+    expect(document.body.textContent).not.toContain(link);
+    expect(screen.getByRole('button', { name: "Créer l'invitation" })).toBeTruthy();
   });
 
   it('code ni gardé ni journalisé : absent après remontage, rien en stockage du navigateur, en base locale ni en console', async () => {
@@ -247,13 +297,13 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     const { api, link } = createdApi();
     const { unmount, db } = await renderInvitations({ api });
     create('2009-05-01', 'pour Léa');
-    await screen.findByText(CODE);
+    await screen.findAllByText(CODE);
     await until(() => loads(api) === 2);
     unmount();
     await renderWithServices(<InvitationsPage />, { api, me: ADMIN, db });
     await screen.findByRole('list', { name: 'Invitations envoyées' });
     expect(screen.queryByText(CODE)).toBeNull();
-    expect(screen.queryByText(link)).toBeNull();
+    expect(document.body.textContent).not.toContain(link);
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
     expect(JSON.stringify(await Promise.all(db.tables.map((t) => t.toArray())))).not.toContain(CODE);
@@ -264,7 +314,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     const { api } = createdApi();
     await renderInvitations({ api });
     create('2009-05-01', '   ');
-    await screen.findByText(CODE);
+    await screen.findAllByText(CODE);
     expect(sent(api, 'POST', '/api/admin/invitations')).toEqual([{ birthDate: '2009-05-01' }]);
   });
 
@@ -302,7 +352,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     // Le refus du partage arrive après le clic : on le laisse aboutir avant de regarder.
     await settle();
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getByText(CODE)).toBeTruthy();
+    expect(screen.getAllByText(CODE)).toBeTruthy();
   });
 
   it('partage refusé (autre qu’une annulation) : « Partage impossible : copie le message. », message gardé', async () => {
@@ -324,7 +374,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
     const { api, link } = createdApi();
     await renderInvitations({ api });
     create('2009-05-01');
-    await screen.findByText(CODE);
+    await screen.findAllByText(CODE);
     expect(screen.queryByRole('button', { name: 'Partager' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Copier le message' }));
     await until(() => writeText.mock.calls.length === 1);
@@ -338,7 +388,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
       const { api, link } = createdApi();
       await renderInvitations({ api });
       create('2009-05-01');
-      await screen.findByText(CODE);
+      await screen.findAllByText(CODE);
       fireEvent.click(screen.getByRole('button', { name: 'Copier le message' }));
       expect(await screen.findByRole('button', { name: 'Copie impossible' })).toBeTruthy();
       expect((await screen.findByRole('alert')).textContent).toBe(
@@ -347,8 +397,7 @@ describe('InvitationsPage : création (R-INV-1 à R-INV-3, R-INV-9)', () => {
       expect(screen.getByTestId('share-message').textContent).toBe(
         buildInvitationShareMessage(window.location.origin, link, CODE),
       );
-      expect(screen.getByText(CODE)).toBeTruthy();
-      expect(screen.getByText(link)).toBeTruthy();
+      expect(screen.getAllByText(CODE)).toBeTruthy();
     },
   );
 

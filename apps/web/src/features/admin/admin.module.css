@@ -1,121 +1,12 @@
-/* Écrans d'administration : membres, invitations, salles, état du serveur. */
-.nav ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-}
+/*
+ * Administration (maquettes E01 à E05) : sous-navigation, cartes des membres et feuille de leurs actions,
+ * invitations, salles, état du serveur. Couleurs : jetons de ui/theme/tokens.css seulement (justes dans les
+ * 5 thèmes) ; teintes par color-mix sur la surface. Mouvement : courbe unique, durées de motion.css ;
+ * mouvement réduit en bas.
+ */
 
-.nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-}
-
-.nav a[aria-current="page"] {
-  font-weight: 700;
-  color: var(--color-text);
-  text-decoration: none;
-}
-
-.section,
-.form,
-.dialogForm,
-.failure {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.section h2 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.section h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.section p,
-.dialogForm p,
-.secretPanel p {
-  margin: 0;
-}
-
-.form > button,
-.failure > button,
-.section > button {
-  align-self: flex-start;
-}
-
-.actions,
-.rowActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-/* Tableau des membres : défile horizontalement dans sa zone sur petit écran. */
-.tableWrap {
-  overflow-x: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-}
-
-.tableWrap:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9375rem;
-}
-
-.table th,
-.table td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
-  vertical-align: top;
-}
-
-.table thead th {
-  font-size: 0.875rem;
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-
-.table tbody tr:last-child > * {
-  border-bottom: 0;
-}
-
-.table tbody th {
-  white-space: nowrap;
-}
-
-.rowActions {
-  min-width: 14rem;
-}
-
-.badge {
-  display: inline-block;
-  margin-left: var(--space-2);
-  padding: 0 var(--space-2);
-  border-radius: 999px;
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-border);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.5rem;
-}
-
-.visuallyHidden {
+/* Texte lu par les lecteurs d'écran, invisible à l'écran. */
+.srOnly {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -127,45 +18,497 @@
   border: 0;
 }
 
-/* Listes en cartes : invitations et salles. */
+.meta {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* Icônes en ligne avec leur texte : taille fixe, jamais tassées ; couleur du texte, sauf mention. */
+.codeWarning svg,
+.hostCheck svg,
+.diskWarn svg {
+  flex: none;
+}
+
+.disks h3 svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.fact dd svg {
+  flex: none;
+  color: var(--fact-icon, currentColor);
+}
+
+/* Carte (GUIDE, carte) : rayon du thème, bord fin, ombre douce des maquettes en clair, tirée de l'encre. */
+.card,
+.memberCard,
+.nav ul {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--text) 6%, transparent),
+    0 6px 18px color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+/* En sombre, en Salle de nuit et sur le papier du Carnet : cartes à plat, le bord fin suffit. */
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"], [data-theme="carnet"]))
+:is(.card, .memberCard, .nav ul) {
+  box-shadow: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) :is(.card, .memberCard, .nav ul) {
+    box-shadow: none;
+  }
+}
+
+/* ---------- Sous-navigation : pilule segmentée (E01 à E05) ---------- */
+
+.nav ul {
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  display: flex;
+  gap: var(--space-1);
+}
+
+.nav li {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.nav a {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-size: 0.90625rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+/* Teinte à 10 % : l'accent y garde 4,5:1 en clair. */
+.nav a[aria-current="page"] {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .nav a:not([aria-current="page"]):hover {
+    color: var(--text);
+  }
+}
+
+/* ---------- Sections et titres ---------- */
+
+.section,
+.form,
+.dialogForm,
+.failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.form {
+  gap: 14px;
+}
+
+.section h2 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* Newsreader n'est embarqué qu'en 600 : pas de gras synthétisé dans le Carnet. */
+:global(:root[data-theme="carnet"]) .section h2 {
+  font-weight: 600;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.section p,
+.dialogForm p,
+.secretPanel p {
+  margin: 0;
+}
+
+.failure > button {
+  align-self: flex-start;
+}
+
+/* Bouton compact de 44 px dans une carte (« Révoquer », « Modifier », « Supprimer »). */
+.compact {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 0.9375rem;
+}
+
+/* ---------- Membres : une carte par membre (E01) ---------- */
+
+.memberList,
 .cards {
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+.memberCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 10px 12px var(--space-4);
+}
+
+/*
+ * Membre désactivé : carte en creux (entre la page et la surface, maquette E01), bord pointillé ; le badge
+ * « Désactivé » dit l'état. Plus claire que la page : l'accent du badge « Admin » y garde ses 4,5:1.
+ */
+.memberCard[data-status="disabled"] {
+  background: color-mix(in srgb, var(--bg) 60%, var(--surface));
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--text-muted) 40%, transparent);
+  box-shadow: none;
+}
+
+.memberHead {
+  display: flex;
+  align-items: center;
   gap: var(--space-3);
 }
 
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  /* Teinte à 10 % : à 12 %, l'initiale (17 px, texte courant) tombait à 4,48:1 en clair. */
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 700;
 }
 
-.cardTitle {
-  font-size: 1.125rem;
+.memberCard[data-status="disabled"] .avatar {
+  background: color-mix(in srgb, var(--text-muted) 12%, var(--surface));
+  color: var(--text-muted);
+}
+
+.memberText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.memberLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--space-2);
+}
+
+/* Le pseudo en Barlow 600 (maquette E01), coupé d'une ellipse s'il est trop long. */
+.memberName {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberCard[data-status="disabled"] .memberName {
+  color: var(--text-muted);
+}
+
+.moreButton,
+.closeButton {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text) 6%, var(--surface));
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+@media (hover: hover) {
+  .moreButton:hover,
+  .closeButton:hover {
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  }
+}
+
+/* Accords et onboarding : trois colonnes sous un trait. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0 6px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.fact {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fact dt {
+  font-size: 0.78125rem;
+  color: var(--text-muted);
+}
+
+.fact dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.90625rem;
   font-weight: 600;
 }
 
-.meta {
-  font-size: 0.875rem;
-  color: var(--color-muted);
+.fact dd[data-state="yes"] {
+  --fact-icon: var(--success);
 }
 
-/* Code et lien affichés une seule fois ; un geste les sélectionne en entier si la copie échoue. */
+.fact dd[data-state="no"] {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.fact dd[data-state="pending"] {
+  color: var(--warning-text);
+}
+
+/* ---------- Feuille des actions d'un membre (E02) ---------- */
+
+.sheetContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.sheetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.count {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* Actions sensibles : à part, en dernier, titre et cadre au danger. */
+.sensitive {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sensitive h3 {
+  margin: 0 0 0 var(--space-1);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.sensitive ul {
+  border-color: color-mix(in srgb, var(--danger) 32%, transparent);
+  background: color-mix(in srgb, var(--danger) 3%, var(--surface));
+}
+
+/* ---------- Invitations (E03, E04) ---------- */
+
+.invitationCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 14px 14px 14px var(--space-4);
+}
+
+.gymCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px var(--space-4);
+}
+
+.cardText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--space-2);
+}
+
+.cardTitle {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 1.03125rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gymActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* Invitation créée : contenu de la fenêtre du Système, à l'encre (le texte du Système est secondaire). */
+.createdBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.createdBody > p {
+  margin: 0;
+}
+
+.codeBox,
+.message {
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.codeBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) 14px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.codeLabel {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Code et message affichés une seule fois : un geste les sélectionne en entier si la copie échoue. */
+.code {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+.codeWarning {
+  margin-top: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: var(--warning-text);
+}
+
+.messageBlock {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.message {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.84375rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+/* Le code, dans le message : jamais coupé à un tiret en fin de ligne (il se tape à la main). */
+.messageCode {
+  white-space: nowrap;
+}
+
+.shareActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.shareActions > * {
+  flex: 1 1 auto;
+}
+
+/* Lien de réinitialisation d'un membre : lien et code affichés une seule fois, dans le dialogue. */
 .secretPanel {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 2px solid var(--color-primary);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-control);
+  background: var(--surface);
 }
 
 .secret {
@@ -176,32 +519,235 @@
   user-select: all;
 }
 
-.message {
-  margin: 0;
-  padding: var(--space-3);
-  border-radius: var(--radius);
-  background: var(--color-bg);
-  font: inherit;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  -webkit-user-select: all;
-  user-select: all;
-}
-
 .once {
   font-weight: 700;
 }
 
-/* État du serveur. */
-.facts {
+/* ---------- État du serveur (E05) ---------- */
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 14px var(--space-4);
+}
+
+.summaryHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.summaryIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.summaryText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.version {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.hostCheck {
   margin: 0;
-  padding-left: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2) 14px var(--space-2) var(--space-4);
+}
+
+.checkIcon {
+  flex: none;
+  display: grid;
+  color: var(--accent);
+}
+
+.checkRow + .checkRow {
+  border-top: 1px solid var(--border);
+}
+
+.checkText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.checkLabel {
+  font-size: 0.96875rem;
+  font-weight: 600;
+}
+
+.disks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 14px var(--space-4);
+}
+
+.disks h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-body);
+  font-size: 0.96875rem;
+  font-weight: 600;
+}
+
+.disks ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.disk {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diskHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.diskMount {
+  min-width: 0;
+  font-size: 0.90625rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.diskPct {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.disk[data-warn] .diskPct,
+.diskWarn {
+  color: var(--warning-text);
+}
+
+/* Barre d'occupation (décorative : le pourcentage est écrit) ; elle se remplit à l'arrivée. */
+.bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-muted) 18%, var(--surface));
+  overflow: hidden;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transform: scaleX(var(--fill, 0));
+  transform-origin: left center;
+  animation: admin-bar-fill var(--dur-screen) var(--ease) backwards;
+}
+
+.disk[data-warn] .barFill {
+  background: var(--warning-text);
+}
+
+@keyframes admin-bar-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.diskWarn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.hostFacts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+}
+
+.hostFacts > div {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  padding: var(--space-3) 14px 14px var(--space-4);
 }
 
-.alert {
-  font-weight: 700;
-  color: var(--color-danger);
+.hostFacts > div + div {
+  border-inline-start: 1px solid var(--border);
+}
+
+.hostFacts dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.hostFacts dd {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+/* Mouvement réduit (spec refonte §7) : la barre est pleine d'emblée, les teintes changent sans transition. */
+@media (prefers-reduced-motion: reduce) {
+  .barFill {
+    animation: none;
+  }
+
+  .nav a,
+  .moreButton,
+  .closeButton {
+    transition: none;
+  }
 }

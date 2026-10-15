@@ -94,7 +94,7 @@ describe('App', () => {
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull();
     first.unmount();
     await renderApp({ path: '/admin/members', me: admin() });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Membres' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
   });
 
   it('/profile/places/p-2 → /places/p-2', async () => {

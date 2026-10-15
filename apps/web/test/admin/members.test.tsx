@@ -12,6 +12,7 @@ const PASSWORD = 'mon mot de passe admin';
 const CODE = 'ABCD-EFGH-JKMN-PQRS';
 const LINK = `https://rune.example/reset#${CODE}`;
 
+/** Connecté à 10:30 (Paris) le jour du test : 3 h 30 avant l'horloge injectée (DEFAULT_NOW, 14:00 à Paris). */
 const BASTIEN: MemberSummary = {
   id: 'u-1',
   username: 'bastien',
@@ -24,9 +25,9 @@ const BASTIEN: MemberSummary = {
   activeSessions: 2,
 };
 /** Mineure jamais connectée, onboarding en cours, accord santé donné. */
-const LEA: MemberSummary = {
+const INES: MemberSummary = {
   id: 'u-2',
-  username: 'lea',
+  username: 'ines.m',
   role: 'member',
   status: 'active',
   isMinor: true,
@@ -36,23 +37,44 @@ const LEA: MemberSummary = {
   activeSessions: 1,
 };
 
-async function renderMembers(o: { api?: FakeApi; members?: MemberSummary[] } = {}) {
+async function renderMembers(o: { api?: FakeApi; members?: MemberSummary[]; now?: number } = {}) {
   const api = o.api ?? createFakeApi();
-  api.on('GET', '/api/admin/members', { status: 200, body: o.members ?? [BASTIEN, LEA] });
-  const rendered = await renderWithServices(<MembersPage />, { api, me: ADMIN });
-  await screen.findByRole('row', { name: 'lea' });
+  api.on('GET', '/api/admin/members', { status: 200, body: o.members ?? [BASTIEN, INES] });
+  const rendered = await renderWithServices(<MembersPage />, {
+    api,
+    me: ADMIN,
+    ...(o.now === undefined ? {} : { now: o.now }),
+  });
+  await screen.findByRole('article', { name: 'ines.m' });
   return rendered;
 }
 
-const row = (name: string) => within(screen.getByRole('row', { name }));
+const card = (name: string) => within(screen.getByRole('article', { name }));
 const dialog = () => within(screen.getByRole('dialog'));
 const sent = (api: FakeApi, method: string, path: string) =>
   api.calls.filter((c) => c.method === method && c.path === path).map((c) => c.body);
 const memberLoads = (api: FakeApi) => sent(api, 'GET', '/api/admin/members').length;
+/** Noms des boutons de `root`, dans l'ordre : `aria-label`, sinon l'élément qui le nomme, sinon son texte. */
+const buttonNames = (root: HTMLElement) =>
+  within(root)
+    .getAllByRole('button')
+    .map((b) => {
+      const labelledBy = b.getAttribute('aria-labelledby');
+      return (
+        b.getAttribute('aria-label') ??
+        (labelledBy ? document.getElementById(labelledBy)?.textContent : b.textContent)
+      );
+    });
 
-/** Ouvre l'action `action` sur la ligne de `username`. */
+/** Ouvre la feuille « Actions pour <pseudo> » (nommée par le pseudo). */
+function openSheet(username: string) {
+  fireEvent.click(screen.getByRole('button', { name: `Actions pour ${username}` }));
+  return screen.getByRole('dialog', { name: username });
+}
+
+/** Choisit `action` dans la feuille de `username` : la feuille se ferme, le dialogue de l'action s'ouvre. */
 function open(username: string, action: string) {
-  fireEvent.click(row(username).getByRole('button', { name: action }));
+  fireEvent.click(within(openSheet(username)).getByRole('button', { name: action }));
   return dialog();
 }
 
@@ -65,70 +87,82 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('MembersPage : tableau des membres (02 §6, P-ADM-1)', () => {
-  it('une ligne par membre, nommée par le pseudo : rôle, statut, mineur, connexion, onboarding, accords', async () => {
+describe('MembersPage : une carte par membre (02 §6, P-ADM-1, spec refonte §10.5)', () => {
+  it('une carte (article) par membre, nommée par le pseudo : badges de rôle, de statut et « Mineur », dernière connexion relative, accords et onboarding', async () => {
     await renderMembers();
-    expect(screen.getByRole('heading', { level: 1, name: 'Membres' })).toBeTruthy();
-    const lea = screen.getByRole('row', { name: 'lea' });
-    expect(within(lea).getByRole('rowheader').textContent).toContain('lea');
-    expect(within(lea).getByText('mineur')).toBeTruthy();
-    // Rôle, statut, dernière connexion, onboarding, accord santé, accord coach, puis les actions :
-    // aucune autre donnée de la personne (C1 à C3).
-    const cells = within(lea)
-      .getAllByRole('cell')
-      .map((c) => c.textContent);
-    expect(cells.slice(0, -1)).toEqual([
-      'membre',
-      'actif',
-      'Jamais connecté',
-      'Onboarding en cours',
-      'oui',
-      'non',
-    ]);
-    const bastien = within(screen.getByRole('row', { name: 'bastien' }))
-      .getAllByRole('cell')
-      .map((c) => c.textContent);
-    expect(bastien.slice(0, -1)).toEqual([
-      'admin',
-      'actif',
-      '06/10/2026 à 10:30',
-      'Onboarding terminé',
-      'non',
-      'oui',
-    ]);
-    expect(row('bastien').queryByText('mineur')).toBeNull();
-    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
-    expect(headers).toEqual([
-      'Pseudo',
-      'Rôle',
-      'Statut',
-      'Dernière connexion',
-      'Onboarding',
+    expect(screen.getByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Membres du cercle' })).toBeTruthy();
+    expect(screen.getByText('2 membres')).toBeTruthy();
+    expect(
+      screen.getAllByRole('article').map((a) => within(a).getByRole('heading', { level: 3 }).textContent),
+    ).toEqual(['bastien', 'ines.m']);
+    expect(screen.queryByRole('table')).toBeNull();
+
+    const bastien = card('bastien');
+    expect(bastien.getByText('Admin')).toBeTruthy();
+    expect(bastien.getByText('Actif')).toBeTruthy();
+    expect(bastien.queryByText('Mineur')).toBeNull();
+    expect(bastien.getByText('Dernière connexion : il y a 3 h')).toBeTruthy();
+    expect(bastien.getAllByRole('term').map((t) => t.textContent)).toEqual([
       'Accord santé',
       'Accord coach',
-      'Actions',
+      'Onboarding',
     ]);
+    expect(bastien.getAllByRole('definition').map((d) => d.textContent)).toEqual(['Non', 'Oui', 'Terminé']);
+
+    const ines = card('ines.m');
+    expect(ines.queryByText('Admin')).toBeNull();
+    expect(ines.getByText('Actif')).toBeTruthy();
+    expect(ines.getByText('Mineur')).toBeTruthy();
+    expect(ines.getByText('Jamais connecté')).toBeTruthy();
+    expect(ines.getAllByRole('definition').map((d) => d.textContent)).toEqual(['Oui', 'Non', 'En cours']);
   });
 
-  it('membre désactivé : statut « désactivé », « Réactiver » au lieu de « Désactiver »', async () => {
-    await renderMembers({ members: [BASTIEN, { ...LEA, status: 'disabled' }] });
-    expect(row('lea').getByText('désactivé')).toBeTruthy();
-    expect(row('lea').queryByRole('button', { name: 'Désactiver' })).toBeNull();
-    expect(row('lea').getByRole('button', { name: 'Réactiver' })).toBeTruthy();
-    expect(row('lea').getByRole('button', { name: 'Promouvoir administrateur' })).toBeTruthy();
-    expect(row('bastien').getByRole('button', { name: 'Rétrograder' })).toBeTruthy();
+  it('rien d’autre que ce que renvoie /api/admin : aucune donnée C1 à C3 de la personne sur sa carte', async () => {
+    await renderMembers();
+    // Initiale de l'avatar (décorative), pseudo, badges, connexion, accords et onboarding : rien de plus.
+    expect(screen.getByRole('article', { name: 'ines.m' }).textContent).toBe(
+      'Iines.mActifMineurJamais connectéAccord santéOuiAccord coachNonOnboardingEn cours',
+    );
+    expect(screen.getByRole('article', { name: 'bastien' }).textContent).toBe(
+      'BbastienAdminActifDernière connexion : il y a 3 hAccord santéNonAccord coachOuiOnboardingTerminé',
+    );
   });
 
-  it('lecture en cours : « Chargement… » annoncé poliment, puis le tableau', async () => {
+  it('dernière connexion relative à l’horloge injectée : « il y a 2 j », « à l’instant »', async () => {
+    await renderMembers({
+      now: Date.parse('2026-10-08T09:00:00.000Z'),
+      members: [BASTIEN, { ...INES, lastLoginAt: '2026-10-08T08:59:30.000Z' }],
+    });
+    expect(card('bastien').getByText('Dernière connexion : il y a 2 j')).toBeTruthy();
+    expect(card('ines.m').getByText("Dernière connexion : à l'instant")).toBeTruthy();
+  });
+
+  it('membre désactivé : badge « Désactivé », compté dans l’en-tête', async () => {
+    await renderMembers({ members: [BASTIEN, { ...INES, status: 'disabled' }] });
+    expect(card('ines.m').getByText('Désactivé')).toBeTruthy();
+    expect(card('ines.m').queryByText('Actif')).toBeNull();
+    expect(screen.getByText('2 membres · 1 désactivé')).toBeTruthy();
+  });
+
+  it('« Actions pour ines.m » : un bouton de 44 px par carte qui annonce une fenêtre', async () => {
+    await renderMembers();
+    const more = card('ines.m').getByRole('button', { name: 'Actions pour ines.m' });
+    expect(more.getAttribute('aria-haspopup')).toBe('dialog');
+    // Aucune action ne reste sur la carte : tout passe par la feuille.
+    expect(buttonNames(screen.getByRole('article', { name: 'ines.m' }))).toEqual(['Actions pour ines.m']);
+  });
+
+  it('lecture en cours : « Chargement… » annoncé poliment, puis les cartes', async () => {
     const reply = Promise.withResolvers<void>();
     const api = createFakeApi().on('GET', '/api/admin/members', async () => {
       await reply.promise;
-      return { status: 200, body: [BASTIEN, LEA] };
+      return { status: 200, body: [BASTIEN, INES] };
     });
     await renderWithServices(<MembersPage />, { api, me: ADMIN });
     expect((await screen.findByText('Chargement…')).getAttribute('role')).toBe('status');
     reply.resolve();
-    expect(await screen.findByRole('row', { name: 'lea' })).toBeTruthy();
+    expect(await screen.findByRole('article', { name: 'ines.m' })).toBeTruthy();
     expect(screen.queryByText('Chargement…')).toBeNull();
   });
 
@@ -139,9 +173,9 @@ describe('MembersPage : tableau des membres (02 §6, P-ADM-1)', () => {
     expect(await screen.findByText('Nécessite le réseau')).toBeTruthy();
     expect(screen.queryByText('Chargement…')).toBeNull();
     api.setOffline(false);
-    api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN, LEA] });
+    api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN, INES] });
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
-    expect(await screen.findByRole('row', { name: 'lea' })).toBeTruthy();
+    expect(await screen.findByRole('article', { name: 'ines.m' })).toBeTruthy();
     expect(screen.queryByText('Nécessite le réseau')).toBeNull();
   });
 
@@ -162,34 +196,120 @@ describe('MembersPage : tableau des membres (02 §6, P-ADM-1)', () => {
     },
   );
 
-  it('routes admin et navigation Membres · Invitations · Salles · État du serveur', async () => {
+  it('sous-navigation Membres · Invitations · Salles · Serveur ; titre « Administration » et Retour vers le Profil', async () => {
     const api = createFakeApi()
       .on('GET', '/api/admin/members', { status: 200, body: [BASTIEN] })
       .on('GET', '/api/admin/invitations', { status: 200, body: [] })
       .on('GET', '/api/gyms', { status: 200, body: [] })
       .on('GET', '/api/admin/ops-status', { status: 200, body: { version: 'dev', opsStatus: null } });
     await renderApp({ path: '/admin/members', me: ADMIN, api });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Membres' })).toBeTruthy();
-    const nav = within(screen.getByRole('navigation', { name: 'Administration' }));
-    const links = nav.getAllByRole('link');
-    expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
+    expect(await screen.findByRole('heading', { level: 2, name: 'Membres du cercle' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/profile');
+    const nav = () => within(screen.getByRole('navigation', { name: 'Administration' }));
+    expect(
+      nav()
+        .getAllByRole('link')
+        .map((l) => [l.textContent, l.getAttribute('href')]),
+    ).toEqual([
       ['Membres', '/admin/members'],
       ['Invitations', '/admin/invitations'],
       ['Salles', '/admin/gyms'],
-      ['État du serveur', '/admin/health'],
+      ['Serveur', '/admin/health'],
     ]);
-    expect(nav.getByRole('link', { name: 'Membres' }).getAttribute('aria-current')).toBe('page');
-    expect(nav.getByRole('link', { name: 'Salles' }).getAttribute('aria-current')).toBeNull();
-    for (const [name, title] of [
-      ['Invitations', 'Invitations'],
+    expect(nav().getByRole('link', { name: 'Membres' }).getAttribute('aria-current')).toBe('page');
+    expect(nav().getByRole('link', { name: 'Salles' }).getAttribute('aria-current')).toBeNull();
+    for (const [name, landmark] of [
+      ['Invitations', 'Nouvelle invitation'],
       ['Salles', 'Salles'],
-      ['État du serveur', 'État du serveur'],
+      ['Serveur', 'Résumé'],
+      ['Membres', 'Membres du cercle'],
     ] as const) {
-      fireEvent.click(
-        within(screen.getByRole('navigation', { name: 'Administration' })).getByRole('link', { name }),
-      );
-      expect(await screen.findByRole('heading', { level: 1, name: title })).toBeTruthy();
+      fireEvent.click(nav().getByRole('link', { name }));
+      expect(await screen.findByRole('region', { name: landmark })).toBeTruthy();
+      expect(screen.getByRole('heading', { level: 1, name: 'Administration' })).toBeTruthy();
+      const current = nav()
+        .getAllByRole('link')
+        .filter((l) => l.getAttribute('aria-current') === 'page')
+        .map((l) => l.textContent);
+      expect(current).toEqual([name]);
     }
+  });
+});
+
+describe('MembersPage : feuille des actions (spec refonte §10.5)', () => {
+  it('« Actions pour ines.m » ouvre une feuille nommée par le pseudo : résumé, actions, puis « Actions sensibles » en dernier', async () => {
+    await renderMembers();
+    const sheet = openSheet('ines.m');
+    expect(within(sheet).getByText('Membre · Actif · 1 session ouverte')).toBeTruthy();
+    expect(buttonNames(sheet)).toEqual([
+      'Fermer',
+      'Lien de réinitialisation',
+      'Fermer les sessions',
+      'Promouvoir administrateur',
+      'Corriger la date de naissance',
+      'Désactiver',
+      'Supprimer le compte',
+    ]);
+    const sensitive = within(sheet).getByRole('region', { name: 'Actions sensibles' });
+    expect(buttonNames(sensitive)).toEqual(['Désactiver', 'Supprimer le compte']);
+    // Le groupe sensible ferme la feuille : rien ne le suit, pas même une barre d'actions.
+    expect(sensitive.nextElementSibling).toBeNull();
+    expect(sensitive.parentElement?.nextElementSibling ?? null).toBeNull();
+    expect(
+      within(sensitive).getByRole('button', { name: 'Désactiver' }).getAttribute('aria-describedby'),
+    ).toBe(within(sensitive).getByText('Plus de connexion, données conservées').id);
+    expect(
+      within(sensitive).getByRole('button', { name: 'Supprimer le compte' }).getAttribute('aria-describedby'),
+    ).toBe(within(sensitive).getByText('Définitif, seulement à sa demande').id);
+  });
+
+  it('administrateur avec deux sessions : « Rétrograder », résumé au pluriel', async () => {
+    await renderMembers();
+    const sheet = openSheet('bastien');
+    expect(within(sheet).getByText('Admin · Actif · 2 sessions ouvertes')).toBeTruthy();
+    expect(within(sheet).getByRole('button', { name: 'Rétrograder' })).toBeTruthy();
+    expect(within(sheet).queryByRole('button', { name: 'Promouvoir administrateur' })).toBeNull();
+  });
+
+  it('membre désactivé : il garde « Réactiver » ; « Désactiver » disparaît des actions sensibles', async () => {
+    await renderMembers({ members: [BASTIEN, { ...INES, status: 'disabled', activeSessions: 0 }] });
+    const sheet = openSheet('ines.m');
+    expect(within(sheet).getByText('Membre · Désactivé · aucune session ouverte')).toBeTruthy();
+    expect(buttonNames(sheet)).toEqual([
+      'Fermer',
+      'Réactiver',
+      'Lien de réinitialisation',
+      'Fermer les sessions',
+      'Promouvoir administrateur',
+      'Corriger la date de naissance',
+      'Supprimer le compte',
+    ]);
+    const sensitive = within(sheet).getByRole('region', { name: 'Actions sensibles' });
+    expect(buttonNames(sensitive)).toEqual(['Supprimer le compte']);
+  });
+
+  it('« Fermer » et Échap ferment la feuille sans requête ; le focus revient à « Actions pour ines.m »', async () => {
+    const api = createFakeApi();
+    await renderMembers({ api });
+    const trigger = screen.getByRole('button', { name: 'Actions pour ines.m' });
+    trigger.focus();
+    openSheet('ines.m');
+    fireEvent.click(dialog().getByRole('button', { name: 'Fermer' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await until(() => document.activeElement === trigger);
+    openSheet('ines.m');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await until(() => document.activeElement === trigger);
+    expect(api.calls.filter((c) => c.method !== 'GET')).toEqual([]);
+  });
+
+  it('choisir une action ferme la feuille et ouvre sa confirmation, seule à l’écran', async () => {
+    await renderMembers();
+    open('ines.m', 'Désactiver');
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByRole('dialog', { name: 'Désactiver ines.m' })).toBeTruthy();
   });
 });
 
@@ -201,7 +321,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     });
     const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
     await renderMembers({ api });
-    const d = open('lea', 'Lien de réinitialisation');
+    const d = open('ines.m', 'Lien de réinitialisation');
     expect(screen.getByRole('dialog', { name: 'Générer un lien de réinitialisation' })).toBeTruthy();
     fireEvent.click(d.getByRole('button', { name: 'Générer' }));
     expect(await dialog().findByText(CODE)).toBeTruthy();
@@ -218,7 +338,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     expect(screen.queryByText(CODE)).toBeNull();
     expect(screen.queryByText(LINK)).toBeNull();
     // Rouvert : rien de l'ancien lien, il faut en générer un nouveau.
-    open('lea', 'Lien de réinitialisation');
+    open('ines.m', 'Lien de réinitialisation');
     expect(dialog().queryByText(CODE)).toBeNull();
     expect(dialog().getByRole('button', { name: 'Générer' })).toBeTruthy();
   });
@@ -237,7 +357,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
         body: { code: CODE, link: LINK, expiresAt: '2026-10-07T12:00:00.000Z' },
       });
       await renderMembers({ api });
-      fireEvent.click(open('lea', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
+      fireEvent.click(open('ines.m', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
       await dialog().findByText(CODE);
       fireEvent.click(dialog().getByRole('button', { name: 'Copier' }));
       expect(await dialog().findByRole('button', { name: 'Copie impossible' })).toBeTruthy();
@@ -258,7 +378,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
       body: { code: CODE, link: LINK, expiresAt: '2026-10-07T12:00:00.000Z' },
     });
     const { db } = await renderMembers({ api });
-    fireEvent.click(open('lea', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
+    fireEvent.click(open('ines.m', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
     await dialog().findByText(CODE);
     await until(() => memberLoads(api) === 2);
     fireEvent.click(dialog().getByRole('button', { name: "J'ai transmis le lien" }));
@@ -275,7 +395,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
       body: { code: CODE, link: LINK, expiresAt: '2026-10-07T12:00:00.000Z' },
     });
     await renderMembers({ api });
-    fireEvent.click(open('lea', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
+    fireEvent.click(open('ines.m', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
     await dialog().findByText(CODE);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByText(CODE)).toBeNull();
@@ -288,7 +408,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
       return { status: 200, body: { code: CODE, link: LINK, expiresAt: '2026-10-07T12:00:00.000Z' } };
     });
     await renderMembers({ api });
-    open('lea', 'Lien de réinitialisation');
+    open('ines.m', 'Lien de réinitialisation');
     fireEvent.click(confirmButton('Générer'));
     fireEvent.click(confirmButton('Générer'));
     await until(() => sent(api, 'POST', '/api/admin/members/u-2/reset-link').length > 0);
@@ -320,7 +440,7 @@ describe('MembersPage : lien de réinitialisation (R-RST-1 à R-RST-4)', () => {
     const api = createFakeApi();
     await renderMembers({ api });
     api.setOffline('reject');
-    fireEvent.click(open('lea', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
+    fireEvent.click(open('ines.m', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
     expect(await dialog().findByText('Nécessite le réseau')).toBeTruthy();
     expect(dialog().queryByText('Ce code ne sera plus affiché.')).toBeNull();
   });
@@ -337,7 +457,7 @@ describe('MembersPage : membre changé entre-temps (02 §6)', () => {
       'Élément introuvable.',
     ],
     [
-      'Supprimer',
+      'Supprimer le compte',
       400,
       'validation',
       'Supprimer définitivement',
@@ -352,16 +472,16 @@ describe('MembersPage : membre changé entre-temps (02 §6)', () => {
         body: { error: code },
       });
       await renderMembers({ api });
-      // Supprimée ou renommée ailleurs : la liste relue ne contient plus « lea ».
-      api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN, { ...LEA, username: 'lea2' }] });
-      open('lea', action);
+      // Supprimée ou renommée ailleurs : la liste relue ne contient plus « ines.m ».
+      api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN, { ...INES, username: 'ines.m2' }] });
+      open('ines.m', action);
       if (route === 'delete') {
-        fill('Tape le pseudo pour confirmer', 'lea');
+        fill('Tape le pseudo pour confirmer', 'ines.m');
         fill('Ton mot de passe', PASSWORD);
       }
       fireEvent.click(confirmButton(confirm));
       expect(await dialog().findByText(message)).toBeTruthy();
-      expect(await screen.findByRole('row', { name: 'lea2' })).toBeTruthy();
+      expect(await screen.findByRole('article', { name: 'ines.m2' })).toBeTruthy();
       expect(memberLoads(api)).toBe(2);
       expect(screen.getByRole('dialog')).toBeTruthy();
     },
@@ -374,9 +494,9 @@ describe('MembersPage : membre changé entre-temps (02 §6)', () => {
     });
     await renderMembers({ api });
     api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN] });
-    fireEvent.click(open('lea', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
+    fireEvent.click(open('ines.m', 'Lien de réinitialisation').getByRole('button', { name: 'Générer' }));
     expect(await dialog().findByText('Élément introuvable.')).toBeTruthy();
-    await until(() => screen.queryByRole('row', { name: 'lea' }) === null);
+    await until(() => screen.queryByRole('article', { name: 'ines.m' }) === null);
     expect(memberLoads(api)).toBe(2);
   });
 
@@ -398,7 +518,7 @@ describe('MembersPage : sessions et statut (R-AUTH-7, R-ADM-1, R-ROLE-2)', () =>
   it('« Fermer les sessions » → POST revoke-sessions {} puis liste rechargée', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/revoke-sessions', { status: 204 });
     await renderMembers({ api });
-    const d = open('lea', 'Fermer les sessions');
+    const d = open('ines.m', 'Fermer les sessions');
     expect(d.getByText(/1 session ouverte/)).toBeTruthy();
     fireEvent.click(confirmButton('Fermer les sessions'));
     await until(() => screen.queryByRole('dialog') === null);
@@ -406,35 +526,35 @@ describe('MembersPage : sessions et statut (R-AUTH-7, R-ADM-1, R-ROLE-2)', () =>
     expect(sent(api, 'POST', '/api/admin/members/u-2/revoke-sessions')).toEqual([{}]);
   });
 
-  it('« Désactiver » → { status: disabled } ; « Réactiver » → { status: active }', async () => {
-    let lea = LEA;
+  it('« Désactiver » → { status: disabled } ; le membre désactivé garde « Réactiver » → { status: active }', async () => {
+    let ines = INES;
     const api = createFakeApi()
-      .on('GET', '/api/admin/members', () => ({ status: 200, body: [BASTIEN, lea] }))
+      .on('GET', '/api/admin/members', () => ({ status: 200, body: [BASTIEN, ines] }))
       .on('POST', '/api/admin/members/:id/status', (req) => {
-        lea = { ...lea, status: (req.body as { status: MemberSummary['status'] }).status };
+        ines = { ...ines, status: (req.body as { status: MemberSummary['status'] }).status };
         return { status: 204 };
       });
     await renderWithServices(<MembersPage />, { api, me: ADMIN });
-    await screen.findByRole('row', { name: 'lea' });
-    open('lea', 'Désactiver');
+    await screen.findByRole('article', { name: 'ines.m' });
+    open('ines.m', 'Désactiver');
     fireEvent.click(confirmButton('Désactiver'));
-    expect(await row('lea').findByRole('button', { name: 'Réactiver' })).toBeTruthy();
-    expect(row('lea').getByText('désactivé')).toBeTruthy();
-    open('lea', 'Réactiver');
+    expect(await card('ines.m').findByText('Désactivé')).toBeTruthy();
+    await until(() => screen.queryByRole('dialog') === null);
+    open('ines.m', 'Réactiver');
     fireEvent.click(confirmButton('Réactiver'));
-    expect(await row('lea').findByRole('button', { name: 'Désactiver' })).toBeTruthy();
+    expect(await card('ines.m').findByText('Actif')).toBeTruthy();
     expect(sent(api, 'POST', '/api/admin/members/u-2/status')).toEqual([
       { status: 'disabled' },
       { status: 'active' },
     ]);
   });
 
-  it('« Annuler » ferme sans requête et rend le focus au bouton d’origine', async () => {
+  it('« Annuler » ferme sans requête et rend le focus à « Actions pour ines.m »', async () => {
     const api = createFakeApi();
     await renderMembers({ api });
-    const trigger = row('lea').getByRole('button', { name: 'Désactiver' });
+    const trigger = screen.getByRole('button', { name: 'Actions pour ines.m' });
     trigger.focus();
-    open('lea', 'Désactiver');
+    open('ines.m', 'Désactiver');
     expect(document.activeElement).toBe(screen.getByRole('dialog'));
     fireEvent.click(confirmButton('Annuler'));
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -446,7 +566,7 @@ describe('MembersPage : sessions et statut (R-AUTH-7, R-ADM-1, R-ROLE-2)', () =>
 describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
   it('même action ouverte sur un autre membre : dialogue neuf, mot de passe saisi oublié', async () => {
     await renderMembers();
-    open('lea', 'Promouvoir administrateur');
+    open('ines.m', 'Promouvoir administrateur');
     fill('Ton mot de passe', PASSWORD);
     // Le fond reste dans le DOM : un clic (ou un clavier sorti du dialogue) ouvre l'action d'un autre.
     open('bastien', 'Rétrograder');
@@ -458,7 +578,7 @@ describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
   it('« Promouvoir administrateur » exige « Ton mot de passe » → POST role { role, password }', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/role', { status: 204 });
     await renderMembers({ api });
-    open('lea', 'Promouvoir administrateur');
+    open('ines.m', 'Promouvoir administrateur');
     expect(confirmButton('Promouvoir administrateur').disabled).toBe(true);
     fill('Ton mot de passe', PASSWORD);
     expect(confirmButton('Promouvoir administrateur').disabled).toBe(false);
@@ -482,13 +602,13 @@ describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
     expect(memberLoads(api)).toBe(1);
   });
 
-  it('se rétrograder soi-même (un autre admin reste) : profil relu, « Page introuvable », plus de tableau', async () => {
+  it('se rétrograder soi-même (un autre admin reste) : profil relu, « Page introuvable », plus de cartes', async () => {
     let role: 'admin' | 'member' = 'admin';
     const api = createFakeApi()
       .on('GET', '/api/me', () => ({ status: 200, body: { ...ADMIN, role } }))
       .on('GET', '/api/admin/members', () =>
         role === 'admin'
-          ? { status: 200, body: [BASTIEN, { ...LEA, role: 'admin' }] }
+          ? { status: 200, body: [BASTIEN, { ...INES, role: 'admin' }] }
           : { status: 403, body: { error: 'forbidden' } },
       )
       .on('POST', '/api/admin/members/:id/role', () => {
@@ -496,12 +616,12 @@ describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
         return { status: 204 };
       });
     await renderApp({ path: '/admin/members', me: ADMIN, api });
-    await screen.findByRole('row', { name: 'bastien' });
+    await screen.findByRole('article', { name: 'bastien' });
     open('bastien', 'Rétrograder');
     fill('Ton mot de passe', PASSWORD);
     fireEvent.click(confirmButton('Rétrograder'));
     expect(await screen.findByRole('heading', { level: 1, name: 'Page introuvable' })).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('article')).toBeNull();
     expect(screen.queryByText("Cette action n'est pas autorisée.")).toBeNull();
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull();
     expect(sent(api, 'POST', '/api/admin/members/u-1/role')).toEqual([
@@ -511,11 +631,11 @@ describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
     expect(memberLoads(api)).toBe(1);
   });
 
-  it('droits retirés ailleurs : liste refusée (403) → tableau retiré et profil relu', async () => {
+  it('droits retirés ailleurs : liste refusée (403) → cartes retirées et profil relu', async () => {
     let forbidden = false;
     const api = createFakeApi()
       .on('GET', '/api/admin/members', () =>
-        forbidden ? { status: 403, body: { error: 'forbidden' } } : { status: 200, body: [BASTIEN, LEA] },
+        forbidden ? { status: 403, body: { error: 'forbidden' } } : { status: 200, body: [BASTIEN, INES] },
       )
       .on('POST', '/api/admin/members/:id/revoke-sessions', () => {
         // Un autre admin vient de rétrograder bastien.
@@ -523,11 +643,11 @@ describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
         return { status: 204 };
       });
     await renderWithServices(<MembersPage />, { api, me: ADMIN });
-    await screen.findByRole('row', { name: 'lea' });
-    open('lea', 'Fermer les sessions');
+    await screen.findByRole('article', { name: 'ines.m' });
+    open('ines.m', 'Fermer les sessions');
     fireEvent.click(confirmButton('Fermer les sessions'));
     expect(await screen.findByText("Cette action n'est pas autorisée.")).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('article')).toBeNull();
     await until(() => api.calls.some((c) => c.method === 'GET' && c.path === '/api/me'));
   });
 
@@ -535,7 +655,7 @@ describe('MembersPage : rôle (R-ROLE-2, P-AUT-5)', () => {
     let reply: FakeReply = { status: 401, body: { error: 'invalid_credentials' } };
     const api = createFakeApi().on('POST', '/api/admin/members/:id/role', () => reply);
     await renderMembers({ api });
-    open('lea', 'Promouvoir administrateur');
+    open('ines.m', 'Promouvoir administrateur');
     fill('Ton mot de passe', 'faux');
     fireEvent.click(confirmButton('Promouvoir administrateur'));
     expect(await dialog().findByText('Mot de passe incorrect.')).toBeTruthy();
@@ -550,7 +670,7 @@ describe('MembersPage : date de naissance (R-AGE-4)', () => {
   it('« Corriger la date de naissance » → POST birth-date { birthDate }', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/birth-date', { status: 204 });
     await renderMembers({ api });
-    open('lea', 'Corriger la date de naissance');
+    open('ines.m', 'Corriger la date de naissance');
     expect(confirmButton('Enregistrer').disabled).toBe(true);
     fill('Date de naissance', '2009-02-01');
     fireEvent.click(confirmButton('Enregistrer'));
@@ -565,7 +685,7 @@ describe('MembersPage : date de naissance (R-AGE-4)', () => {
       body: { error: 'under_min_age' },
     });
     await renderMembers({ api });
-    open('lea', 'Corriger la date de naissance');
+    open('ines.m', 'Corriger la date de naissance');
     fill('Date de naissance', '2015-02-01');
     fireEvent.click(confirmButton('Enregistrer'));
     expect(await dialog().findByText('Rune est réservé aux 16 ans et plus')).toBeTruthy();
@@ -576,42 +696,46 @@ describe('MembersPage : suppression (R-SUP-2, P-AUT-5, P-DRT-3)', () => {
   it('« Supprimer définitivement » désactivé tant que le pseudo ou le mot de passe manquent', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/delete', { status: 204 });
     await renderMembers({ api });
-    open('lea', 'Supprimer');
+    open('ines.m', 'Supprimer le compte');
+    expect(screen.getByRole('dialog', { name: 'Supprimer le compte de ines.m' })).toBeTruthy();
     const confirm = () => confirmButton('Supprimer définitivement');
     expect(confirm().disabled).toBe(true);
-    fill('Tape le pseudo pour confirmer', 'le');
+    fill('Tape le pseudo pour confirmer', 'ines');
     fill('Ton mot de passe', PASSWORD);
     expect(confirm().disabled).toBe(true);
-    fill('Tape le pseudo pour confirmer', 'lea');
+    fill('Tape le pseudo pour confirmer', 'ines.m');
     fill('Ton mot de passe', '');
     expect(confirm().disabled).toBe(true);
     fill('Ton mot de passe', PASSWORD);
     expect(confirm().disabled).toBe(false);
-    // La liste relue ne contient plus lea.
+    // La liste relue ne contient plus ines.m.
     api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN] });
     fireEvent.click(confirm());
-    await until(() => screen.queryByRole('row', { name: 'lea' }) === null);
+    await until(() => screen.queryByRole('article', { name: 'ines.m' }) === null);
     expect(sent(api, 'POST', '/api/admin/members/u-2/delete')).toEqual([
-      { confirmUsername: 'lea', password: PASSWORD },
+      { confirmUsername: 'ines.m', password: PASSWORD },
     ]);
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('1 membre')).toBeTruthy();
   });
 
-  it('après la suppression, le focus passe au tableau (le bouton a disparu avec la ligne)', async () => {
+  it('après la suppression, le focus passe au titre « Membres du cercle » (la carte et son bouton ont disparu)', async () => {
     const api = createFakeApi().on('POST', '/api/admin/members/:id/delete', { status: 204 });
     await renderMembers({ api });
-    row('lea').getByRole('button', { name: 'Supprimer' }).focus();
-    open('lea', 'Supprimer');
-    fill('Tape le pseudo pour confirmer', 'LEA ');
+    screen.getByRole('button', { name: 'Actions pour ines.m' }).focus();
+    open('ines.m', 'Supprimer le compte');
+    fill('Tape le pseudo pour confirmer', 'INES.M ');
     fill('Ton mot de passe', PASSWORD);
     api.on('GET', '/api/admin/members', { status: 200, body: [BASTIEN] });
     fireEvent.click(confirmButton('Supprimer définitivement'));
     await until(() => screen.queryByRole('dialog') === null);
     // Saisie tolérante comme le serveur (casse, espaces autour) ; la saisie part telle quelle, sans les espaces.
     expect(sent(api, 'POST', '/api/admin/members/u-2/delete')).toEqual([
-      { confirmUsername: 'LEA', password: PASSWORD },
+      { confirmUsername: 'INES.M', password: PASSWORD },
     ]);
-    await until(() => document.activeElement === screen.getByRole('region', { name: 'Membres du cercle' }));
+    await until(
+      () => document.activeElement === screen.getByRole('heading', { level: 2, name: 'Membres du cercle' }),
+    );
   });
 
   it('401 invalid_credentials → « Mot de passe incorrect. », dialogue gardé', async () => {
@@ -620,13 +744,13 @@ describe('MembersPage : suppression (R-SUP-2, P-AUT-5, P-DRT-3)', () => {
       body: { error: 'invalid_credentials' },
     });
     await renderMembers({ api });
-    open('lea', 'Supprimer');
-    fill('Tape le pseudo pour confirmer', 'lea');
+    open('ines.m', 'Supprimer le compte');
+    fill('Tape le pseudo pour confirmer', 'ines.m');
     fill('Ton mot de passe', 'faux');
     fireEvent.click(confirmButton('Supprimer définitivement'));
     expect(await dialog().findByText('Mot de passe incorrect.')).toBeTruthy();
     expect(memberLoads(api)).toBe(1);
-    expect(screen.getByRole('row', { name: 'lea' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: 'ines.m' })).toBeTruthy();
   });
 
   it('envoi en cours : un second envoi ne part pas, boutons désactivés, Échap ne ferme pas ; la réponse ferme', async () => {
@@ -636,8 +760,8 @@ describe('MembersPage : suppression (R-SUP-2, P-AUT-5, P-DRT-3)', () => {
       return { status: 204 };
     });
     await renderMembers({ api });
-    open('lea', 'Supprimer');
-    fill('Tape le pseudo pour confirmer', 'lea');
+    open('ines.m', 'Supprimer le compte');
+    fill('Tape le pseudo pour confirmer', 'ines.m');
     fill('Ton mot de passe', PASSWORD);
     // Deux envois du formulaire (Entrée deux fois, double clic) : le bouton désactivé n'y suffit pas.
     const form = screen.getByRole('dialog').querySelector('form') as HTMLFormElement;
@@ -654,6 +778,6 @@ describe('MembersPage : suppression (R-SUP-2, P-AUT-5, P-DRT-3)', () => {
     reply.resolve();
     await until(() => screen.queryByRole('dialog') === null);
     expect(sent(api, 'POST', '/api/admin/members/u-2/delete')).toHaveLength(1);
-    expect(screen.queryByRole('row', { name: 'lea' })).toBeNull();
+    expect(screen.queryByRole('article', { name: 'ines.m' })).toBeNull();
   });
 });
