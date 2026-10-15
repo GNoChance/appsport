@@ -6,11 +6,11 @@ import {
   type LimitationSide,
   type TrainingProfilePatch,
 } from '@rune/contracts';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
 import { Banner, Button, ChoiceList, HealthWarning, useAction } from '../../ui';
-import { LimitationEditForm, LimitationFields, limitationLabel } from './LimitationFields';
+import { LimitationFields, limitationLabel } from './LimitationFields';
 import styles from './onboarding.module.css';
 import { StepActions, type StepProps, saveLabel, saveStep } from './StepActions';
 import { StepTitle } from './StepTitle';
@@ -202,15 +202,10 @@ export type LimitationDraft = ReturnType<typeof useLimitationDraft>;
 
 /**
  * Limitations facultatives (E7.3) : zone, côté, gêne et note de 200 caractères au plus. `draft` :
- * saisie tenue par l'écran parent (onboarding), sinon par le composant. `editable` (Profil › Santé,
- * P-DRT-2) : chaque limitation a aussi « Modifier », qui la remplace par son formulaire ; à la
- * fermeture, le focus revient à « Modifier ». Un formulaire à la fois : tant qu'il est ouvert (envoi
- * compris), les autres « Modifier » attendent ; la limitation disparue (supprimée ailleurs), ils se
- * libèrent. `headingLevel` : niveau du titre (3 par défaut).
+ * saisie tenue par l'écran parent (onboarding), sinon par le composant. Profil › Santé a les siennes,
+ * ouvertes depuis une ligne (`HealthLimitations`). `headingLevel` : niveau du titre (3 par défaut).
  */
-export function LimitationsEditor(
-  p: { draft?: LimitationDraft; editable?: boolean; headingLevel?: 2 | 3 } = {},
-) {
+export function LimitationsEditor(p: { draft?: LimitationDraft; headingLevel?: 2 | 3 } = {}) {
   const repos = useRepos();
   const id = useId();
   const limitations = useLive(() => repos.consent.limitations(), [repos]);
@@ -218,30 +213,7 @@ export function LimitationsEditor(
   const draft = p.draft ?? own;
   const add = useAction(() => draft.persist());
   const remove = useAction((limitationId: string) => repos.consent.removeLimitation(limitationId));
-  const [editing, setEditing] = useState<string | null>(null);
-  const returnTo = useRef<string | null>(null);
-  const listRef = useRef<HTMLUListElement>(null);
   const Heading = p.headingLevel === 2 ? 'h2' : 'h3';
-
-  // Limitation en cours de modification disparue de la liste : plus de formulaire ouvert.
-  useEffect(() => {
-    if (editing !== null && limitations !== undefined && !limitations.some((l) => l.id === editing)) {
-      setEditing(null);
-    }
-  }, [editing, limitations]);
-
-  useEffect(() => {
-    if (editing !== null || returnTo.current === null) return;
-    listRef.current
-      ?.querySelector<HTMLButtonElement>(`[data-edit="${CSS.escape(returnTo.current)}"]`)
-      ?.focus();
-    returnTo.current = null;
-  }, [editing]);
-
-  function closeEditor() {
-    returnTo.current = editing;
-    setEditing(null);
-  }
 
   return (
     <section className={styles.panel}>
@@ -252,42 +224,25 @@ export function LimitationsEditor(
       {limitations === undefined ? null : limitations.length === 0 ? (
         <p>Aucune</p>
       ) : (
-        <ul ref={listRef} className={styles.limitations}>
-          {limitations.map((l) =>
-            editing === l.id ? (
-              <li key={l.id}>
-                <LimitationEditForm limitation={l} onDone={closeEditor} />
-              </li>
-            ) : (
-              <li key={l.id} className={styles.limitation}>
-                <span>
-                  <span id={`${id}-${l.id}`}>{limitationLabel(l)}</span>
-                  {l.note ? <span className={styles.note}> — {l.note}</span> : null}
-                </span>
-                <span className={styles.itemActions}>
-                  {p.editable ? (
-                    <Button
-                      variant="secondary"
-                      data-edit={l.id}
-                      aria-describedby={`${id}-${l.id}`}
-                      disabled={editing !== null}
-                      onClick={() => setEditing(l.id)}
-                    >
-                      Modifier
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="secondary"
-                    aria-describedby={`${id}-${l.id}`}
-                    disabled={remove.pending}
-                    onClick={() => void remove.run(l.id)}
-                  >
-                    Supprimer
-                  </Button>
-                </span>
-              </li>
-            ),
-          )}
+        <ul className={styles.limitations}>
+          {limitations.map((l) => (
+            <li key={l.id} className={styles.limitation}>
+              <span>
+                <span id={`${id}-${l.id}`}>{limitationLabel(l)}</span>
+                {l.note ? <span className={styles.note}> — {l.note}</span> : null}
+              </span>
+              <span className={styles.itemActions}>
+                <Button
+                  variant="secondary"
+                  aria-describedby={`${id}-${l.id}`}
+                  disabled={remove.pending}
+                  onClick={() => void remove.run(l.id)}
+                >
+                  Supprimer
+                </Button>
+              </span>
+            </li>
+          ))}
         </ul>
       )}
       <LimitationFields state={draft} />
