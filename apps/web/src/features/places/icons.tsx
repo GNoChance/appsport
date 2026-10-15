@@ -121,6 +121,14 @@ export const SearchIcon = (p: Size) => (
   </Icon>
 );
 
+export const WarningIcon = (p: Size) => (
+  <Icon size={p.size ?? 20} stroke={2}>
+    <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+    <path d="M12 9v4" />
+    <path d="M12 17h.01" />
+  </Icon>
+);
+
 export const CloseIcon = (p: Size) => (
   <Icon size={p.size ?? 18} stroke={2.2}>
     <path d="M6 6l12 12M18 6 6 18" />

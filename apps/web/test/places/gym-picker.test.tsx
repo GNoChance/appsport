@@ -100,7 +100,9 @@ describe('GymCreate (R-SAL-2, R-SAL-3)', () => {
       .on('POST', '/api/places', { status: 201, body: { id: 'p-1' } });
     const { onDone } = await renderPicker({ api });
     startCreate('Basic-Fit', 'Lyon');
-    await screen.findByText('Ces salles existent peut-être déjà :');
+    const intro = await screen.findByText('Ces salles existent peut-être déjà :');
+    // Avertissement de la maquette D04 : icône triangle (décorative) puis texte.
+    expect(intro.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(gets(api, '/api/gyms/similar')).toEqual(['name=Basic-Fit&city=Lyon']);
     expect(screen.getByRole('button', { name: 'Non, créer ma salle' })).toBeTruthy();
     fireEvent.click(button("C'est ma salle"));
@@ -243,9 +245,12 @@ describe('GymPicker : recherche en échec et annonces (R-SAL-1)', () => {
       body: [BASIC_FIT, { id: 'g-2', name: 'Basic Fit 2', city: 'Lyon', visibleMemberCount: 0 }],
     });
     fireEvent.change(screen.getByLabelText('Rechercher une salle'), { target: { value: 'basic f' } });
-    expect((await screen.findByRole('note')).textContent).toBe(
+    const note = await screen.findByRole('note');
+    expect(note.textContent).toBe(
       "Ta salle existe peut-être déjà : choisis-la plutôt que d'en créer une en double.",
     );
+    // Maquette D04 : icône triangle (décorative) avant le texte.
+    expect(note.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
 
   it('nombre de salles trouvées et « Aucune salle trouvée. » dans une zone annoncée (role status)', async () => {

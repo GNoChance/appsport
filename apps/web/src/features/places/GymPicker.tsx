@@ -4,7 +4,7 @@ import { useLive } from '../../app-services';
 import { useRepos } from '../../repos';
 import { Banner, Button, ChoiceCard, ChoiceGroup, errorMessage, Field, plural, useAction } from '../../ui';
 import { GymCreate, gymLabel } from './GymCreate';
-import { CloseIcon, GymIcon, PlusIcon, SearchIcon } from './icons';
+import { CloseIcon, GymIcon, PlusIcon, SearchIcon, WarningIcon } from './icons';
 import styles from './places.module.css';
 import { useSubScreenBusy } from './SubScreen';
 
@@ -174,6 +174,7 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
       {/* Recherche qui trouve une salle à choisir : la choisir plutôt que d'en créer une en double (R-SAL-3). */}
       {query.trim() !== '' && gyms?.some((g) => !owned.has(g.id)) ? (
         <div role="note" className={styles.warningNote}>
+          <WarningIcon />
           <p>
             <strong>Ta salle existe peut-être déjà :</strong> choisis-la plutôt que d'en créer une en double.
           </p>

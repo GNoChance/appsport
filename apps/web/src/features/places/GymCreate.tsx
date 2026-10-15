@@ -14,6 +14,7 @@ import { ApiError } from '../../api/client';
 import { useRepos } from '../../repos';
 import { Banner, Button, ChoiceList, ERROR_MESSAGES, Field, plural, useAction } from '../../ui';
 import { EquipmentChecklist, sortEquipment } from './EquipmentChecklist';
+import { WarningIcon } from './icons';
 import styles from './places.module.css';
 import { useSubScreenBusy } from './SubScreen';
 
@@ -138,7 +139,10 @@ export function GymCreate(p: {
 
       {stage === 'similar' ? (
         <section className={styles.similar}>
-          <p className={styles.similarIntro}>Ces salles existent peut-être déjà :</p>
+          <p className={styles.similarIntro}>
+            <WarningIcon />
+            Ces salles existent peut-être déjà :
+          </p>
           <ul className={styles.similarList}>
             {similar.map((g) => (
               <li key={g.id} className={styles.similarItem}>

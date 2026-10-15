@@ -902,6 +902,13 @@
   color: var(--warning-text);
 }
 
+.warningNote svg,
+.similarIntro svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning-text);
+}
+
 .editor {
   overflow: hidden;
 }
