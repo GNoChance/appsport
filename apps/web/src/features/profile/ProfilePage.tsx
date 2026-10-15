@@ -1,4 +1,4 @@
-import { EXPERIENCE_LABELS, GOAL_LABELS, type MeResponse, type Role, SPORTS } from '@rune/contracts';
+import type { MeResponse, Role } from '@rune/contracts';
 import { validateUsername } from '@rune/domain';
 import {
   type FormEvent,
@@ -10,11 +10,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link } from 'wouter';
 import { ApiError } from '../../api/client';
 import { useLive, useMe } from '../../app-services';
-import { type TrainingProfileView, useRepos } from '../../repos';
-import { Banner, Button, Field, formatDate, Page, plural, useAction } from '../../ui';
+import { useRepos } from '../../repos';
+import { Banner, Button, Field, formatDate, ListGroup, ListRow, Page, useAction } from '../../ui';
 import { LogoutDialog } from '../auth/LogoutDialog';
 import {
   accessErrorMessage,
@@ -31,34 +30,54 @@ import { CautiousModeToggle } from '../onboarding/HealthStep';
 import { SportStep } from '../onboarding/SportStep';
 import type { StepProps } from '../onboarding/StepActions';
 import { StepTitleContext } from '../onboarding/StepTitle';
+import {
+  BarsIcon,
+  CalendarIcon,
+  GaugeIcon,
+  IdCardIcon,
+  KeyIcon,
+  LockIcon,
+  LogoutIcon,
+  PulseIcon,
+  TargetIcon,
+  UserIcon,
+} from './icons';
 import styles from './profile.module.css';
+import { answerValue, type TrainingAnswer } from './profile-summary';
+import { useFocusAfterClose } from './use-focus-after-close';
 
 export const FORCED_PASSWORD_CHANGE_TEXT =
   'Ton mot de passe doit être changé avant de continuer (14 caractères au moins pour un administrateur).';
 export const PASSWORD_CHANGED_TEXT = 'Mot de passe changé. Tes autres appareils ont été déconnectés.';
+const USERNAME_SAVED_TEXT = 'Pseudo enregistré.';
 const WRONG_CURRENT_PASSWORD = 'Mot de passe actuel incorrect.';
 const CURRENT_PASSWORD_REQUIRED = 'Saisis ton mot de passe actuel.';
-const NOT_SET = 'Non renseigné';
+
+/** Bouton de la ligne nommée `name` dans `root` (ses lignes portent leur nom : « Modifier le pseudo »…). */
+function rowButton(root: HTMLElement | null, name: string): HTMLElement | null {
+  for (const button of root?.querySelectorAll<HTMLElement>('button[aria-label]') ?? []) {
+    if (button.getAttribute('aria-label') === name) return button;
+  }
+  return null;
+}
 
 /**
- * Profil (02 §11) : Compte, Mot de passe, Entraînement et liens vers Lieux, Santé, Confidentialité
- * et Réglages. Mot de passe à changer (R-MDP-1) : bandeau, section du mot de passe et « Se
- * déconnecter » seulement ; le bandeau suit `useMe()` et disparaît au `refresh()` qui suit le
- * changement. Les sections gardent leur place dans l'arbre : le formulaire du mot de passe reste
- * monté, avec son message de réussite.
+ * Profil › Mon profil (02 §11, spec refonte §10.4, maquette C02) : Entraînement (une ligne par réponse de
+ * l'onboarding, qui ouvre son écran en édition, puis le mode prudent, réglé ici seulement) et Compte (pseudo
+ * et mot de passe derrière leur ligne, date de naissance en lecture seule). Mot de passe à changer (R-MDP-1) :
+ * bandeau, champs du mot de passe d'emblée et « Se déconnecter » seulement, sans Retour (le hub renverrait
+ * ici) ; une fois changé, tout réapparaît avec le message de réussite.
  */
 export function ProfilePage() {
   const me = useMe();
   if (!me) return null;
   const forced = me.mustChangePassword;
   return (
-    <Page title="Profil">
+    <Page title="Mon profil" back={forced ? undefined : '/profile'}>
       {forced ? <Banner tone="warning">{FORCED_PASSWORD_CHANGE_TEXT}</Banner> : null}
-      {forced ? null : <AccountSection me={me} />}
-      <PasswordSection me={me} />
-      {forced ? <ForcedLogout /> : null}
       {forced ? null : <TrainingSection me={me} />}
-      {forced ? null : <ProfileLinks />}
+      <AccountSection me={me} />
+      {forced ? <ForcedLogout /> : null}
     </Page>
   );
 }
@@ -69,76 +88,155 @@ function Section(p: { title: string; headingId?: string; children: ReactNode }) 
   const id = p.headingId ?? fallbackId;
   return (
     <section aria-labelledby={id} className={styles.section}>
-      <h2 id={id}>{p.title}</h2>
+      <h2 id={id} className={styles.sectionTitle}>
+        {p.title}
+      </h2>
       {p.children}
     </section>
   );
 }
 
-/** Compte : pseudo, date de naissance en lecture seule, déconnexion (R-CPT-3, R-AUTH-7, R-AUTH-9). */
+type AccountForm = 'username' | 'password';
+
+/** Nom de la ligne qui ouvre chaque formulaire du compte (le libellé de « Pseudo » ne dit pas l'action). */
+const ACCOUNT_ROWS: Record<AccountForm, string> = {
+  username: 'Modifier le pseudo',
+  password: 'Changer le mot de passe',
+};
+
+/**
+ * Compte (R-CPT-3, R-MDP-6) : la ligne « Pseudo » ou « Changer le mot de passe » ouvre son formulaire à la
+ * place des lignes ; « Annuler » ou la réussite les rendent, la réussite avec son message, et le focus revient
+ * à la ligne. La date de naissance se lit seulement (seul l'administrateur la corrige). Mot de passe à changer :
+ * le formulaire du mot de passe seul, ouvert d'emblée et sans « Annuler » ; l'état est gardé quand l'obligation
+ * tombe, pour que le message de réussite et le focus suivent.
+ */
 function AccountSection(p: { me: MeResponse }) {
-  const [logout, setLogout] = useState<'current' | 'all' | null>(null);
+  const forced = p.me.mustChangePassword;
+  const [open, setOpen] = useState<AccountForm | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [returnTo, setReturnTo] = useState<AccountForm | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open !== null || forced || returnTo === null) return;
+    rowButton(listRef.current, ACCOUNT_ROWS[returnTo])?.focus();
+    setReturnTo(null);
+  }, [open, forced, returnTo]);
+
+  function show(form: AccountForm) {
+    setNotice(null);
+    setOpen(form);
+  }
+  function close(form: AccountForm, message: string | null = null) {
+    setNotice(message);
+    setReturnTo(form);
+    setOpen(null);
+  }
+
+  if (forced) {
+    return (
+      <Section title="Mot de passe">
+        <PasswordForm me={p.me} onDone={() => close('password', PASSWORD_CHANGED_TEXT)} />
+      </Section>
+    );
+  }
+
   return (
     <Section title="Compte">
-      <UsernameForm me={p.me} />
-      <Field label="Date de naissance" hint="Seul l'administrateur peut la corriger.">
-        <input type="text" readOnly value={formatDate(p.me.birthDate)} />
-      </Field>
-      <div className={styles.actions}>
-        <Button variant="secondary" onClick={() => setLogout('current')}>
-          Se déconnecter
-        </Button>
-        <Button variant="danger" onClick={() => setLogout('all')}>
-          Déconnecter tous mes appareils
-        </Button>
-      </div>
-      <LogoutDialog mode={logout ?? 'current'} open={logout !== null} onClose={() => setLogout(null)} />
+      {open === null && notice ? <Banner tone="info">{notice}</Banner> : null}
+      {open === 'username' ? (
+        <UsernameForm
+          me={p.me}
+          onDone={() => close('username', USERNAME_SAVED_TEXT)}
+          onCancel={() => close('username')}
+        />
+      ) : open === 'password' ? (
+        <PasswordForm
+          me={p.me}
+          focusOnOpen
+          onDone={() => close('password', PASSWORD_CHANGED_TEXT)}
+          onCancel={() => close('password')}
+        />
+      ) : (
+        <div ref={listRef}>
+          <ListGroup>
+            <ListRow
+              icon={<UserIcon />}
+              label="Pseudo"
+              name={ACCOUNT_ROWS.username}
+              value={p.me.username}
+              emphasis="value"
+              onClick={() => show('username')}
+            />
+            <ListRow
+              icon={<IdCardIcon />}
+              label="Date de naissance"
+              emphasis="value"
+              value={
+                <span className={styles.lines}>
+                  <span>{formatDate(p.me.birthDate)}</span>
+                  <span>Seul l'administrateur peut la corriger.</span>
+                </span>
+              }
+              badge={
+                <span className={styles.lock}>
+                  <LockIcon />
+                </span>
+              }
+            />
+            <ListRow
+              icon={<KeyIcon />}
+              label={ACCOUNT_ROWS.password}
+              name={ACCOUNT_ROWS.password}
+              value="Tes autres appareils seront déconnectés."
+              onClick={() => show('password')}
+            />
+          </ListGroup>
+        </div>
+      )}
     </Section>
   );
 }
 
 /**
- * Mot de passe à changer (R-MDP-1) : seule autre issue, la déconnexion de cet appareil, que le
- * serveur accepte dans cet état (R-AUTH-9 : même avertissement, puis données locales effacées).
- * « Déconnecter tous mes appareils » reste masqué. `close` est stable : le dialogue reprend le focus
- * à chaque nouvelle fonction de fermeture, donc à chaque relecture du compte sinon. À la fermeture,
- * le focus revient au bouton.
+ * Mot de passe à changer (R-MDP-1) : seule autre issue, la déconnexion de cet appareil, que le serveur
+ * accepte dans cet état (R-AUTH-9 : même avertissement, puis données locales effacées). La feuille ne propose
+ * pas « Tous mes appareils ». À la fermeture, le focus revient à la ligne.
  */
 function ForcedLogout() {
   const [open, setOpen] = useState(false);
-  const openerId = useId();
-  const close = useCallback(() => {
-    setOpen(false);
-    document.getElementById(openerId)?.focus();
-  }, [openerId]);
+  const row = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useFocusAfterClose(open, () => row.current?.querySelector('button'));
   return (
-    <div className={styles.actions}>
-      <Button id={openerId} variant="secondary" onClick={() => setOpen(true)}>
-        Se déconnecter
-      </Button>
-      <LogoutDialog mode="current" open={open} onClose={close} />
+    <div ref={row}>
+      <ListGroup>
+        <ListRow icon={<LogoutIcon />} label="Se déconnecter" tone="danger" onClick={() => setOpen(true)} />
+      </ListGroup>
+      <LogoutDialog currentOnly open={open} onClose={close} />
     </div>
   );
 }
 
 /**
- * Pseudo : contrôlé ici (R-CPT-2), message lié au champ, qui prend le focus ; puis PATCH /api/me.
- * Le refus du serveur (ou le réseau) s'affiche en alerte et garde la saisie.
+ * Pseudo : contrôlé ici (R-CPT-2), message lié au champ, qui prend le focus ; puis PATCH /api/me. Le refus du
+ * serveur (ou le réseau) s'affiche en alerte et garde la saisie. Le champ prend le focus à l'ouverture.
  */
-function UsernameForm(p: { me: MeResponse }) {
+function UsernameForm(p: { me: MeResponse; onDone(): void; onCancel(): void }) {
   const repos = useRepos();
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const value = draft ?? p.me.username;
+
+  useEffect(() => inputRef.current?.focus(), []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy || value === p.me.username) return;
-    setSaved(false);
     setError(null);
     const check = validateUsername(value);
     if (!check.ok) {
@@ -150,14 +248,14 @@ function UsernameForm(p: { me: MeResponse }) {
     setBusy(true);
     try {
       await repos.me.updateUsername(value);
-      setDraft(null);
-      setSaved(true);
     } catch (err) {
       // username_invalid : motif du serveur (body.reason) ; username_taken, réseau : message commun.
       setError(accessErrorMessage(err, p.me.role));
-    } finally {
       setBusy(false);
+      return;
     }
+    setBusy(false);
+    p.onDone();
   }
 
   return (
@@ -171,17 +269,18 @@ function UsernameForm(p: { me: MeResponse }) {
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setSaved(false);
-          }}
+          onChange={(e) => setDraft(e.target.value)}
         />
       </Field>
       {error ? <Banner tone="error">{error}</Banner> : null}
-      {saved ? <Banner tone="info">Pseudo enregistré.</Banner> : null}
-      <Button type="submit" variant="secondary" disabled={busy || value === p.me.username}>
-        Enregistrer le pseudo
-      </Button>
+      <div className={styles.formActions}>
+        <Button type="submit" disabled={busy || value === p.me.username}>
+          Enregistrer le pseudo
+        </Button>
+        <Button variant="secondary" disabled={busy} onClick={p.onCancel}>
+          Annuler
+        </Button>
+      </div>
     </form>
   );
 }
@@ -196,19 +295,25 @@ function passwordChangeError(e: unknown, role: Role): string {
 type PasswordFieldErrors = { current?: string; password?: string; confirm?: string };
 
 /**
- * Mot de passe (R-MDP-6) : l'actuel, puis le nouveau contrôlé ici (`checkNewPassword`, 14
- * caractères pour un admin) ; un refus local est lié à son champ, qui prend le focus. Le refus du
- * serveur ou le réseau s'affichent en alerte. Réussite : champs vidés, autres appareils déconnectés.
+ * Mot de passe (R-MDP-6) : l'actuel, puis le nouveau contrôlé ici (`checkNewPassword`, 14 caractères pour un
+ * admin) ; un refus local est lié à son champ, qui prend le focus. Le refus du serveur ou le réseau s'affichent
+ * en alerte et gardent la saisie. Réussite (autres appareils déconnectés) : `onDone`. `onCancel` absent (mot
+ * de passe à changer) : pas d'« Annuler ». `focusOnOpen` : le premier champ prend le focus à l'ouverture.
  */
-function PasswordSection(p: { me: MeResponse }) {
+function PasswordForm(p: { me: MeResponse; focusOnOpen?: boolean; onDone(): void; onCancel?(): void }) {
   const repos = useRepos();
   const [current, setCurrent] = useState('');
   const [passwords, setPasswords] = useState({ password: '', confirm: '' });
   const [busy, setBusy] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<PasswordFieldErrors>({});
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const currentRef = useRef<HTMLInputElement>(null);
+  const focusOnOpen = useRef(p.focusOnOpen);
+
+  useEffect(() => {
+    if (focusOnOpen.current) currentRef.current?.focus();
+  }, []);
 
   // Refus local : le champ en cause (marqué aria-invalid au rendu) prend le focus.
   // biome-ignore lint/correctness/useExhaustiveDependencies: chaque refus local relance la recherche
@@ -219,7 +324,6 @@ function PasswordSection(p: { me: MeResponse }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    setDone(false);
     setError(null);
     if (current === '') {
       setFieldErrors({ current: CURRENT_PASSWORD_REQUIRED });
@@ -234,91 +338,76 @@ function PasswordSection(p: { me: MeResponse }) {
     setBusy(true);
     try {
       await repos.me.changePassword({ currentPassword: current, newPassword: passwords.password });
-      setCurrent('');
-      setPasswords({ password: '', confirm: '' });
-      setDone(true);
     } catch (err) {
       setError(passwordChangeError(err, p.me.role));
-    } finally {
       setBusy(false);
+      return;
     }
+    // Champs vidés : le formulaire reste un instant affiché (mot de passe à changer) avant de céder la place.
+    setCurrent('');
+    setPasswords({ password: '', confirm: '' });
+    setBusy(false);
+    p.onDone();
   }
 
   return (
-    <Section title="Mot de passe">
-      <form ref={formRef} className={styles.form} noValidate onSubmit={(e) => void submit(e)}>
-        <Field label="Mot de passe actuel" error={fieldErrors.current}>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-          />
-        </Field>
-        <PasswordFields
-          username={p.me.username}
-          role={p.me.role}
-          {...passwords}
-          onChange={setPasswords}
-          label="Nouveau mot de passe"
-          errors={fieldErrors}
+    <form ref={formRef} className={styles.form} noValidate onSubmit={(e) => void submit(e)}>
+      <Field label="Mot de passe actuel" error={fieldErrors.current}>
+        <input
+          ref={currentRef}
+          type="password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
         />
-        {error ? <Banner tone="error">{error}</Banner> : null}
-        {done ? <Banner tone="info">{PASSWORD_CHANGED_TEXT}</Banner> : null}
+      </Field>
+      <PasswordFields
+        username={p.me.username}
+        role={p.me.role}
+        {...passwords}
+        onChange={setPasswords}
+        label="Nouveau mot de passe"
+        errors={fieldErrors}
+      />
+      {error ? <Banner tone="error">{error}</Banner> : null}
+      <div className={styles.formActions}>
         <Button type="submit" disabled={busy}>
           Changer le mot de passe
         </Button>
-      </form>
-    </Section>
+        {p.onCancel ? (
+          <Button variant="secondary" disabled={busy} onClick={p.onCancel}>
+            Annuler
+          </Button>
+        ) : null}
+      </div>
+    </form>
   );
 }
 
-type Editor = 'goal' | 'sport' | 'experience' | 'availability';
-
-const EDITORS: readonly { key: Editor; label: string; action: string }[] = [
-  { key: 'goal', label: 'Objectif', action: "Modifier l'objectif" },
-  { key: 'sport', label: 'Sport', action: 'Modifier le sport' },
-  { key: 'experience', label: 'Niveau', action: 'Modifier le niveau' },
-  { key: 'availability', label: 'Disponibilité', action: 'Modifier la disponibilité' },
+/** Une ligne par réponse : libellé court de la maquette C02, nom qui dit l'action (celui des anciens boutons). */
+const TRAINING_ROWS: readonly { key: TrainingAnswer; label: string; name: string; icon: ReactNode }[] = [
+  { key: 'goal', label: 'Objectif', name: "Modifier l'objectif", icon: <TargetIcon /> },
+  { key: 'sport', label: 'Sport', name: 'Modifier le sport', icon: <PulseIcon /> },
+  { key: 'experience', label: 'Niveau', name: 'Modifier le niveau', icon: <BarsIcon /> },
+  { key: 'availability', label: 'Disponibilité', name: 'Modifier la disponibilité', icon: <CalendarIcon /> },
 ];
 
-function sportLabel(profile: TrainingProfileView): string {
-  if (profile.sportCode === null) return 'Aucun';
-  if (profile.sportCode === 'other') return profile.sportOtherLabel ?? NOT_SET;
-  return SPORTS.find((s) => s.code === profile.sportCode)?.label ?? NOT_SET;
-}
-
-function summaryValue(key: Editor, profile: TrainingProfileView | null): string {
-  if (!profile) return key === 'sport' ? 'Aucun' : NOT_SET;
-  switch (key) {
-    case 'goal':
-      return profile.goal ? GOAL_LABELS[profile.goal] : NOT_SET;
-    case 'sport':
-      return sportLabel(profile);
-    case 'experience':
-      return profile.experience ? EXPERIENCE_LABELS[profile.experience] : NOT_SET;
-    case 'availability':
-      return profile.daysPerWeek && profile.sessionMinutes
-        ? `${profile.daysPerWeek} ${plural(profile.daysPerWeek, 'séance', 'séances')} de ${profile.sessionMinutes} min`
-        : NOT_SET;
-  }
-}
+const nameOf = (key: TrainingAnswer) => TRAINING_ROWS.find((r) => r.key === key)?.name ?? '';
 
 /**
- * Entraînement (R-ONB-3) : chaque réponse se modifie avec l'écran de l'onboarding en édition, à la
- * place du résumé. Le titre de l'écran prend le focus à l'ouverture (« Entraînement <titre> ») ; à la
- * fermeture, le focus revient au bouton « Modifier … ». Mode prudent envoyé au changement,
- * interrupteur désactivé pendant l'envoi (deux envois croisés laisseraient un état ou une erreur
- * périmés).
+ * Entraînement (R-ONB-3) : chaque ligne ouvre l'écran de l'onboarding en édition, à la place des lignes. Le
+ * titre de l'écran prend le focus à l'ouverture (« Entraînement <titre> ») ; à la fermeture, le focus revient
+ * à la ligne. Mode prudent (C1, réglé ici seulement) envoyé au changement, interrupteur désactivé pendant
+ * l'envoi (deux envois croisés laisseraient un état ou une erreur périmés).
  */
 function TrainingSection(p: { me: MeResponse }) {
   const repos = useRepos();
   const profile = useLive(() => repos.profile.get(), [repos]);
   const headingId = useId();
-  const [editing, setEditing] = useState<Editor | null>(null);
+  const [editing, setEditing] = useState<TrainingAnswer | null>(null);
   const focusNext = useRef(false);
-  const returnTo = useRef<Editor | null>(null);
-  const summaryRef = useRef<HTMLDListElement>(null);
+  const returnTo = useRef<TrainingAnswer | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const titles = useMemo(() => ({ progressId: headingId, focusNext }), [headingId]);
   const [cautiousDraft, setCautiousDraft] = useState<boolean | null>(null);
   const cautious = useAction(async (cautiousMode: boolean) => {
@@ -332,13 +421,13 @@ function TrainingSection(p: { me: MeResponse }) {
 
   useEffect(() => {
     if (editing !== null || returnTo.current === null) return;
-    summaryRef.current?.querySelector<HTMLButtonElement>(`[data-editor="${returnTo.current}"]`)?.focus();
+    rowButton(listRef.current, nameOf(returnTo.current))?.focus();
     returnTo.current = null;
   }, [editing]);
 
   if (profile === undefined) return null;
 
-  function open(key: Editor) {
+  function open(key: TrainingAnswer) {
     focusNext.current = true;
     setEditing(key);
   }
@@ -356,19 +445,21 @@ function TrainingSection(p: { me: MeResponse }) {
   return (
     <Section title="Entraînement" headingId={headingId}>
       {editing === null ? (
-        <dl ref={summaryRef} className={styles.summary}>
-          {EDITORS.map((e) => (
-            <div key={e.key}>
-              <dt>{e.label}</dt>
-              <dd>{summaryValue(e.key, profile)}</dd>
-              <dd>
-                <Button variant="secondary" data-editor={e.key} onClick={() => open(e.key)}>
-                  {e.action}
-                </Button>
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <div ref={listRef}>
+          <ListGroup>
+            {TRAINING_ROWS.map((r) => (
+              <ListRow
+                key={r.key}
+                icon={r.icon}
+                label={r.label}
+                name={r.name}
+                value={answerValue(r.key, profile)}
+                emphasis="value"
+                onClick={() => open(r.key)}
+              />
+            ))}
+          </ListGroup>
+        </div>
       ) : (
         <StepTitleContext.Provider value={titles}>
           <div className={styles.editor}>
@@ -379,34 +470,18 @@ function TrainingSection(p: { me: MeResponse }) {
           </div>
         </StepTitleContext.Provider>
       )}
-      <CautiousModeToggle
-        value={cautiousDraft ?? profile?.cautiousMode ?? false}
-        minor={p.me.ageBand === 'minor'}
-        disabled={cautious.pending}
-        onChange={(v) => void changeCautious(v)}
-      />
+      <div className={styles.cautious}>
+        <span className={styles.cautiousIcon} aria-hidden="true">
+          <GaugeIcon />
+        </span>
+        <CautiousModeToggle
+          value={cautiousDraft ?? profile?.cautiousMode ?? false}
+          minor={p.me.ageBand === 'minor'}
+          disabled={cautious.pending}
+          onChange={(v) => void changeCautious(v)}
+        />
+      </div>
       {cautious.error ? <Banner tone="error">{cautious.error}</Banner> : null}
     </Section>
-  );
-}
-
-const LINKS: readonly { href: string; label: string }[] = [
-  { href: '/places', label: 'Lieux' },
-  { href: '/profile/health', label: 'Santé' },
-  { href: '/profile/privacy', label: 'Confidentialité' },
-  { href: '/settings', label: 'Réglages' },
-];
-
-function ProfileLinks() {
-  return (
-    <nav aria-label="Autres pages du profil">
-      <ul className={styles.links}>
-        {LINKS.map((l) => (
-          <li key={l.href}>
-            <Link href={l.href}>{l.label}</Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
   );
 }

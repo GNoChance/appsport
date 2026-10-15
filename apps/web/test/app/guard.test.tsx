@@ -34,8 +34,14 @@ const ROWS: Row[] = [
   ['/admin/members', true, admin({ onboardingCompletedAt: null }), 'online', to('/onboarding')],
   ['/onboarding', true, makeMe(), 'online', to('/')],
   ['/onboarding', true, notOnboarded(), 'online', RENDER],
-  ['/profile', true, makeMe({ mustChangePassword: true }), 'online', RENDER],
-  ['/', true, makeMe({ mustChangePassword: true }), 'online', to('/profile')],
+  // Mot de passe à changer (R-MDP-1) : seul Mon profil est servi, le hub du Profil y mène.
+  ['/profile/edit', true, makeMe({ mustChangePassword: true }), 'online', RENDER],
+  ['/profile/edit/', true, makeMe({ mustChangePassword: true }), 'online', RENDER],
+  ['/profile', true, makeMe({ mustChangePassword: true }), 'online', to('/profile/edit')],
+  ['/', true, makeMe({ mustChangePassword: true }), 'online', to('/profile/edit')],
+  ['/profile/coach', true, makeMe({ mustChangePassword: true }), 'online', to('/profile/edit')],
+  ['/profile/edit', true, makeMe(), 'online', RENDER],
+  ['/profile/coach', true, makeMe(), 'online', RENDER],
   ['/login', true, makeMe(), 'online', to('/')],
   ['/admin/members', true, makeMe(), 'online', { kind: 'not_found' }],
   ['/admin/members', true, admin(), 'online', RENDER],
@@ -56,7 +62,7 @@ const ROWS: Row[] = [
   ['/places/p-2', true, makeMe(), 'online', RENDER],
   ['/profile/placesx', true, makeMe(), 'online', RENDER],
   ['/profile/places', true, null, 'online', to('/login')],
-  ['/profile/places', true, makeMe({ mustChangePassword: true }), 'online', to('/profile')],
+  ['/profile/places', true, makeMe({ mustChangePassword: true }), 'online', to('/profile/edit')],
   ['/profile/places', true, notOnboarded(), 'online', to('/onboarding')],
 ];
 

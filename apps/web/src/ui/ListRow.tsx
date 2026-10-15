@@ -46,15 +46,22 @@ function Chevron() {
  * déconnecter ») ; avec les deux, un lien qui appelle `onClick` avant de naviguer ; sans l'un ni
  * l'autre, une ligne d'information. Le lien ou le bouton est nommé par le libellé seul et décrit par
  * la valeur et le badge.
+ * - `name` : nom du lien ou du bouton quand le libellé seul ne dit pas l'action (« Modifier l'objectif » pour la
+ *   ligne « Objectif ») ; il reprend toujours le libellé visible (WCAG 2.5.3).
+ * - `emphasis="value"` : ligne d'état ou de réponse (maquettes C02, C03, C05), le libellé en petit au-dessus et
+ *   la valeur en gras ; par défaut, le libellé est en gras et la valeur en petit (ligne qui mène ailleurs,
+ *   C01). Le nom et la description ne changent pas.
  */
 export function ListRow(p: {
   icon?: ReactNode;
   label: string;
+  name?: string;
   value?: ReactNode;
   href?: string;
   onClick?(): void;
   badge?: ReactNode;
   tone?: 'danger';
+  emphasis?: 'value';
 }) {
   const id = useId();
   const labelId = `${id}-label`;
@@ -89,7 +96,9 @@ export function ListRow(p: {
   const named = {
     className: styles.row,
     'data-tone': p.tone,
-    'aria-labelledby': labelId,
+    'data-emphasis': p.emphasis,
+    'aria-label': p.name,
+    'aria-labelledby': p.name === undefined ? labelId : undefined,
     'aria-describedby':
       [p.value !== undefined ? valueId : null, p.badge ? badgeId : null].filter(Boolean).join(' ') ||
       undefined,
@@ -105,7 +114,7 @@ export function ListRow(p: {
           {content}
         </button>
       ) : (
-        <div className={styles.row} data-tone={p.tone}>
+        <div className={styles.row} data-tone={p.tone} data-emphasis={p.emphasis}>
           {content}
         </div>
       )}
