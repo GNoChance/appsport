@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useLive } from '../../app-services';
 import { useRepos } from '../../repos';
@@ -27,8 +27,9 @@ const ignore = () => {};
  * Feuille « Se déconnecter » (spec refonte §10.4, maquette C06) : on y choisit cet appareil (par défaut) ou
  * tous ses appareils. Les données locales sont effacées une fois la déconnexion faite : s'il reste des
  * éléments non envoyés, l'avertissement le dit d'abord et propose l'export (R-AUTH-9, R-SYN-14), quel que soit
- * le choix. Fermée, rien n'est monté : chaque ouverture repart de « Cet appareil », sans l'erreur de la
- * précédente.
+ * le choix ; il décrit alors la feuille et le bouton qui confirme, pour qu'un lecteur d'écran l'annonce avant
+ * qu'on agisse (maquette C06). Fermée, rien n'est monté : chaque ouverture repart de « Cet appareil », sans
+ * l'erreur de la précédente.
  */
 export function LogoutDialog(p: LogoutProps) {
   return p.open ? <OpenLogoutDialog {...p} /> : null;
@@ -40,10 +41,13 @@ function OpenLogoutDialog(p: LogoutProps) {
   const [scope, setScope] = useState<Scope>('current');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const warningTitleId = useId();
+  const warningTextId = useId();
   const device = useLive(() => repos.me.deviceOwner(), [repos]);
   if (!device) return null;
 
   const unsent = device.pending > 0;
+  const warning = unsent ? `${warningTitleId} ${warningTextId}` : undefined;
   const mode: Scope = p.currentOnly ? 'current' : scope;
 
   async function confirm() {
@@ -69,6 +73,7 @@ function OpenLogoutDialog(p: LogoutProps) {
     <BottomSheet
       open
       title="Se déconnecter"
+      describedBy={warning}
       // Pendant la requête, Échap ne ferme pas : l'issue (erreur ou écran de connexion) reste visible.
       onClose={busy ? ignore : p.onClose}
       actions={
@@ -76,7 +81,7 @@ function OpenLogoutDialog(p: LogoutProps) {
           <Button variant="secondary" onClick={p.onClose} disabled={busy}>
             Annuler
           </Button>
-          <Button variant="danger" onClick={() => void confirm()} disabled={busy}>
+          <Button variant="danger" aria-describedby={warning} onClick={() => void confirm()} disabled={busy}>
             {confirmLabel}
           </Button>
         </>
@@ -113,8 +118,10 @@ function OpenLogoutDialog(p: LogoutProps) {
         )}
         {unsent ? (
           <Banner tone="warning">
-            <p className={styles.warningTitle}>Données non envoyées</p>
-            <p className={styles.text}>
+            <p id={warningTitleId} className={styles.warningTitle}>
+              Données non envoyées
+            </p>
+            <p id={warningTextId} className={styles.text}>
               {`${pendingWarning(device.pending, device.username ?? FORMER_ACCOUNT_NAME)}.`}
             </p>
             <Link href="/profile/privacy" onClick={p.onClose} className={styles.exportLink}>

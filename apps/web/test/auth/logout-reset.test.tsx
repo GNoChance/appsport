@@ -66,6 +66,31 @@ describe('LogoutDialog (R-AUTH-9, R-SYN-14, spec refonte §10.4)', () => {
     expect(await db.outbox.count()).toBe(3);
   });
 
+  it('avec des éléments en attente : la feuille et « Se déconnecter quand même » sont décrits par l’avertissement (maquette C06)', async () => {
+    await renderDialog(2);
+    const warning = `Données non envoyées ${pendingWarning(2, 'lea')}.`;
+    // Le lecteur d'écran l'annonce à l'ouverture, avec le nom de la feuille, et sur le bouton qui efface.
+    const dialog = await screen.findByRole('dialog', { name: 'Se déconnecter', description: warning });
+    const confirm = within(dialog).getByRole('button', { name: 'Se déconnecter quand même' });
+    expect(within(dialog).getByRole('button', { description: warning })).toBe(confirm);
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Tous mes appareils' }));
+    expect(screen.getByRole('dialog', { name: 'Se déconnecter', description: warning })).toBe(dialog);
+  });
+
+  it('cet appareil seulement, avec un élément en attente : la feuille est décrite par l’avertissement', async () => {
+    await renderDialog(1, { currentOnly: true });
+    const warning = `Données non envoyées ${pendingWarning(1, 'lea')}.`;
+    expect(await screen.findByRole('dialog', { name: 'Se déconnecter', description: warning })).toBeTruthy();
+  });
+
+  it('sans élément en attente : ni la feuille ni « Se déconnecter » ne sont décrits', async () => {
+    await renderDialog(0);
+    const dialog = await screen.findByRole('dialog', { name: 'Se déconnecter' });
+    expect(dialog.hasAttribute('aria-describedby')).toBe(false);
+    const confirm = within(dialog).getByRole('button', { name: 'Se déconnecter' });
+    expect(confirm.hasAttribute('aria-describedby')).toBe(false);
+  });
+
   it('confirmation : POST /api/auth/logout {}, file vidée, profil local effacé, écran de connexion', async () => {
     const { api, db, location } = await renderDialog(3);
     const dialog = await screen.findByRole('dialog');

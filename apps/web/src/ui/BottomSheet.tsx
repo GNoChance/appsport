@@ -29,6 +29,8 @@ function keepFocusInside(root: HTMLElement, e: KeyboardEvent): void {
  * Feuille du bas (spec refonte §6, maquette C06) : poignée, fond assombri, titre, contenu, actions empilées
  * en pleine largeur. Sur un écran large, la même fenêtre se pose au centre, sans poignée.
  * - modale nommée par son titre ; le focus y entre à l'ouverture et n'en sort pas au clavier ; Échap ferme ;
+ * - `describedBy` : id (ou ids séparés d'une espace) du texte qui la décrit, annoncé avec son nom à l'ouverture
+ *   (un avertissement à entendre avant d'agir, maquette C06) ;
  * - le reste de la page est inerte et caché aux lecteurs d'écran tant qu'elle est ouverte (`inertOutside`, vrai par défaut),
  *   et redevient atteignable à la fermeture comme au démontage ;
  * - à la fermeture, le focus revient à l'élément qui l'avait à l'ouverture (le déclencheur), sauf si l'appelant
@@ -47,6 +49,7 @@ export function BottomSheet(p: {
   actions?: ReactNode;
   /** Fond inerte et caché aux lecteurs d'écran tant qu'elle est ouverte ; vrai par défaut. */
   inertOutside?: boolean;
+  describedBy?: string;
 }) {
   const titleId = useId();
   const backdrop = useRef<HTMLDivElement>(null);
@@ -109,6 +112,7 @@ export function BottomSheet(p: {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={p.describedBy}
         tabIndex={-1}
         className={styles.sheet}
       >
