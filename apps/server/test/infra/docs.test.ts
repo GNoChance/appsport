@@ -940,11 +940,13 @@ describe('P4 et P8 : restauration sans retour de données, alertes et incidents'
     const close = steps(theft).find((s) => s.body.includes('server.mjs admin:reset'))?.body ?? '';
     for (const needle of [
       '« Fermer les sessions »',
-      '« Déconnecter tous mes appareils »',
+      // Une seule ligne « Se déconnecter », le choix se fait dans la feuille (spec refonte §10.4).
+      'Profil → « Se déconnecter » → « Tous mes appareils » → « Déconnecter tous les appareils »',
       "n'a aucune session ouverte",
     ]) {
       expect(close).toContain(needle);
     }
+    expect(close).not.toContain('« Déconnecter tous mes appareils »');
     expect(close).not.toContain('Générer un lien de réinitialisation');
     expect(close).not.toContain("toutes les sessions de l'admin sont fermées");
   });
