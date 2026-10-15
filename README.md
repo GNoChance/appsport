@@ -14,7 +14,7 @@ Rune est une application web installable (PWA) de suivi de musculation, auto-hé
 >
 > - **Refonte aux couleurs de Rune** : renommage complet, thèmes et polices, logo et icônes, boîte à outils, feuilles du bas, avatars des coachs, rangs en pierre, coquille avec la barre d'onglets, coach côté serveur, décisions de confidentialité et commande `pnpm dev` sont codés, relus et fusionnés.
 >   - Écrans codés et relus : le choix du coach avec sa présentation, puis Salles et lieux.
->   - En cours : l'onboarding rhabillé, l'espace Profil et l'administration.
+>   - Codés, en cours de relecture : l'onboarding rhabillé avec l'écran « Éveil terminé », l'espace Profil (Mon coach, apparence, santé, confidentialité, déconnexion) et l'administration en cartes.
 >   - Restent : l'accueil et Progression, les pages d'accès, la seconde fusion, les points reportés, la vérification avec captures et la relecture finale.
 > - **Brique 2 (exercices)** : la [spec](docs/superpowers/specs/2026-10-14-brique-2-exercices-design.md) et le [plan d'implémentation](docs/superpowers/plans/2026-10-14-brique-2-exercices.md) sont validés, puis vérifiés par quatre relecteurs. 27 règles complètent le plan, par exemple :
 >   - une fiche sensible n'est jamais publiée sans feu vert santé à jour ;
