@@ -53,7 +53,8 @@ export async function completeOnboardingViaUi(
   await next();
   await at('place');
   if (o.place.kind === 'gym') {
-    await button(page, "Ma salle n'est pas dans la liste").click();
+    // Carte « Créer une salle » sous la liste (maquette B04).
+    await button(page, 'Créer une salle').click();
     await page.getByLabel('Nom de la salle', { exact: true }).fill(o.place.name);
     await page.getByLabel('Ville', { exact: true }).fill(o.place.city);
     await button(page, 'Continuer').click();

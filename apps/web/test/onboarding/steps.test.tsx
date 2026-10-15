@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { EQUIPMENT, EQUIPMENT_LABELS, PRESETS, SPORTS } from '@rune/contracts';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { type ReactElement, useState } from 'react';
@@ -8,6 +10,7 @@ import { GoalStep } from '../../src/features/onboarding/GoalStep';
 import { PlaceKindStep } from '../../src/features/onboarding/PlaceKindStep';
 import { PlaceStep } from '../../src/features/onboarding/PlaceStep';
 import { SportStep } from '../../src/features/onboarding/SportStep';
+import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
 import { createFakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
 import {
@@ -25,6 +28,8 @@ import {
 } from '../support/onboarding';
 import { makeMe, renderApp, renderWithServices } from '../support/render';
 import { until } from '../support/wait';
+
+const ONBOARDING_CSS = resolve(import.meta.dirname, '../../src/features/onboarding/onboarding.module.css');
 
 const ADULT_GOALS = [
   'Prendre du muscle',
@@ -295,7 +300,7 @@ describe('PlaceStep (E4)', () => {
     ]);
   });
 
-  it("salle : « Valider » du GymPicker → POST du lieu, PATCH de l'étape, puis le niveau", async () => {
+  it("salle (maquette B04) : « Continuer » de la barre, actif une fois la salle choisie → POST du lieu, PATCH de l'étape, puis le niveau", async () => {
     const me = newcomer({ onboardingStep: 'place_kind' });
     const db = createTestLocalDb();
     const api = createFakeApi()
@@ -311,11 +316,17 @@ describe('PlaceStep (E4)', () => {
     choose('À la salle');
     fireEvent.click(button('Continuer'));
     await until(() => currentStep() === 'place');
-    expect(screen.queryByRole('button', { name: 'Continuer' })).toBeNull();
     await screen.findByText('Cherche ta salle ou crée-la.');
     await screen.findByRole('radio', { name: 'Basic Fit · Lyon · 2 membres visibles' });
+    // Pas de « Valider » propre au sélecteur : l'écran avance par le « Continuer » de sa barre, à côté de
+    // « Retour », comme les 8 autres ; désactivé tant qu'aucune salle n'est choisie.
+    expect(screen.queryByRole('button', { name: 'Valider' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Continuer' })).toHaveLength(1);
+    expect(button('Retour').parentElement?.contains(button('Continuer'))).toBe(true);
+    expect(button('Continuer').disabled).toBe(true);
     choose('Basic Fit · Lyon · 2 membres visibles');
-    fireEvent.click(button('Valider'));
+    expect(button('Continuer').disabled).toBe(false);
+    fireEvent.click(button('Continuer'));
     await until(() => currentStep() === 'experience');
     expect(server.patches).toEqual([{ onboardingStep: 'place_kind' }, { onboardingStep: 'place' }]);
     expect(api.calls.find((c) => c.path === '/api/places')?.body).toEqual({
@@ -326,7 +337,39 @@ describe('PlaceStep (E4)', () => {
     });
   });
 
-  it('salle, mineur : case de visibilité décochée avec la raison ; « Valider » → visibleAtGym: false (P-MIN-6)', async () => {
+  it("salle (maquette B04) : la carte « Créer une salle » (ma salle n'est pas dans la liste) ouvre la création ; « Retour » seul prend la barre", async () => {
+    const me = newcomer({ onboardingStep: 'place_kind' });
+    const db = createTestLocalDb();
+    const api = createFakeApi().on('GET', '/api/gyms', { status: 200, body: [] });
+    await seedProfile(db, { goal: 'muscle' });
+    serveProfile(api, db, me);
+    await renderApp({ path: '/onboarding', me, db, api });
+    await until(() => currentStep() === 'place_kind');
+    choose('À la salle');
+    fireEvent.click(button('Continuer'));
+    await until(() => currentStep() === 'place');
+    // Nommée par son titre, décrite par sa phrase (maquette B04) ; plus de bouton « Ma salle n'est pas dans la liste ».
+    const create = await screen.findByRole('button', {
+      name: 'Créer une salle',
+      description: "Ma salle n'est pas dans la liste",
+    });
+    expect(screen.queryByRole('button', { name: "Ma salle n'est pas dans la liste" })).toBeNull();
+    // Après la liste et avant la case de visibilité, comme sur la maquette.
+    const visibility = checkbox('Apparaître dans « Qui va à cette salle »');
+    expect(create.compareDocumentPosition(visibility) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(create);
+    await screen.findByLabelText('Nom de la salle');
+    // La création a ses propres boutons : un seul « Continuer » (le sien) ; la barre ne garde que « Retour »,
+    // qui en prend toute la largeur.
+    expect(screen.getAllByRole('button', { name: 'Continuer' })).toHaveLength(1);
+    expect(button('Retour').parentElement?.children).toHaveLength(1);
+    const css = parseCssBlocks(readFileSync(ONBOARDING_CSS, 'utf8'));
+    expect(declarationsOf(css, '.back:only-child')?.get('flex')).toBe('1 1 auto');
+    fireEvent.click(button('Revenir à la liste'));
+    await screen.findByRole('button', { name: 'Créer une salle' });
+  });
+
+  it('salle, mineur : case de visibilité décochée avec la raison ; « Continuer » → visibleAtGym: false (P-MIN-6)', async () => {
     const me = newcomer({ ageBand: 'minor', onboardingStep: 'place_kind' });
     const db = createTestLocalDb();
     const api = createFakeApi()
@@ -345,7 +388,7 @@ describe('PlaceStep (E4)', () => {
     expect(checkbox('Apparaître dans « Qui va à cette salle »').checked).toBe(false);
     expect(screen.getByText('Désactivé par défaut pour les moins de 18 ans.')).toBeTruthy();
     choose('Basic Fit · Lyon · 2 membres visibles');
-    fireEvent.click(button('Valider'));
+    fireEvent.click(button('Continuer'));
     await until(() => currentStep() === 'experience');
     expect(api.calls.find((c) => c.path === '/api/places')?.body).toEqual({
       kind: 'gym',

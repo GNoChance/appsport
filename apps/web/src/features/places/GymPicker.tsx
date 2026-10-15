@@ -1,7 +1,8 @@
 import type { GymSummary } from '@rune/contracts';
-import { useEffect, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useRepos } from '../../repos';
 import { Banner, Button, ChoiceList, errorMessage, Field, plural, useAction } from '../../ui';
+import { CreateGymCard } from './CreateGymCard';
 import { GymCreate, gymLabel } from './GymCreate';
 import styles from './places.module.css';
 
@@ -36,12 +37,28 @@ function useGymSearch(query: string, reload: number): { gyms: GymSummary[] | nul
   return state;
 }
 
+/** Ce que la barre d'actions de l'écran reçoit du sélecteur (`actions` de GymPicker). */
+export interface GymPickerActions {
+  /** Valider la salle choisie (désactivé sans choix) ; null pendant la création, qui a ses propres boutons. */
+  submit: { run(): void; disabled: boolean } | null;
+  pending: boolean;
+  error: string | null;
+}
+
 /**
  * « Ta salle » (R-SAL-1) : choisir une salle existante ou en créer une, et régler sa visibilité
  * dans « Qui va à cette salle » (R-VIS-3 ; désactivée par défaut pour un mineur, P-MIN-6). Le lieu
  * est créé ici, puis `onDone`.
+ * `actions` (onboarding, maquette B04) : la barre de l'écran remplace « Valider » (son bouton principal
+ * valide la salle choisie, son erreur est celle du choix), et « Créer une salle » devient une carte sous la
+ * liste.
  */
-export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDone(): void }) {
+export function GymPicker(p: {
+  isPrimary: boolean;
+  defaultVisible: boolean;
+  onDone(): void;
+  actions?(s: GymPickerActions): ReactNode;
+}) {
   const repos = useRepos();
   const hintId = useId();
   const [query, setQuery] = useState('');
@@ -91,9 +108,17 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
         <Button variant="secondary" onClick={() => setCreating(false)}>
           Revenir à la liste
         </Button>
+        {p.actions?.({ submit: null, pending: pick.pending, error: null })}
       </div>
     );
   }
+
+  const submit = {
+    run: () => {
+      if (chosen !== null) void pick.run(chosen);
+    },
+    disabled: chosen === null || pick.pending,
+  };
 
   return (
     <div className={styles.picker}>
@@ -124,19 +149,24 @@ export function GymPicker(p: { isPrimary: boolean; defaultVisible: boolean; onDo
           options={gyms.map((g) => ({ value: g.id, label: gymLabel(g) }))}
         />
       ) : null}
-      <Button variant="secondary" onClick={() => setCreating(true)}>
-        Ma salle n'est pas dans la liste
-      </Button>
+      {p.actions ? (
+        <CreateGymCard onClick={() => setCreating(true)} />
+      ) : (
+        <Button variant="secondary" onClick={() => setCreating(true)}>
+          Ma salle n'est pas dans la liste
+        </Button>
+      )}
       {visibility}
-      {pick.error ? <Banner tone="error">{pick.error}</Banner> : null}
-      <Button
-        onClick={() => {
-          if (chosen !== null) void pick.run(chosen);
-        }}
-        disabled={chosen === null || pick.pending}
-      >
-        Valider
-      </Button>
+      {p.actions ? (
+        p.actions({ submit, pending: pick.pending, error: pick.error })
+      ) : (
+        <>
+          {pick.error ? <Banner tone="error">{pick.error}</Banner> : null}
+          <Button onClick={submit.run} disabled={submit.disabled}>
+            Valider
+          </Button>
+        </>
+      )}
     </div>
   );
 }

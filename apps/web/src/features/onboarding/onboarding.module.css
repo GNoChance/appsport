@@ -168,6 +168,11 @@
   flex: 0 0 118px;
 }
 
+/* Sans bouton principal (création d'une salle, maquette B04), « Retour » prend toute la barre. */
+.back:only-child {
+  flex: 1 1 auto;
+}
+
 .primary {
   flex: 1 1 auto;
 }

@@ -178,3 +178,72 @@
   flex-direction: column;
   gap: var(--space-1);
 }
+
+/*
+ * Carte en pointillés « Créer une salle » sous la liste (maquette B04, onboarding) : icône « + » sur fond
+ * d'accent, titre à l'accent, phrase atténuée, chevron. Couleurs prises dans les jetons (5 thèmes).
+ */
+.createCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  margin: 0;
+  padding: 10px 14px 10px 10px;
+  border-radius: calc(var(--radius-card) - 2px);
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.createCard:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .createCard:hover {
+    border-color: var(--accent);
+  }
+}
+
+.createIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent);
+}
+
+.createText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.createTitle {
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--accent);
+}
+
+.createDescription {
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.createChevron {
+  flex: none;
+  color: var(--text-muted);
+}

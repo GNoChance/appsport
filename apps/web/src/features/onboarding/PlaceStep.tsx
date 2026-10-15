@@ -24,8 +24,9 @@ const HOME_PRESETS = PRESET_IDS.filter((id) => PRESETS[id].kind === 'home');
 
 /**
  * E4 Ma salle ou Ma maison : l'onboarding crée un seul lieu, principal (02 §8, E3/E4). La salle se cherche ou se
- * crée dans le sélecteur des salles (maquette B04) ; la maison, son nom et son matériel. Un lieu principal déjà
- * là (retour arrière) est affiché sans rien recréer ; les autres lieux se gèrent dans Profil › Mes lieux.
+ * crée dans le sélecteur des salles (maquette B04 : carte « Créer une salle », et la salle choisie validée par le
+ * « Continuer » de la barre de l'écran) ; la maison, son nom et son matériel. Un lieu principal déjà là (retour
+ * arrière) est affiché sans rien recréer ; les autres lieux se gèrent dans Profil › Mes lieux.
  */
 export function PlaceStep(p: StepProps & { kind: PlaceKind }) {
   const repos = useRepos();
@@ -83,8 +84,19 @@ export function PlaceStep(p: StepProps & { kind: PlaceKind }) {
             setCreated(true);
             void save.run();
           }}
+          actions={(s) => (
+            <StepActions
+              onBack={p.onBack}
+              pending={s.pending || save.pending}
+              error={s.error ?? save.error}
+              primary={
+                s.submit
+                  ? { label: saveLabel(p.mode), disabled: s.submit.disabled, onClick: s.submit.run }
+                  : undefined
+              }
+            />
+          )}
         />
-        <StepActions onBack={p.onBack} pending={save.pending} error={save.error} />
       </>
     );
   }
