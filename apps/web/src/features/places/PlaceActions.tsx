@@ -19,6 +19,12 @@ export const PLACE_ERRORS: Partial<Record<ApiErrorCode, string>> = {
   primary_required: CHOOSE_PRIMARY_FIRST,
 };
 
+/**
+ * État d'historique du retour aux Salles après la suppression d'un lieu : la fiche et son bouton disparaissent,
+ * la liste (`PlacesPage`) donne alors le focus à « Mes lieux ».
+ */
+export const PLACE_DELETED_STATE = { placeDeleted: true } as const;
+
 /** Ref de rappel : l'élément prend le focus dès qu'il apparaît (champ d'une feuille ouverte). */
 const focusOnMount = (el: HTMLElement | null) => el?.focus();
 
@@ -26,7 +32,7 @@ const focusOnMount = (el: HTMLElement | null) => el?.focus();
  * Actions d'un lieu, en bas de sa fiche (spec refonte §10.3, maquette D05) : le nom d'une maison, l'interrupteur
  * « Lieu principal », puis la zone sensible et sa suppression. L'interrupteur est verrouillé, coché, sur le
  * lieu principal actuel : l'API ne sait pas l'enlever, on en change en l'activant sur un autre lieu. Chaque
- * écriture demande le réseau ; supprimer ramène à la liste.
+ * écriture demande le réseau ; supprimer ramène à la liste, à la place de la fiche dans l'historique.
  */
 export function PlaceActions(p: { place: PlaceView; places: readonly PlaceView[] }) {
   const { place } = p;
@@ -194,7 +200,8 @@ function DangerZone(p: { place: PlaceView; others: readonly PlaceView[] }) {
           place={p.place}
           others={p.others}
           onClose={close}
-          onDeleted={() => navigate('/places')}
+          // L'adresse du lieu supprimé est remplacée : le retour arrière ne rouvre pas sa fiche.
+          onDeleted={() => navigate('/places', { replace: true, state: PLACE_DELETED_STATE })}
         />
       ) : null}
     </section>

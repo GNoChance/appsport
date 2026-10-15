@@ -144,14 +144,18 @@ describe('PlacesPage : Salles › Mes lieux (maquette D01)', () => {
     expect(card('Basic Fit').getByText('équipements')).toBeTruthy();
     expect(card('Basic Fit').getByText('2')).toBeTruthy();
     expect(await card('Basic Fit').findByText('2 membres visibles')).toBeTruthy();
+    // Le lien garde le nom du lieu ; le pied de la carte (matériel, membres) est dans sa description.
+    expect(
+      screen.getByRole('link', { name: 'Basic Fit', description: /2 équipements 2 membres visibles$/ }),
+    ).toBeTruthy();
   });
 
-  it('« Dernières modifications » : les 3 dernières de la salle principale, et « Voir la salle »', async () => {
+  it('« Dernières modifications » : les 2 dernières de la salle principale, et « Voir la salle »', async () => {
     const api = createFakeApi().on('GET', '/api/gyms/:id', { status: 200, body: GYM_DETAIL });
     await renderPlaces({ api });
     const activity = within(await screen.findByRole('region', { name: 'Dernières modifications' }));
     const items = activity.getAllByRole('listitem');
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(2);
     expect(items[0]?.textContent).toContain('Matériel ajouté : Box ou step stable');
     expect(items[0]?.textContent).toContain('modifié par max');
     expect(items[1]?.textContent).toContain('modifié par un membre');

@@ -1,5 +1,5 @@
 import type { GymDetail } from '@rune/contracts';
-import { type ReactNode, useEffect, useId, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useLive, useMe } from '../../app-services';
 import { type PlaceView, useRepos } from '../../repos';
@@ -13,8 +13,16 @@ import { PRIMARY_NOTE } from './PlaceActions';
 import styles from './places.module.css';
 import { SubScreen, useSubScreen } from './SubScreen';
 
-/** Entrées de l'historique montrées sous « Mes lieux » ; la fiche de la salle en montre davantage. */
-export const PLACES_ACTIVITY_LIMIT = 3;
+/** Entrées de l'historique montrées sous « Mes lieux » (maquette D01) ; la fiche de la salle en montre davantage. */
+export const PLACES_ACTIVITY_LIMIT = 2;
+
+/** Arrivée sur la liste juste après la suppression d'un lieu depuis sa fiche (état posé par `PlaceActions`). */
+function arrivedFromDelete(): boolean {
+  const state: unknown = window.history.state;
+  return (
+    typeof state === 'object' && state !== null && 'placeDeleted' in state && state.placeDeleted === true
+  );
+}
 
 /**
  * Fiches en ligne des salles `gymIds` (membres visibles, historique), lues une fois par liste de salles.
@@ -48,13 +56,22 @@ function useGymDetails(gymIds: readonly string[]): ReadonlyMap<string, GymDetail
  * Salles › Mes lieux (maquette D01, 02 §11) : le lieu principal d'abord ; toucher une salle ouvre directement
  * sa fiche, une maison la sienne (spec refonte §10.3), où vivent leurs actions. Dessous, l'ajout d'une salle
  * ou d'une maison (écrans ouverts sur place, focus rendu au bouton au retour), puis les dernières
- * modifications de la salle principale quand elles sont lisibles en ligne.
+ * modifications de la salle principale quand elles sont lisibles en ligne. Après la suppression d'un lieu,
+ * « Mes lieux » prend le focus une fois (le bouton qui l'avait est parti avec la fiche).
  */
 export function PlacesPage() {
   const repos = useRepos();
   const me = useMe();
   const places = useLive(() => repos.places.list(), [repos]);
   const sub = useSubScreen<'gym' | 'home'>();
+  const arrival = useRef(arrivedFromDelete());
+  const focusOnArrival = useCallback((el: HTMLHeadingElement | null) => {
+    if (!el || !arrival.current) return;
+    arrival.current = false;
+    el.focus();
+    // État consommé : un rechargement ou un retour sur cette entrée ne reprend pas le focus.
+    window.history.replaceState(null, '');
+  }, []);
   const listId = useId();
   const addId = useId();
   const activityId = useId();
@@ -89,7 +106,7 @@ export function PlacesPage() {
       <Page title="Salles">
         <section aria-labelledby={listId} className={styles.group}>
           <div className={styles.groupHead}>
-            <h2 id={listId} className={styles.groupTitle}>
+            <h2 id={listId} ref={focusOnArrival} tabIndex={-1} className={styles.groupTitle}>
               Mes lieux
             </h2>
             <span className={styles.groupMeta}>
@@ -160,12 +177,13 @@ export function PlacesPage() {
 
 /**
  * Carte d'un lieu : un seul lien, nommé par le lieu et décrit par sa ligne (« Salle · Lyon », « Principal »).
- * Une salle montre aussi son matériel et, en ligne, ses membres visibles.
+ * Une salle montre aussi son matériel et, en ligne, ses membres visibles, lus eux aussi dans la description.
  */
 function PlaceCard(p: { place: PlaceView; detail: GymDetail | undefined; me: string }) {
   const { place } = p;
   const nameId = useId();
   const metaId = useId();
+  const footId = useId();
   const gym = place.kind === 'gym';
   const href = gym && place.gymId ? `/gyms/${place.gymId}` : `/places/${place.id}`;
   const n = place.equipment.length;
@@ -177,7 +195,7 @@ function PlaceCard(p: { place: PlaceView; detail: GymDetail | undefined; me: str
       <Link
         href={href}
         aria-labelledby={nameId}
-        aria-describedby={metaId}
+        aria-describedby={gym ? `${metaId} ${footId}` : metaId}
         className={styles.placeCard}
         data-kind={place.kind}
       >
@@ -204,11 +222,11 @@ function PlaceCard(p: { place: PlaceView; detail: GymDetail | undefined; me: str
           </span>
         </span>
         {gym ? (
-          <span className={styles.placeFoot}>
+          <span id={footId} className={styles.placeFoot}>
+            {/* Espaces entre les éléments flex : rien à l'écran, des mots séparés dans la description. */}
             <span className={styles.placeCount}>
-              <span className={styles.bigNumber}>{n}</span>
-              <span>{equipment}</span>
-            </span>
+              <span className={styles.bigNumber}>{n}</span> <span>{equipment}</span>
+            </span>{' '}
             {members ? (
               <span className={styles.placeMembers}>
                 <MemberAvatars names={membersOrder(members, p.me)} />
