@@ -5,8 +5,8 @@ import { E2E_PASSWORD, loginViaUi } from './support/flows';
 import { bootstrapAdmin, type E2EServer } from './support/server';
 
 /**
- * Administrateur créé par l'API, onboarding fini (coach compris, exigé pour le finir), avec deux maisons :
- * « Maison » (principale) et « Garage ».
+ * Administrateur créé par l'API (profil avec son coach, sans quoi l'onboarding ne se termine pas), onboarding
+ * fini, avec deux maisons : « Maison » (principale) et « Garage ».
  */
 async function createAdminWithTwoPlaces(server: E2EServer, page: Page): Promise<void> {
   const { code } = await bootstrapAdmin(server);
@@ -28,7 +28,7 @@ async function createAdminWithTwoPlaces(server: E2EServer, page: Page): Promise<
     'PATCH',
     '/api/me/training-profile',
     {
-      coach: 'ombre',
+      coach: 'skald',
       goal: 'muscle',
       experience: 'none',
       daysPerWeek: 3,
@@ -114,7 +114,8 @@ test('barre des changements : ses boutons reçoivent le toucher, même par-dessu
   const chair = page.getByRole('checkbox', { name: 'Chaise ou banc stable', exact: true });
   await chair.check();
   const bar = page.getByRole('region', { name: 'Changements à enregistrer' });
-  await expect(bar).toContainText('1 changement · 1 ajout');
+  // Texte entier du résumé : une partie nulle (« 0 retrait ») le ferait échouer.
+  await expect(bar.locator('p')).toHaveText('1 changement · 1 ajout');
   await settled(page);
 
   // Fait défiler l'écran jusqu'à poser une pastille sous « Annuler » de la barre.
