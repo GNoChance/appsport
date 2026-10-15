@@ -210,9 +210,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     await openEditor();
     fireEvent.click(checkbox('Kettlebell'));
     // Le résumé de la barre est une région d'état : son compte s'annonce à chaque changement.
-    expect(within(draftBar() as HTMLElement).getByRole('status').textContent).toContain(
-      '1 changement · 1 ajout',
-    );
+    expect(within(draftBar() as HTMLElement).getByRole('status').textContent).toBe('1 changement · 1 ajout');
     const cancel = within(draftBar() as HTMLElement).getByRole('button', { name: 'Annuler' });
     cancel.focus();
     fireEvent.click(cancel);
@@ -323,7 +321,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     await until(() => gets(api).length > before);
     await settle();
     // Relu : { haltères, banc plat, kettlebell }. Le retrait de la barre n'est pas un ajout de l'utilisateur.
-    expect(draftBar()?.textContent).toContain('1 changement · 1 retrait');
+    expect(summary()).toBe('1 changement · 1 retrait');
     expect(checkbox('Barre droite et disques').checked).toBe(false);
     expect(checkbox('Barre droite et disques').getAttribute('aria-describedby')).toBeNull();
     expect(checkbox('Kettlebell').checked).toBe(true);
@@ -334,7 +332,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     fireEvent.click(within(draftBar() as HTMLElement).getByRole('button', { name: 'Enregistrer' }));
     await until(() => gets(api).length > before);
     await settle();
-    expect(draftBar()?.textContent).toContain('1 changement · 1 retrait');
+    expect(summary()).toBe('1 changement · 1 retrait');
     expect(checkbox('Kettlebell').checked).toBe(false);
     expect(checkbox('Kettlebell').getAttribute('aria-describedby')).toBeNull();
     // Le serveur accepte enfin le retrait : seul le banc plat part, rien pour la barre ni le kettlebell.
@@ -366,7 +364,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     fireEvent.click(checkbox('Kettlebell'));
     expect(draftBar()).toBeNull();
     fireEvent.click(checkbox('Élastiques'));
-    expect(draftBar()?.textContent).toContain('1 changement · 1 ajout');
+    expect(summary()).toBe('1 changement · 1 ajout');
     expect(within(draftBar() as HTMLElement).queryByRole('alert')).toBeNull();
   });
 
@@ -411,7 +409,7 @@ describe('matériel en brouillon (spec refonte §10.3)', () => {
     );
     // Le PUT a été suivi de son pull ; après l'échec du DELETE, l'écran relit encore l'état du serveur.
     expect(sync.pullCount).toBe(pulls + 2);
-    await until(() => draftBar()?.textContent?.includes('1 changement · 1 retrait') ?? false);
+    await until(() => summary() === '1 changement · 1 retrait');
     expect(screen.getByRole('heading', { level: 1, name: 'Matériel' })).toBeTruthy();
     expect(checkbox('Chaise ou banc stable').checked).toBe(false);
     expect(checkbox('Haltères fixes ou réglables').checked).toBe(true);

@@ -219,7 +219,8 @@ test('barre des changements : le focus ne finit jamais dessous (WCAG 2.2, 2.4.11
   const collapsed = page.getByRole('button', { expanded: false });
   while ((await collapsed.count()) > 0) await collapsed.first().click();
   await page.getByRole('checkbox', { name: 'Chaise ou banc stable', exact: true }).check();
-  await expect(page.getByRole('region', { name: 'Changements à enregistrer' })).toContainText('1 changement');
+  const bar = page.getByRole('region', { name: 'Changements à enregistrer' });
+  await expect(bar.locator('p')).toHaveText('1 changement · 1 ajout');
   await settled(page);
 
   await test.step('focus() d’une pastille sous la barre : elle finit au-dessus', async () => {
