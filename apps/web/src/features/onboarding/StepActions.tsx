@@ -1,4 +1,5 @@
 import type { OnboardingStep, TrainingProfilePatch } from '@rune/contracts';
+import type { Ref } from 'react';
 import { type Repos, useRepos } from '../../repos';
 import { Banner, Button, useAction } from '../../ui';
 import styles from './onboarding.module.css';
@@ -43,11 +44,17 @@ export function useSaveStep(p: StepProps, step: OnboardingStep) {
  * bouton principal, qui prend le reste de la largeur ; seul, le principal prend toute la largeur. Dans
  * l'onboarding, la barre reste collée en bas de l'écran, erreur comprise (onboarding.module.css).
  * `className` : décor de la barre (apparition de « Commencer » sur « Éveil terminé »), `primary.className` :
- * celui du bouton principal.
+ * celui du bouton principal, `primary.ref` : le bouton principal lui-même (pour y rendre le focus).
  */
 export function StepActions(p: {
   onBack?: () => void;
-  primary?: { label: string; disabled?: boolean; onClick(): void; className?: string };
+  primary?: {
+    label: string;
+    disabled?: boolean;
+    onClick(): void;
+    className?: string;
+    ref?: Ref<HTMLButtonElement>;
+  };
   pending?: boolean;
   error?: string | null;
   className?: string;
@@ -63,6 +70,7 @@ export function StepActions(p: {
         ) : null}
         {p.primary ? (
           <Button
+            ref={p.primary.ref}
             className={[styles.primary, p.primary.className].filter(Boolean).join(' ')}
             onClick={p.primary.onClick}
             disabled={p.primary.disabled || p.pending}

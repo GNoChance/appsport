@@ -1,5 +1,5 @@
 import { EXPERIENCE_LABELS, GOAL_LABELS, OnboardingStep, SPORTS } from '@rune/contracts';
-import { type CSSProperties, useId, useState } from 'react';
+import { type CSSProperties, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { ApiError } from '../../api/client';
 import { ONBOARDING_COMPLETED_EVENT } from '../../app-events';
@@ -33,8 +33,13 @@ const SPARKS = [
  * Tout est dans la page dès le premier rendu : l'animation (CSS, 600 à 1 200 ms) ne fait que rejouer
  * l'arrivée, et sous mouvement réduit tout arrive en fondu court, sans retard ni étincelles.
  *
+ * Le coach ne parle qu'une fois les 3 quêtes remplies : il ne valide pas un éveil encore en cours.
+ *
  * « Commencer » termine l'onboarding une fois le voyant « Prêt hors ligne » au vert (R-SYN-33), émet
  * ONBOARDING_COMPLETED_EVENT puis mène à l'accueil ; sinon le voyant dit ce qui manque, avec « Réessayer ».
+ * Quand il passe au vert (« Réessayer » réussi ou voyant recalculé en fond), le voyant et « Réessayer » s'en
+ * vont : une région polie, là dès le premier rendu, annonce « Prêt hors ligne », et si le focus est retombé
+ * sur la page (il était sur « Réessayer »), il passe à « Commencer ».
  * Un écran encore incomplet pour le serveur (409) est rendu à `onIncomplete`, avec l'étape qu'il indique (null
  * si illisible).
  */
@@ -47,6 +52,10 @@ export function ReadyStep(p: { onBack(): void; onIncomplete(step: OnboardingStep
   const places = useLive(() => repos.places.list(), [repos]);
   const [retrying, setRetrying] = useState(false);
   const recapId = useId();
+  const startButton = useRef<HTMLButtonElement>(null);
+  const offlineReady = loaded && readiness.ready;
+  const waiting = loaded && !readiness.ready;
+  const wasWaiting = useRef(false);
   const start = useAction(async () => {
     try {
       await repos.profile.completeOnboarding();
@@ -65,11 +74,22 @@ export function ReadyStep(p: { onBack(): void; onIncomplete(step: OnboardingStep
     void retry().finally(() => setRetrying(false));
   };
 
+  // Voyant passé au vert : « Réessayer » vient de disparaître ; le focus qui y était retombe sur la page, il va
+  // alors à « Commencer », désormais actif, dans le même rendu (avant l'affichage). Un focus posé ailleurs
+  // (titre, récapitulatif) ne bouge pas.
+  useLayoutEffect(() => {
+    if (wasWaiting.current && offlineReady) {
+      const active = document.activeElement;
+      if (active === null || active === document.body) startButton.current?.focus();
+    }
+    wasWaiting.current = waiting;
+  }, [waiting, offlineReady]);
+
   const primary = places?.find((pl) => pl.isPrimary);
   const quests = awakeningQuests({
     profile,
     hasPrimaryPlace: primary !== undefined,
-    offlineReady: loaded && readiness.ready,
+    offlineReady,
   });
   const allDone = quests.every((q) => q.done);
   const coach = profile?.coach ?? null;
@@ -114,14 +134,14 @@ export function ReadyStep(p: { onBack(): void; onIncomplete(step: OnboardingStep
           <AwakeningQuests quests={quests} />
         </SystemPanel>
       </div>
-      {coach && me ? (
+      {coach && me && allDone ? (
         <div className={styles.coachLine}>
           <CoachBubble coach={coach} label="Message d'accueil">
             <p>{coachText(coach, 'ready', me.username)}</p>
           </CoachBubble>
         </div>
       ) : null}
-      {loaded && !readiness.ready ? (
+      {waiting ? (
         <div className={styles.notReady}>
           <OfflineReadyIndicator readiness={readiness} />
           <Button variant="secondary" onClick={onRetry} disabled={retrying}>
@@ -129,6 +149,9 @@ export function ReadyStep(p: { onBack(): void; onIncomplete(step: OnboardingStep
           </Button>
         </div>
       ) : null}
+      <p className={styles.srOnly} role="status">
+        {offlineReady ? 'Prêt hors ligne' : ''}
+      </p>
       {profile ? (
         <section aria-labelledby={recapId} className={styles.recap}>
           <h3 id={recapId}>Récapitulatif</h3>
@@ -174,7 +197,8 @@ export function ReadyStep(p: { onBack(): void; onIncomplete(step: OnboardingStep
         primary={{
           label: 'Commencer',
           className: styles.glow,
-          disabled: !loaded || !readiness.ready,
+          ref: startButton,
+          disabled: !offlineReady,
           onClick: () => void start.run(),
         }}
       />

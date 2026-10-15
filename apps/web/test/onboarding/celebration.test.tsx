@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { COACH_IDS, type CoachId } from '@rune/contracts';
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { coachText } from '../../src/features/coach/coach-lines';
 import { awakeningQuests } from '../../src/features/onboarding/AwakeningQuests';
@@ -122,6 +122,27 @@ describe('« Éveil terminé » (spec refonte §7, §10.1)', () => {
     expect(screen.queryByText("Quêtes d'éveil remplies. Ta progression commence au rang E.")).toBeNull();
     expect(button('Commencer').disabled).toBe(true);
   });
+
+  it.each(COACH_IDS)(
+    'mot de la fin du coach (%s) seulement à 3/3 : absent à 2/3, il arrive avec la dernière quête',
+    async (coach) => {
+      const { db } = await openReady({ coach, pullAgoMs: 25 * HOUR });
+      const line = coachText(coach, 'ready', 'lea');
+      await screen.findByRole('button', { name: 'Réessayer' });
+      await until(() => isDone('Profil complété') && isDone('Lieu principal choisi'));
+      expect(screen.getByText('2/3')).toBeTruthy();
+      // Aucune fausse donnée : le coach ne valide pas un éveil encore en cours.
+      expect(screen.queryByText(line)).toBeNull();
+      expect(screen.queryByText("Message d'accueil")).toBeNull();
+      // La synchro de « Réessayer » rapporte un pull frais : la dernière quête se coche, le coach parle.
+      await setMeta(db, 'lastPullOkAt', new Date(DEFAULT_NOW - HOUR).toISOString());
+      fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+      await until(() => isDone('Prêt hors ligne'));
+      expect(screen.getByText('3/3')).toBeTruthy();
+      const bubble = (await screen.findByText(line)).closest('[data-mode]');
+      expect(bubble?.textContent).toContain("Message d'accueil");
+    },
+  );
 
   /** Écran « C'est prêt » seul, profil `fields`, prêt hors ligne, sans lieu principal. */
   async function openReadyAlone(fields: Parameters<typeof seedProfile>[1]) {

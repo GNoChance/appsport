@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ONBOARDING_COMPLETED_EVENT } from '../../src/app-events';
 import { setMeta } from '../../src/local-db/meta';
@@ -77,6 +77,44 @@ describe('ReadyStep (E8, R-SYN-33)', () => {
     fireEvent.click(button('Réessayer'));
     await until(() => sync.triggers.includes('manual'));
     expect(api.calls.some((c) => c.path === COMPLETE)).toBe(false);
+  });
+
+  it('« Réessayer » réussi : « Prêt hors ligne » annoncé par une région déjà en place, focus sur « Commencer »', async () => {
+    const { sync, db } = await openReady(25 * HOUR);
+    await until(() => screen.queryByTestId('offline-ready')?.getAttribute('data-state') === 'not-ready');
+    // Région polie montée avant le changement : un texte qui y arrive est annoncé, une région retirée ne l'est pas.
+    const status = within(screen.getByTestId('onboarding-step')).getByRole('status');
+    expect(status.textContent).toBe('');
+    // La synchro manuelle de « Réessayer » réussit : pull frais.
+    sync.syncNow = async (trigger) => {
+      sync.triggers.push(trigger);
+      await setMeta(db, 'lastPullOkAt', new Date(DEFAULT_NOW - HOUR).toISOString());
+    };
+    const retry = button('Réessayer');
+    retry.focus();
+    fireEvent.click(retry);
+    await until(offlineReady);
+    expect(status.isConnected).toBe(true);
+    expect(status.textContent).toBe('Prêt hors ligne');
+    // « Réessayer » a disparu avec le focus : il passe à « Commencer », désormais actif.
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).toBeNull();
+    expect(button('Commencer').disabled).toBe(false);
+    await until(() => document.activeElement === button('Commencer'));
+  });
+
+  it('voyant au vert sans « Réessayer » (synchro en fond) : annoncé, le focus posé sur le titre ne bouge pas', async () => {
+    const { sync, db } = await openReady(25 * HOUR);
+    await until(() => screen.queryByTestId('offline-ready')?.getAttribute('data-state') === 'not-ready');
+    const status = within(screen.getByTestId('onboarding-step')).getByRole('status');
+    const title = screen.getByRole('heading', { level: 2, name: /C'est prêt$/ });
+    title.focus();
+    // Un pull réussi en fond : le voyant est recalculé à ce nouvel état de synchro.
+    const fresh = new Date(DEFAULT_NOW - HOUR).toISOString();
+    await setMeta(db, 'lastPullOkAt', fresh);
+    sync.set({ lastPullOkAt: fresh });
+    await until(offlineReady);
+    expect(status.textContent).toBe('Prêt hors ligne');
+    expect(document.activeElement).toBe(title);
   });
 
   it('409 onboarding_incomplete : retour au premier écran incomplet, avec la raison', async () => {
