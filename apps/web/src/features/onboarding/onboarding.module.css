@@ -1,3 +1,32 @@
+/*
+ * Onboarding Rune (spec refonte §10.1) : mise en page des maquettes B01–B08 (titre de 28 px, phrase secondaire,
+ * cartes de choix, pastilles, cartes, barre « Retour » / « Continuer ») et célébration « Éveil terminé » du
+ * prototype. Couleurs prises dans les jetons (5 thèmes) ; mouvement sur la courbe unique et les durées communes
+ * (motion.css), remplacé par des fondus courts sans retard sous mouvement réduit. Une animation ne fait que
+ * rejouer l'arrivée (fill-mode backwards) : sans elle, tout est là, entier et visible.
+ */
+
+/* ---------- Colonne et écran ---------- */
+
+.flow {
+  width: 100%;
+  max-width: 36rem;
+  margin-inline: auto;
+}
+
+/* « Prise en main » reste le titre de la page pour les lecteurs d'écran ; à l'écran, l'étape seule (maquettes). */
+.flow h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .step,
 .panel {
   display: flex;
@@ -5,38 +34,194 @@
   gap: var(--space-4);
 }
 
+/* Titre de l'écran (maquettes : 28 px, police des titres). */
 .step h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.15;
 }
 
-.panel h3 {
-  margin: 0;
-  font-size: 1.125rem;
+/* La phrase sous le titre (15,5 px, secondaire), à 6 px du titre comme dans les maquettes. */
+.lead {
+  margin: calc(6px - var(--space-4)) 0 2px;
+  font-size: 0.96875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* Écran d'une seule question : sa légende sert de phrase sous le titre (maquettes B01, B02, B03, B05). */
+.question {
+  margin-top: calc(6px - var(--space-4));
+}
+
+.question legend {
+  margin-bottom: 18px;
+  font-size: 0.96875rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* Liste longue (« Quel sport ? », maquette B02) : chaque pastille à la largeur de son libellé. */
+.sportList {
+  margin-top: var(--space-2);
+}
+
+.sportList fieldset > div > label {
+  flex: 0 1 auto;
+  padding-inline: 16px;
+}
+
+/* Les autres questions de l'écran (« Quel sport ? », « Séances par semaine ») : 24 px au-dessus. */
+.step > fieldset {
+  margin-top: var(--space-2);
+}
+
+/* Boutons d'une carte (accord, questionnaire, limitations) : ils se partagent la ligne, puis passent dessous. */
+.panelActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.panelActions > * {
+  flex: 1 1 auto;
+}
+
+/* Rembourrage resserré : « Passer » et « J'accepte et je renseigne » tiennent sur une ligne à 390 px (maquette B07). */
+.panelActions > button {
+  padding-inline: 12px;
+}
+
+/* Les cartes et pastilles d'une question entrent en cascade (spec refonte §7). */
+.question fieldset > div > * {
+  animation: rise var(--dur-screen) var(--ease) backwards;
+}
+
+.question fieldset > div > :nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.question fieldset > div > :nth-child(3) {
+  animation-delay: 120ms;
+}
+
+.question fieldset > div > :nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.question fieldset > div > :nth-child(n + 5) {
+  animation-delay: 240ms;
+}
+
+/* Barre d'actions (maquettes) : « Retour » de 118 px à gauche, le bouton principal prend le reste ; seul, tout. */
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.back {
+  flex: 0 0 118px;
+}
+
+.primary {
+  flex: 1 1 auto;
+}
+
+.panel > button {
+  align-self: flex-start;
 }
 
 .panel p {
   margin: 0;
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--space-2);
+.panel h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .note {
   margin: 0;
   font-size: 0.875rem;
-  color: var(--color-muted);
+  color: var(--text-muted);
 }
 
+/* Note précédée d'un petit i (maquette B03). */
+.infoNote {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.infoNote svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+
+/* ---------- Cartes ---------- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 14px 16px 16px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.card .panel > p {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--accent);
+}
+
+.cardHead h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+/* Case de l'accord santé (maquette B07) : une carte, au bord accent et teintée une fois cochée. */
 .check {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-3);
+  gap: 10px;
   min-height: 44px;
+  padding: 10px 12px 10px 10px;
+  border-radius: var(--radius-control);
+  border: 1.5px solid var(--border);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.check:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 
 .check input {
@@ -46,10 +231,140 @@
   margin: 0;
 }
 
+/* Limitations avant l'accord (maquette B07) : carte en pointillés, cadenas, sans champ. */
+.locked {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 12px 14px 12px 12px;
+  border-radius: var(--radius-card);
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 3%, var(--surface));
+}
+
+.lockedIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-muted) 12%, var(--surface));
+  color: var(--text-muted);
+}
+
+.lockedText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lockedHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 10px;
+}
+
+.lockedHead h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.lockedState {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Mode prudent : libellé à gauche, interrupteur à droite (maquette B07), comme l'interrupteur de la boîte à outils. */
 .toggle {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 44px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+/* La case garde son rôle `switch` ; seule son apparence change : piste 50 × 30, bouton de 24 px. */
+.switchInput {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 50px;
+  height: 30px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--field-border);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.switchInput::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.switchInput:checked {
+  background: var(--accent);
+}
+
+.switchInput:checked::before {
+  transform: translateX(20px);
+  background: var(--accent-text);
+}
+
+.switchInput:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.switchInput:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .switchInput {
+    border: 1px solid ButtonText;
+  }
+
+  .switchInput::before {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+
+  .switchInput:checked {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  .switchInput:checked::before {
+    background: HighlightText;
+  }
 }
 
 .questions {
@@ -76,9 +391,9 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--text-muted) 6%, var(--surface));
 }
 
 .itemActions {
@@ -87,32 +402,414 @@
   gap: var(--space-2);
 }
 
-.panel > button {
+/* Lieu principal déjà là (retour arrière). */
+.placeDone {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-weight: 600;
+}
+
+/* « Ton rythme » (maquette B06). */
+.rhythm {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.rhythmIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
+  color: var(--accent-2);
+}
+
+.rhythmText {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rhythmLabel {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.rhythmValue {
+  font-weight: 600;
+}
+
+/* ---------- « Éveil terminé » (prototype : fenêtre, rang, quêtes, coach, « Commencer ») ---------- */
+
+/* La fenêtre du Système s'ouvre depuis une ligne au milieu. */
+.celebration {
+  animation: window-open 600ms var(--ease) backwards;
+}
+
+.awakening {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.awakeningText {
+  margin: 0;
+}
+
+.rankStage {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+}
+
+/* Le rang E se grave : il monte en éclat, puis se pose. */
+.rank {
+  display: block;
+  animation: rank-engrave 800ms var(--ease) 200ms backwards;
+}
+
+.rank svg {
+  display: block;
+}
+
+/* Quelques étincelles partent du rang, puis s'éteignent (décor seulement). */
+.sparks {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.spark {
+  position: absolute;
+  left: -1.5px;
+  top: -5px;
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: spark 700ms var(--ease) 500ms both;
+}
+
+.spark:nth-child(even) {
+  background: var(--accent-2);
+}
+
+.quests {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.questsHead {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.questsCount {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.questsBar {
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-muted) 18%, var(--surface));
+}
+
+/* La barre se remplit jusqu'au nombre de quêtes atteintes. */
+.questsFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transform-origin: left center;
+  animation: quests-fill 900ms var(--ease) 300ms backwards;
+}
+
+.questList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quest {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 6px;
+  font-size: 0.90625rem;
+  color: var(--text-muted);
+}
+
+.quest[aria-checked="true"] {
+  color: var(--text);
+}
+
+/* Case vide au trait de 3:1 ; cochée, elle laisse place à la coche d'accent. */
+.questBox {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid color-mix(in srgb, var(--text-muted) 70%, var(--surface));
+  color: var(--accent);
+}
+
+.quest[aria-checked="true"] .questBox {
+  border-color: transparent;
+}
+
+/* Les quêtes se cochent une à une. */
+.questCheck {
+  display: grid;
+  animation: quest-check 600ms var(--ease) 300ms backwards;
+}
+
+.questList > :nth-child(2) .questCheck {
+  animation-delay: 450ms;
+}
+
+.questList > :nth-child(3) .questCheck {
+  animation-delay: 600ms;
+}
+
+/* Le coach dit son mot, puis « Commencer » apparaît. */
+.coachLine {
+  animation: rise 600ms var(--ease) 500ms backwards;
+}
+
+.revealActions {
+  animation: rise 600ms var(--ease) 600ms backwards;
+}
+
+.glow:not(:disabled) {
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* Pas encore prêt hors ligne : ce qui manque, et « Réessayer ». */
+.notReady {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 14px 16px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.notReady > button {
   align-self: flex-start;
+}
+
+/* Récapitulatif (maquette B08) : une carte, une ligne par réponse. */
+.recap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recap h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .summary {
   margin: 0;
-  display: grid;
-  gap: var(--space-2);
+  padding: 0 16px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .summary div {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  gap: 16px;
+  min-height: 46px;
+  padding: 8px 0;
+}
+
+.summary div + div {
+  border-top: 1px solid var(--border);
 }
 
 .summary dt {
-  color: var(--color-muted);
+  flex: none;
+  font-size: 0.875rem;
+  color: var(--text-muted);
 }
 
 .summary dd {
   margin: 0;
   font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Newsreader n'est embarqué qu'en 600 : pas de gras synthétisé en Carnet. */
+:global(:root[data-theme="carnet"]) .step h2,
+:global(:root[data-theme="carnet"]) .panel h3,
+:global(:root[data-theme="carnet"]) .cardHead h3,
+:global(:root[data-theme="carnet"]) .lockedHead h3,
+:global(:root[data-theme="carnet"]) .recap h3 {
+  font-weight: 600;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes window-open {
+  0% {
+    opacity: 0;
+    clip-path: inset(46% 8% round var(--radius-card));
+  }
+
+  35% {
+    opacity: 1;
+    clip-path: inset(46% 0 round var(--radius-card));
+  }
+
+  100% {
+    opacity: 1;
+    clip-path: inset(0 round var(--radius-card));
+  }
+}
+
+@keyframes rank-engrave {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+    filter: brightness(1.8);
+  }
+
+  55% {
+    opacity: 1;
+    transform: scale(1.08);
+    filter: brightness(1.5) drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 60%, transparent));
+  }
+
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes spark {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--spark-angle)) translateY(-8px) scaleY(0.4);
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: rotate(var(--spark-angle)) translateY(calc(-1 * var(--spark-distance))) scaleY(1);
+  }
+}
+
+@keyframes quests-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes quest-check {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+
+  100% {
+    transform: none;
+  }
+}
+
+/* Mouvement réduit (spec refonte §7) : des fondus courts, sans retard ni cascade, sans étincelles. */
+@media (prefers-reduced-motion: reduce) {
+  .question fieldset > div > *,
+  .question fieldset > div > :nth-child(n),
+  .celebration,
+  .rank,
+  .questsFill,
+  .questCheck,
+  .questList > :nth-child(n) .questCheck,
+  .coachLine,
+  .revealActions {
+    animation-name: fade;
+    animation-duration: var(--dur-fast);
+    animation-delay: 0ms;
+  }
+
+  .spark {
+    display: none;
+  }
+
+  .check,
+  .switchInput,
+  .switchInput::before {
+    transition-property: background-color, border-color;
+  }
 }

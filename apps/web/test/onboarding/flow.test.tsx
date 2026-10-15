@@ -1,6 +1,6 @@
 import { firstIncompleteStep } from '@rune/domain';
 import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { shownStep } from '../../src/features/onboarding/OnboardingFlow';
 import { createRepos } from '../../src/repos';
 import { settle } from '../support/auth';
@@ -29,6 +29,10 @@ async function openFlow(me = newcomer()) {
   return { db, api, me, server, render: () => renderApp({ path: '/onboarding', me, db, api }) };
 }
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 const progress = () => screen.getByText(/^Étape \d sur 9$/).textContent;
 /** Le titre de l'écran, nommé avec l'indicateur d'étape, a le focus. */
 const hasFocus = (name: string) =>
@@ -55,12 +59,34 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     await screen.findByRole('heading', { level: 2, name: 'Étape 2 sur 9 Objectif' });
     expect(document.activeElement).toBe(document.body);
     choose('Prendre du muscle');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => hasFocus('Étape 3 sur 9 Autre sport'));
     fireEvent.click(button('Retour'));
     await until(() => hasFocus('Étape 2 sur 9 Objectif'));
     fireEvent.click(button('Retour'));
     await until(() => hasFocus('Étape 1 sur 9 Choisis ton coach'));
+  });
+
+  it('changement d’écran : le suivant entre par la droite, le retour par la gauche ; rien à la reprise', async () => {
+    const animate = vi.spyOn(Element.prototype, 'animate');
+    /** Entrée jouée en dernier sur l'écran affiché (`data-step`), ou null. */
+    const entrance = () => {
+      const i = animate.mock.contexts.lastIndexOf(screen.getByTestId('onboarding-step'));
+      return i < 0 ? null : (animate.mock.calls[i]?.[0] as { transform?: string[] });
+    };
+    const t = await openFlow();
+    await seedProfile(t.db);
+    await t.render();
+    await until(() => currentStep() === 'goal');
+    expect(entrance()).toBeNull();
+    await screen.findByRole('radio', { name: 'Prendre du muscle' });
+    choose('Prendre du muscle');
+    fireEvent.click(button('Continuer'));
+    await until(() => currentStep() === 'sport');
+    expect(entrance()?.transform).toEqual(['translateX(48px)', 'none']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Retour' }));
+    await until(() => currentStep() === 'goal');
+    expect(entrance()?.transform).toEqual(['translateX(-48px)', 'none']);
   });
 
   it('reprise au premier écran incomplet (firstIncompleteStep)', async () => {
@@ -108,16 +134,16 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(currentStep()).toBe('goal');
   });
 
-  it('« Prendre du muscle » + « Suivant » → PATCH, puis « Autre sport » en 3 sur 9 ; « Retour » garde la réponse', async () => {
+  it('« Prendre du muscle » + « Continuer » → PATCH, puis « Autre sport » en 3 sur 9 ; « Retour » garde la réponse', async () => {
     const t = await openFlow();
     await seedProfile(t.db);
     await t.render();
     await until(() => currentStep() === 'goal');
     await screen.findByRole('radio', { name: 'Prendre du muscle' });
-    expect(button('Suivant').disabled).toBe(true);
+    expect(button('Continuer').disabled).toBe(true);
     choose('Prendre du muscle');
     expect(t.server.patches).toEqual([]);
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => currentStep() === 'sport');
     expect(t.server.patches).toEqual([{ goal: 'muscle', onboardingStep: 'goal' }]);
     expect(progress()).toBe('Étape 3 sur 9');
@@ -136,13 +162,13 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     await until(() => currentStep() === 'sport');
     await screen.findByRole('radio', { name: 'Non' });
     choose('Non');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => currentStep() === 'place_kind');
     expect(t.server.patches).toEqual([{ sportCode: null, sportOtherLabel: null, onboardingStep: 'sport' }]);
     fireEvent.click(button('Retour'));
     await until(() => currentStep() === 'sport');
     await until(() => isChecked('Non'));
-    expect(button('Suivant').disabled).toBe(false);
+    expect(button('Continuer').disabled).toBe(false);
   });
 
   it('sport enregistré, puis « Retour » depuis le lieu : « Oui » et le sport toujours cochés', async () => {
@@ -153,7 +179,7 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     await screen.findByRole('radio', { name: 'Oui' });
     choose('Oui');
     choose('Course à pied');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => currentStep() === 'place_kind');
     fireEvent.click(button('Retour'));
     await until(() => currentStep() === 'sport');
@@ -185,7 +211,7 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Retour' }));
     await until(() => currentStep() === 'place');
     await screen.findByText('Ton lieu principal : Basic Fit');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await until(() => currentStep() === 'experience');
     expect(writes(t.api)).toEqual(['PATCH /api/me/training-profile']);
     expect(t.server.patches).toEqual([{ onboardingStep: 'place' }]);
@@ -199,7 +225,7 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     await screen.findByRole('radio', { name: 'Gagner en force' });
     t.api.setOffline('reject');
     choose('Gagner en force');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     expect((await screen.findByRole('alert')).textContent).toBe('Nécessite le réseau');
     expect(currentStep()).toBe('goal');
     expect(t.server.patches).toEqual([]);

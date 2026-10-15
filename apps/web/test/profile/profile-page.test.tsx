@@ -318,7 +318,7 @@ describe('ProfilePage › Entraînement (R-ONB-3)', () => {
     fireEvent.click(await screen.findByRole('button', { name: "Modifier l'objectif" }));
     await until(() => isChecked('Prendre du muscle'));
     choose('Me renforcer pour mon sport');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await screen.findByRole('radio', { name: 'Course à pied' });
     expect(t.patches).toEqual([]);
     choose('Course à pied');
@@ -332,7 +332,7 @@ describe('ProfilePage › Entraînement (R-ONB-3)', () => {
     fireEvent.click(await screen.findByRole('button', { name: "Modifier l'objectif" }));
     await until(() => isChecked('Prendre du muscle'));
     choose('Me renforcer pour mon sport');
-    fireEvent.click(button('Suivant'));
+    fireEvent.click(button('Continuer'));
     await screen.findByRole('radio', { name: 'Course à pied' });
     expect(document.activeElement?.textContent).toBe('Autre sport');
     fireEvent.click(button('Retour'));

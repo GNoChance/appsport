@@ -1028,9 +1028,20 @@ button.row:focus-visible {
   font-size: 1.75rem;
 }
 
+/* Avertissement santé (maquette B07) : petit i cerclé puis le texte, en 13 px secondaire. */
 .healthWarning {
-  font-size: 0.875rem;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
   color: var(--text-muted);
+}
+
+.healthWarning svg {
+  flex: none;
+  margin-top: 1px;
 }
 
 /* Mouvement réduit (spec refonte §7) : ni déplacement ni ressort, des fondus simples. */

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useSyncState } from '../../app-services';
 import { useRepos } from '../../repos';
 import { Banner, ERROR_MESSAGES, Page, SegmentedProgress } from '../../ui';
+import { type ScreenTransition, useScreenEntrance } from '../../ui/screen-transition';
 import { CoachStep } from '../coach/CoachStep';
 import { AvailabilityStep } from './AvailabilityStep';
 import { ExperienceStep } from './ExperienceStep';
@@ -32,6 +33,8 @@ interface FlowState {
    * sinon l'objectif.
    */
   afterCoach: OnboardingStep;
+  /** Entrée de l'écran affiché : depuis la droite vers l'avant, depuis la gauche au retour, rien à la reprise. */
+  transition: ScreenTransition;
 }
 
 /**
@@ -46,7 +49,8 @@ export const shownStep = (s: Pick<FlowState, 'step' | 'kind'>): FlowStep =>
  * incomplet (R-ONB-2), précédé de l'étape coach tant que le profil n'a pas de coach ; recalculé à chaque
  * pull réussi tant que l'utilisateur n'a rien changé (un nouvel appareil reçoit ses réponses, coach compris,
  * après l'ouverture). Chaque écran s'enregistre au clic, « Retour » revient à l'écran précédent avec ses
- * réponses. À chaque changement d'écran, le titre du nouvel écran (« Étape n sur 9 <titre> ») prend le focus.
+ * réponses. À chaque changement d'écran, le nouvel écran entre par la droite (par la gauche au retour, en fondu
+ * sous mouvement réduit, spec refonte §7) et son titre (« Étape n sur 9 <titre> ») prend le focus.
  */
 export function OnboardingFlow() {
   const repos = useRepos();
@@ -59,6 +63,7 @@ export function OnboardingFlow() {
   const focusNext = useRef(false);
   const progressId = useId();
   const titles = useMemo(() => ({ progressId, focusNext }), [progressId]);
+  const screen = useRef<HTMLDivElement>(null);
 
   const resume = useCallback(async (): Promise<FlowState> => {
     const [input, places, profile] = await Promise.all([
@@ -71,6 +76,7 @@ export function OnboardingFlow() {
       step: profile?.coach ? step : 'coach',
       kind: places.find((p) => p.isPrimary)?.kind ?? null,
       afterCoach: step,
+      transition: 'none',
     };
   }, [repos]);
 
@@ -84,13 +90,15 @@ export function OnboardingFlow() {
       () => {
         // Base locale illisible : départ au premier écran.
         if (active && !moved.current)
-          setState((prev) => prev ?? { step: 'coach', kind: null, afterCoach: 'goal' });
+          setState((prev) => prev ?? { step: 'coach', kind: null, afterCoach: 'goal', transition: 'none' });
       },
     );
     return () => {
       active = false;
     };
   }, [resume, lastPullOkAt]);
+
+  useScreenEntrance(screen, state ? shownStep(state) : '', state?.transition ?? 'none');
 
   if (!state) return null;
 
@@ -100,9 +108,10 @@ export function OnboardingFlow() {
     moved.current = true;
     focusNext.current = true;
     setNotice(reason);
+    const transition = FLOW_STEPS.indexOf(s) < index ? 'back' : 'forward';
     // Revenir au coach depuis l'objectif : la suite du coach redevient l'objectif.
     setState((prev) =>
-      prev ? { ...prev, step: s, afterCoach: s === 'coach' ? 'goal' : prev.afterCoach } : prev,
+      prev ? { ...prev, step: s, afterCoach: s === 'coach' ? 'goal' : prev.afterCoach, transition } : prev,
     );
   };
   const next = FLOW_STEPS[index + 1];
@@ -125,47 +134,51 @@ export function OnboardingFlow() {
       (s) => {
         focusNext.current = true;
         setNotice(reason);
-        setState(s);
+        setState({ ...s, transition: 'back' });
       },
       () => {},
     );
   };
 
   return (
-    <Page title="Prise en main">
-      <div id={progressId}>
-        <SegmentedProgress step={index + 1} total={FLOW_STEPS.length} />
-      </div>
-      {notice ? <Banner tone="warning">{notice}</Banner> : null}
-      <StepTitleContext.Provider value={titles}>
-        <div key={step} data-testid="onboarding-step" data-step={step} className={styles.step}>
-          {step === 'coach' ? (
-            <CoachStep
-              onNext={() => goTo(state.afterCoach)}
-              onChange={() => {
-                moved.current = true;
-              }}
-            />
-          ) : null}
-          {step === 'goal' ? <GoalStep {...props} /> : null}
-          {step === 'sport' ? <SportStep {...props} /> : null}
-          {step === 'place_kind' ? (
-            <PlaceKindStep
-              {...props}
-              value={state.kind}
-              onChange={(kind) => {
-                moved.current = true;
-                setState((prev) => (prev ? { ...prev, kind } : prev));
-              }}
-            />
-          ) : null}
-          {step === 'place' && state.kind ? <PlaceStep {...props} kind={state.kind} /> : null}
-          {step === 'experience' ? <ExperienceStep {...props} /> : null}
-          {step === 'availability' ? <AvailabilityStep {...props} /> : null}
-          {step === 'health' ? <HealthStep {...props} /> : null}
-          {step === 'ready' ? <ReadyStep onBack={() => goTo('health')} onIncomplete={onIncomplete} /> : null}
+    <div className={styles.flow}>
+      <Page title="Prise en main">
+        <div id={progressId}>
+          <SegmentedProgress step={index + 1} total={FLOW_STEPS.length} />
         </div>
-      </StepTitleContext.Provider>
-    </Page>
+        {notice ? <Banner tone="warning">{notice}</Banner> : null}
+        <StepTitleContext.Provider value={titles}>
+          <div ref={screen} key={step} data-testid="onboarding-step" data-step={step} className={styles.step}>
+            {step === 'coach' ? (
+              <CoachStep
+                onNext={() => goTo(state.afterCoach)}
+                onChange={() => {
+                  moved.current = true;
+                }}
+              />
+            ) : null}
+            {step === 'goal' ? <GoalStep {...props} /> : null}
+            {step === 'sport' ? <SportStep {...props} /> : null}
+            {step === 'place_kind' ? (
+              <PlaceKindStep
+                {...props}
+                value={state.kind}
+                onChange={(kind) => {
+                  moved.current = true;
+                  setState((prev) => (prev ? { ...prev, kind } : prev));
+                }}
+              />
+            ) : null}
+            {step === 'place' && state.kind ? <PlaceStep {...props} kind={state.kind} /> : null}
+            {step === 'experience' ? <ExperienceStep {...props} /> : null}
+            {step === 'availability' ? <AvailabilityStep {...props} /> : null}
+            {step === 'health' ? <HealthStep {...props} /> : null}
+            {step === 'ready' ? (
+              <ReadyStep onBack={() => goTo('health')} onIncomplete={onIncomplete} />
+            ) : null}
+          </div>
+        </StepTitleContext.Provider>
+      </Page>
+    </div>
   );
 }

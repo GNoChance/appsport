@@ -10,8 +10,12 @@ export interface StepProps {
   onBack?: () => void;
 }
 
-/** Bouton qui enregistre l'écran : « Suivant » pendant l'onboarding, « Enregistrer » dans le Profil. */
-export const saveLabel = (mode: StepProps['mode']) => (mode === 'onboarding' ? 'Suivant' : 'Enregistrer');
+/** Bouton d'avancée de l'onboarding (spec refonte §10.1), aussi celui d'un écran qui en ouvre un autre. */
+export const CONTINUE_LABEL = 'Continuer';
+
+/** Bouton qui enregistre l'écran : « Continuer » pendant l'onboarding, « Enregistrer » dans le Profil. */
+export const saveLabel = (mode: StepProps['mode']) =>
+  mode === 'onboarding' ? CONTINUE_LABEL : 'Enregistrer';
 
 /**
  * Enregistrement d'un écran au clic (R-ONB-2) : PATCH du profil, avec `onboardingStep` pendant
@@ -34,24 +38,34 @@ export function useSaveStep(p: StepProps, step: OnboardingStep) {
   return useAction((patch: TrainingProfilePatch = {}) => saveStep(repos, p, step, patch));
 }
 
-/** Erreur de l'écran, « Retour » et bouton principal. */
+/**
+ * Erreur de l'écran, puis la barre d'actions des maquettes B01–B08 : « Retour » (118 px, contour) à gauche du
+ * bouton principal, qui prend le reste de la largeur ; seul, le principal prend toute la largeur.
+ * `className` : décor de la barre (apparition de « Commencer » sur « Éveil terminé »), `primary.className` :
+ * celui du bouton principal.
+ */
 export function StepActions(p: {
   onBack?: () => void;
-  primary?: { label: string; disabled?: boolean; onClick(): void };
+  primary?: { label: string; disabled?: boolean; onClick(): void; className?: string };
   pending?: boolean;
   error?: string | null;
+  className?: string;
 }) {
   return (
     <>
       {p.error ? <Banner tone="error">{p.error}</Banner> : null}
-      <div className={styles.actions}>
+      <div className={[styles.actions, p.className].filter(Boolean).join(' ')}>
         {p.onBack ? (
-          <Button variant="secondary" onClick={p.onBack} disabled={p.pending}>
+          <Button variant="secondary" className={styles.back} onClick={p.onBack} disabled={p.pending}>
             Retour
           </Button>
         ) : null}
         {p.primary ? (
-          <Button onClick={p.primary.onClick} disabled={p.primary.disabled || p.pending}>
+          <Button
+            className={[styles.primary, p.primary.className].filter(Boolean).join(' ')}
+            onClick={p.primary.onClick}
+            disabled={p.primary.disabled || p.pending}
+          >
             {p.primary.label}
           </Button>
         ) : null}

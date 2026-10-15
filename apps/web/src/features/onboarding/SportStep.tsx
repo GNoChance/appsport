@@ -9,7 +9,7 @@ import {
 import { useId, useState } from 'react';
 import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
-import { ChoiceList, Field } from '../../ui';
+import { Chips, Field } from '../../ui';
 import styles from './onboarding.module.css';
 import { StepActions, type StepProps, saveLabel, useSaveStep } from './StepActions';
 import { StepTitle } from './StepTitle';
@@ -19,8 +19,8 @@ type Practice = 'yes' | 'no';
 export const SPORT_REQUIRED_TEXT = `Obligatoire avec l'objectif « ${GOAL_LABELS.sport_support} ».`;
 
 /**
- * E2 Autre sport : « Oui » imposé avec l'objectif sportif ; « Autre » exige un libellé (40
- * caractères au plus). `pendingGoal` (édition depuis l'objectif) : PATCH { goal, sportCode,
+ * E2 Autre sport (maquette B02 : pastilles) : « Oui » imposé avec l'objectif sportif ; « Autre » exige un
+ * libellé (40 caractères au plus). `pendingGoal` (édition depuis l'objectif) : PATCH { goal, sportCode,
  * sportOtherLabel } en un seul envoi.
  */
 export function SportStep(p: StepProps & { pendingGoal?: Goal }) {
@@ -62,29 +62,33 @@ export function SportStep(p: StepProps & { pendingGoal?: Goal }) {
   return (
     <>
       <StepTitle>Autre sport</StepTitle>
-      <ChoiceList<Practice>
-        name="sport-practice"
-        legend="Pratiques-tu un autre sport régulièrement ?"
-        value={practiceValue}
-        onChange={setPractice}
-        options={[
-          { value: 'no', label: 'Non', disabled: required, describedBy: required ? requiredId : undefined },
-          { value: 'yes', label: 'Oui' },
-        ]}
-      />
+      <div className={styles.question}>
+        <Chips
+          name="sport-practice"
+          legend="Pratiques-tu un autre sport régulièrement ?"
+          value={practiceValue}
+          onChange={(v) => setPractice(v === 'yes' ? 'yes' : 'no')}
+          options={[
+            { value: 'no', label: 'Non', disabled: required, describedBy: required ? requiredId : undefined },
+            { value: 'yes', label: 'Oui' },
+          ]}
+        />
+      </div>
       {required ? (
         <p id={requiredId} className={styles.note}>
           {SPORT_REQUIRED_TEXT}
         </p>
       ) : null}
       {practiceValue === 'yes' ? (
-        <ChoiceList<SportCode>
-          name="sport"
-          legend="Quel sport ?"
-          value={sportValue}
-          onChange={setSport}
-          options={SPORTS.map((s) => ({ value: s.code, label: s.label }))}
-        />
+        <div className={styles.sportList}>
+          <Chips
+            name="sport"
+            legend="Quel sport ?"
+            value={sportValue}
+            onChange={(v) => setSport(SPORTS.find((s) => s.code === v)?.code ?? null)}
+            options={SPORTS.map((s) => ({ value: s.code, label: s.label }))}
+          />
+        </div>
       ) : null}
       {practiceValue === 'yes' && sportValue === 'other' ? (
         <Field label="Ton sport">

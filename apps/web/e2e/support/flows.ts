@@ -25,8 +25,8 @@ export async function createAccountViaUi(page: Page, username: string): Promise<
 
 /**
  * Les 9 écrans de l'onboarding (spec refonte §10.1) depuis le coach : Le Skald, sa présentation, puis
- * chaque écran attendu par son `data-step`, et E8 « Commencer » une fois le voyant « Prêt hors ligne » au
- * vert (R-SYN-33) ; attend l'accueil.
+ * chaque écran attendu par son `data-step`, et « Commencer » sur « Éveil terminé » une fois la quête
+ * « Prêt hors ligne » cochée (R-SYN-33) ; attend l'accueil.
  */
 export async function completeOnboardingViaUi(
   page: Page,
@@ -35,7 +35,7 @@ export async function completeOnboardingViaUi(
   const current = page.getByTestId('onboarding-step');
   const at = (step: string) => expect(current).toHaveAttribute('data-step', step);
   const choose = (name: string) => current.getByRole('radio', { name, exact: true }).check();
-  const next = () => button(page, 'Suivant').click();
+  const next = () => button(page, 'Continuer').click();
 
   await at('coach');
   await choose('Le Skald');
@@ -58,7 +58,7 @@ export async function completeOnboardingViaUi(
     await page.getByLabel('Ville', { exact: true }).fill(o.place.city);
     await button(page, 'Continuer').click();
     await choose(PRESETS.gym_small.label);
-    // La salle créée valide l'écran : pas de « Suivant ».
+    // La salle créée valide l'écran : pas de « Continuer » de l'écran.
     await button(page, 'Créer la salle').click();
   } else {
     // « Nom du lieu » prérempli.
@@ -74,7 +74,7 @@ export async function completeOnboardingViaUi(
   await at('health');
   await next();
   await at('ready');
-  await expect(page.getByTestId('offline-ready')).toHaveAttribute('data-state', 'ready', {
+  await expect(page.getByRole('checkbox', { name: 'Prêt hors ligne', exact: true })).toBeChecked({
     timeout: READY_TIMEOUT_MS,
   });
   // La garde mène à l'accueil dès la réponse du serveur, mais « Commencer » y mène encore après le pull qui
