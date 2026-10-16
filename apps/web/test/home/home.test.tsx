@@ -87,7 +87,7 @@ function heldUntil<T>(gate: Promise<void>, read: () => Promise<T>): () => Promis
 }
 
 const heading = () => screen.getByRole('heading', { level: 1 }).textContent;
-const questsWindow = () => screen.getByRole('group', { name: 'Éveil terminé.' });
+const questsWindow = () => screen.getByRole('group', { name: /^Éveil (terminé|en cours)\.$/ });
 const quest = (name: string) => within(questsWindow()).getByRole('checkbox', { name });
 const isDone = (name: string) => quest(name).getAttribute('aria-checked') === 'true';
 /** Texte lu par un lecteur d'écran : ce qui est caché (`aria-hidden`) en moins. */
@@ -180,6 +180,21 @@ describe('fenêtre « Quêtes d’éveil » aux vrais états', () => {
     await until(() => QUESTS.every(isDone));
     for (const name of QUESTS) expect(quest(name).getAttribute('aria-readonly')).toBe('true');
     expect(within(win).getByText('3/3')).toBeTruthy();
+  });
+
+  // « Éveil terminé. » seulement quand les 3 quêtes le sont ; sinon « Éveil en cours. » : jamais une fin annoncée
+  // au-dessus d'une quête ouverte (pull de plus de 24 h, hors ligne, nouvel appareil avant le premier pull).
+  it.each<[string, string, HomeOptions]>([
+    ['3/3', 'Éveil terminé.', {}],
+    ['2/3', 'Éveil en cours.', { pullAgoMs: 25 * HOUR }],
+    ['1/3', 'Éveil en cours.', { coach: null, place: false }],
+    ['0/3', 'Éveil en cours.', { coach: null, place: false, pullAgoMs: null }],
+  ])('quêtes à %s : fenêtre titrée « %s »', async (count, title, o) => {
+    await openHome(o);
+    const win = screen.getByRole('group', { name: title });
+    expect(within(win).getByRole('heading', { level: 2 }).textContent).toBe(title);
+    expect(within(win).getByText(count)).toBeTruthy();
+    expect(screen.queryAllByText('Éveil terminé.')).toHaveLength(title === 'Éveil terminé.' ? 1 : 0);
   });
 
   it('pas prêt hors ligne (dernier pull il y a 25 h) : « Prêt hors ligne » décochée, 2/3', async () => {

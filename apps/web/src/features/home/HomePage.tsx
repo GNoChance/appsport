@@ -86,10 +86,12 @@ function Chevron() {
 
 /**
  * Accueil (spec refonte §10.2, maquettes MixSombre / MixClair, prototype « Accueil ») : salutation selon l'heure
- * de Paris, bandeaux du compte, bulle du coach « Aujourd'hui » avec sa ligne du jour, fenêtre du Système
- * « Éveil terminé. » et ses quêtes d'éveil aux vrais états, tuiles lieu principal et rythme, ligne objectif et
- * niveau, puis le voyant « Prêt hors ligne » (R-SYN-33). Les cartes, voyant compris, entrent en cascade, d'un
- * bloc, une fois le profil, les lieux et le voyant lus : jamais une fenêtre à 0/3 qu'une bulle viendrait pousser.
+ * de Paris, bandeaux du compte, bulle du coach « Aujourd'hui » avec sa ligne du jour, fenêtre du Système et ses
+ * quêtes d'éveil aux vrais états (« Éveil terminé. » à 3/3 seulement, « Éveil en cours. » tant qu'une quête reste
+ * ouverte : pull de plus de 24 h, nouvel appareil avant le premier pull), tuiles lieu principal et rythme, ligne
+ * objectif et niveau, puis le voyant « Prêt hors ligne » (R-SYN-33). Les cartes, voyant compris, entrent en
+ * cascade, d'un bloc, une fois le profil, les lieux et le voyant lus : jamais une fenêtre à 0/3 qu'une bulle
+ * viendrait pousser.
  *
  * Aucune fausse donnée : une valeur pas encore connue (profil pas encore reçu sur ce nouvel appareil) n'affiche
  * ni bulle, ni tuile, ni ligne ; une quête n'est cochée que quand son état réel l'est. Le voyant et la quête
@@ -145,7 +147,7 @@ export function HomePage() {
               <p>{coachLine(coach, 'daily', new Date(now), me.username, days)}</p>
             </CoachBubble>
           ) : null}
-          <SystemPanel title="Éveil terminé.">
+          <SystemPanel title={quests.every((q) => q.done) ? 'Éveil terminé.' : 'Éveil en cours.'}>
             <div className={styles.awakening}>
               <p>Tes programmes et tes séances arriveront ici.</p>
               <AwakeningQuests quests={quests} />
