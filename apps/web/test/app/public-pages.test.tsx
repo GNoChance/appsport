@@ -1,7 +1,8 @@
-import { screen } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { buildPrivacySections } from '../../src/features/public/privacy-content';
-import { renderApp } from '../support/render';
+import { createFakeApi, createFakeSyncEngine } from '../support/fake-api';
+import { makeMe, renderApp } from '../support/render';
 
 const privacyText = (owner: string | undefined) =>
   buildPrivacySections(owner)
@@ -112,5 +113,150 @@ describe('pages publiques', () => {
   it('route inconnue → Page introuvable', async () => {
     await renderApp({ path: '/nulle-part' });
     await screen.findByText('Page introuvable');
+  });
+});
+
+describe('Aide (maquette A05, spec refonte §10.6)', () => {
+  it("l'encadré d'urgence (15, 112) d'abord, puis « Installer Rune », les numéros utiles et les Crédits", async () => {
+    await renderApp({ path: '/help', me: null });
+    await screen.findByRole('heading', { level: 1, name: 'Aide' });
+    const emergency = screen.getByRole('region', { name: "En cas d'urgence, appelle le 15 ou le 112." });
+    expect(within(emergency).getByRole('link', { name: 'Appeler le 15, SAMU' }).getAttribute('href')).toBe(
+      'tel:15',
+    );
+    expect(
+      within(emergency).getByRole('link', { name: 'Appeler le 112, numéro européen' }).getAttribute('href'),
+    ).toBe('tel:112');
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      'Installer Rune',
+      'Numéros utiles',
+      'Crédits',
+    ]);
+    const install = screen.getByRole('region', { name: 'Installer Rune' });
+    expect(emergency.compareDocumentPosition(install)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("« Installer Rune » : les étapes sur iPhone puis sur Android (consignes de l'invitation)", async () => {
+    await renderApp({ path: '/help', me: null });
+    const install = await screen.findByRole('region', { name: 'Installer Rune' });
+    expect(
+      within(install)
+        .getAllByRole('heading', { level: 3 })
+        .map((h) => h.textContent),
+    ).toEqual(['Sur iPhone', 'Sur Android']);
+    // Texte relu par un lecteur d'écran : numéros et pictogrammes décoratifs (aria-hidden) retirés.
+    const spoken = (el: Element) => {
+      const copy = el.cloneNode(true) as Element;
+      for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+      return (copy.textContent ?? '').replace(/\s+/g, ' ').trim();
+    };
+    const steps = within(install).getAllByRole('listitem').map(spoken);
+    expect(steps).toEqual([
+      'Touche Partager',
+      "Puis « Sur l'écran d'accueil »",
+      "Ouvre ensuite Rune depuis l'écran d'accueil et colle le code.",
+      'Ouvre le menu ⋮',
+      "Puis « Installer l'application »",
+    ]);
+  });
+
+  it('numéros utiles : sans le 15 / 112 déjà en tête, un appel et une source (nouvel onglet) par numéro', async () => {
+    await renderApp({ path: '/help', me: null });
+    const useful = await screen.findByRole('region', { name: 'Numéros utiles' });
+    expect(useful.textContent).toContain('Numéros vérifiés le 06/10/2026');
+    expect(useful.textContent).not.toContain('Urgence vitale');
+    expect(
+      within(useful)
+        .getAllByRole('link', { name: /^Appeler le / })
+        .map((a) => [a.getAttribute('aria-label'), a.getAttribute('href')]),
+    ).toEqual([
+      ['Appeler le 09 69 325 900', 'tel:0969325900'],
+      ['Appeler le 0 800 15 2000', 'tel:0800152000'],
+      ['Appeler le 3114', 'tel:3114'],
+    ]);
+    const sources = within(useful).getAllByRole('link', { name: 'Source (nouvel onglet)' });
+    expect(sources.map((a) => a.getAttribute('target'))).toEqual(['_blank', '_blank', '_blank']);
+    expect(useful.textContent).toContain('Horaires : 24 h/24, gratuit');
+  });
+
+  it('Crédits dans Aide (P10), /credits reste servi avec le même contenu', async () => {
+    await renderApp({ path: '/help', me: null });
+    const credits = await screen.findByRole('region', { name: 'Crédits' });
+    expect(within(credits).getByText('Aucune illustration pour le moment.')).toBeTruthy();
+  });
+});
+
+describe('pages publiques : cadre (maquettes A02 à A05)', () => {
+  it.each(['/help', '/privacy', '/credits'])(
+    "%s sans session : Retour vers la connexion, sans l'ancien en-tête « Rune »",
+    async (path) => {
+      await renderApp({ path, me: null });
+      expect((await screen.findByRole('link', { name: 'Retour' })).getAttribute('href')).toBe('/login');
+      // Le haut d'écran est celui de la page (Retour et titre) : plus de marque « Rune » de cadre au-dessus.
+      expect(screen.queryByText('Rune')).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Rune' })).toBeNull();
+      expect(within(screen.getByRole('contentinfo')).getByRole('link', { name: 'Crédits' })).toBeTruthy();
+    },
+  );
+
+  it.each(['/help', '/privacy', '/credits'])(
+    '%s en session : Retour vers le Profil, où vivent Aide et Confidentialité',
+    async (path) => {
+      await renderApp({ path, me: makeMe() });
+      // Page publique rendue tout de suite, avant la lecture de la session locale : le Retour suit la session lue.
+      await waitFor(() =>
+        expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/profile'),
+      );
+    },
+  );
+
+  it('hors ligne, sans session : Aide, Confidentialité et Crédits se lisent sans aucune requête', async () => {
+    for (const [path, title] of [
+      ['/help', 'Aide'],
+      ['/privacy', 'Confidentialité et règles'],
+      ['/credits', 'Crédits'],
+    ] as const) {
+      const api = createFakeApi();
+      api.setOffline('reject');
+      const view = await renderApp({ path, me: null, api });
+      await screen.findByRole('heading', { level: 1, name: title });
+      expect(api.calls).toEqual([]);
+      view.unmount();
+    }
+  });
+});
+
+describe('404 (maquette A06, spec refonte §10.7)', () => {
+  const OFFLINE_TEXT =
+    'Les pages Aide, Confidentialité et Crédits restent lisibles. La connexion nécessite le réseau.';
+
+  it("« Page introuvable » dans la fenêtre du Système, « Zone inconnue. », lien vers l'accueil", async () => {
+    await renderApp({ path: '/nulle-part' });
+    const panel = await screen.findByRole('group', { name: 'Page introuvable' });
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([
+      'Page introuvable',
+    ]);
+    expect(within(panel).getByText('SYSTÈME')).toBeTruthy();
+    expect(panel.textContent).toContain(
+      "Zone inconnue. Cette page n'existe pas ou n'est pas encore disponible.",
+    );
+    expect(within(panel).getByRole('link', { name: "Retour à l'accueil" }).getAttribute('href')).toBe('/');
+    expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
+  });
+
+  it('page admin pour un membre : la même 404', async () => {
+    await renderApp({ path: '/admin/members' });
+    expect(await screen.findByRole('group', { name: 'Page introuvable' })).toBeTruthy();
+  });
+
+  it("hors ligne (l'état de connexion unique) : encadré « Hors ligne », qui part au retour du réseau", async () => {
+    const sync = createFakeSyncEngine({ connection: 'offline' });
+    await renderApp({ path: '/nulle-part', sync });
+    const notice = (await screen.findByText(OFFLINE_TEXT)).closest('[role="status"]');
+    expect(notice?.textContent).toContain('Hors ligne');
+    const panel = screen.getByRole('group', { name: 'Page introuvable' });
+    expect(panel.compareDocumentPosition(notice as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    act(() => sync.set({ connection: 'online' }));
+    expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
   });
 });

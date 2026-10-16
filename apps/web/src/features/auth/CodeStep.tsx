@@ -2,7 +2,7 @@ import { formatSecretCode, parseSecretCode } from '@rune/domain';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Banner, Button, Field } from '../../ui';
 import styles from './auth.module.css';
-import { INCOMPLETE_CODE_MESSAGE } from './messages';
+import { CODE_HELP, INCOMPLETE_CODE_MESSAGE } from './messages';
 
 /**
  * Fragment d'adresse `#code` : présent ou non, code lisible ou non, et numéro de lecture (`seq`),
@@ -52,7 +52,7 @@ export function useFragmentCode(): FragmentCode {
 /**
  * Saisie d'un code (lien complet ou code, R-INV-5) puis vérification par le serveur. Chaque
  * fragment lisible déclenche la vérification seul, une seule fois ; un fragment illisible est
- * signalé « Code incomplet ».
+ * signalé « Code incomplet ». Maquette A02 : aide sous le champ, code en caractères espacés.
  */
 export function CodeStep<T>(p: {
   label: string;
@@ -117,9 +117,10 @@ export function CodeStep<T>(p: {
         if (!pending) submit();
       }}
     >
-      <Field label={p.label} error={problem}>
+      <Field label={p.label} help={CODE_HELP} error={problem}>
         <input
           type="text"
+          className={styles.codeInput}
           value={value}
           autoComplete="off"
           autoCapitalize="none"

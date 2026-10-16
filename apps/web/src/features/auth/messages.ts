@@ -52,6 +52,18 @@ export function checkNewPassword(i: {
   return i.password.normalize('NFC') === i.confirm.normalize('NFC') ? null : PASSWORD_MISMATCH_MESSAGE;
 }
 
+/** Refus local d'un nouveau mot de passe, rattaché à son champ : la confirmation, ou le mot de passe. */
+export interface NewPasswordErrors {
+  password?: string;
+  confirm?: string;
+}
+
+/** Le message de `checkNewPassword` sous le champ en cause ; rien quand tout va bien. */
+export function newPasswordErrors(problem: string | null): NewPasswordErrors {
+  if (problem === null) return {};
+  return problem === PASSWORD_MISMATCH_MESSAGE ? { confirm: problem } : { password: problem };
+}
+
 export const USERNAME_MESSAGES: Record<'length' | 'characters' | 'reserved', string> = {
   length: `${USERNAME_MIN} à ${USERNAME_MAX} caractères.`,
   characters: 'Lettres (accents admis), chiffres, « . », « _ » et « - » seulement.',
@@ -62,6 +74,9 @@ export const USERNAME_MESSAGES: Record<'length' | 'characters' | 'reserved', str
 export const FORMER_ACCOUNT_NAME = "l'ancien compte";
 
 export const INCOMPLETE_CODE_MESSAGE = `Code incomplet : il faut ${SECRET_CODE_LENGTH} caractères.`;
+
+/** Aide du champ du code (maquette A02) : lien ou code, tirets facultatifs (R-INV-5). */
+export const CODE_HELP = `Colle le lien reçu, ou tape les ${SECRET_CODE_LENGTH} caractères du code. Les tirets sont facultatifs.`;
 
 const ASK_ADMIN = "Demande un nouveau code à l'administrateur.";
 const INVITATION_MESSAGES: Partial<Record<ApiErrorCode, string>> = {

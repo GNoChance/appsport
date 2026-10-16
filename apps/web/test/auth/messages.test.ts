@@ -31,14 +31,25 @@ describe('plateforme et mode installé (R-ARR-2)', () => {
     expect(detectPlatform('')).toBe('other');
   });
 
-  it("installHelp : une consigne par système, les deux sinon (texte d'origine)", () => {
-    expect(installHelp('ios')).toEqual([
-      "Sur iPhone : touche Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite Rune depuis l'écran d'accueil et colle le code.",
-    ]);
-    expect(installHelp('android')).toEqual([
-      "Sur Android : ouvre le menu ⋮ puis « Installer l'application ».",
-    ]);
-    expect(installHelp('other')).toHaveLength(2);
+  it('installHelp : les étapes du système (maquette A05), les deux systèmes sinon', () => {
+    const ios = {
+      title: 'Sur iPhone',
+      steps: [
+        { text: 'Touche Partager', icon: 'share' },
+        { text: "Puis « Sur l'écran d'accueil »", icon: 'add' },
+        { text: "Ouvre ensuite Rune depuis l'écran d'accueil et colle le code." },
+      ],
+    };
+    const android = {
+      title: 'Sur Android',
+      steps: [
+        { text: 'Ouvre le menu', icon: 'menu', iconLabel: '⋮' },
+        { text: "Puis « Installer l'application »", icon: 'download' },
+      ],
+    };
+    expect(installHelp('ios')).toEqual([ios]);
+    expect(installHelp('android')).toEqual([android]);
+    expect(installHelp('other')).toEqual([ios, android]);
   });
 
   const win = (standalone: boolean | undefined, displayMode: boolean) =>

@@ -24,6 +24,7 @@
   gap: var(--space-3);
 }
 
+/* Rond de l'icône (E06) : blanc de la surface en clair, teinte d'accent à 14 % en sombre et en Salle de nuit. */
 .icon {
   flex: none;
   display: grid;
@@ -31,13 +32,30 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  background: var(--surface);
   color: var(--accent);
 }
 
 .forced .icon {
-  background: color-mix(in srgb, var(--warning-text) 14%, var(--warning-bg));
   color: var(--warning-text);
+}
+
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"])) .icon {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"])) .forced .icon {
+  background: color-mix(in srgb, var(--warning-text) 14%, var(--warning-bg));
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .icon {
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  }
+
+  :global(:root:not([data-theme])) .forced .icon {
+    background: color-mix(in srgb, var(--warning-text) 14%, var(--warning-bg));
+  }
 }
 
 .text {

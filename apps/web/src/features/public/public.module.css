@@ -1,50 +1,382 @@
+/*
+ * Pages publiques (maquettes A05 et A06) : Aide, Confidentialité, Crédits et page introuvable. Couleurs : jetons
+ * de ui/theme/tokens.css seulement (justes dans les 5 thèmes) ; teintes par color-mix. Mouvement : classes
+ * communes de motion.css ; la 404 et l'aide entrent en cascade.
+ */
+
+/* Texte lu par les lecteurs d'écran, invisible à l'écran. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
 .version {
   margin: 0;
-  color: var(--color-muted);
+  color: var(--text-muted);
   font-size: 0.875rem;
 }
 
-.section h2 {
-  margin: var(--space-4) 0 var(--space-2);
-  font-size: 1.125rem;
+/* Cartes : surface, bord fin, ombre douce en clair ; à plat en sombre, en Salle de nuit et en Carnet. */
+.card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--text) 6%, transparent),
+    0 6px 18px color-mix(in srgb, var(--text) 5%, transparent);
 }
 
-.section ul {
-  margin: 0;
-  padding-left: var(--space-6);
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"], [data-theme="carnet"])) .card {
+  box-shadow: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .card {
+    box-shadow: none;
+  }
+}
+
+/* Sections titrées en h2 (A05) : titre en Chakra Petch 17, puis la carte. */
+.stack {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 20px;
 }
 
-.resources {
-  list-style: none;
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.section h2 {
   margin: 0;
-  padding: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.sectionHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ---------- Aide (A05) ---------- */
+
+/* Encadré d'urgence : teinte et liseré du danger, deux boutons d'appel côte à côte. */
+.emergency {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.emergencyText {
+  margin: 0;
+  font-size: 1.03125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.emergencyCalls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 10px;
+}
+
+.emergencyCall {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 6px 12px;
+  border-radius: var(--radius-control);
+  border: 1.5px solid var(--danger);
+  color: var(--danger);
+  text-decoration: none;
+}
+
+.emergencyCall svg {
+  flex: none;
+}
+
+.emergencyNumber {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.emergencyNumber > :first-child {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.emergencyName {
+  font-size: 0.78125rem;
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .emergencyCall:hover {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+  }
+}
+
+.install {
+  padding: 4px var(--space-4);
+}
+
+/* Numéros utiles : une ligne par ressource, séparées d'un filet. */
+.resources {
+  margin: 0;
+  padding: 0 var(--space-4);
+  list-style: none;
 }
 
 .resource {
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  padding: 14px 0;
+  font-size: 0.96875rem;
+  line-height: 1.45;
+}
+
+.resource + .resource {
+  border-top: 1px solid var(--border);
+}
+
+.resource .muted {
+  font-size: 0.84375rem;
+}
+
+.resourceActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px var(--space-3);
 }
 
 .phones {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  font-size: 1.25rem;
-  font-weight: 700;
 }
 
-.muted {
-  color: var(--color-muted);
+.phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  font-family: var(--font-display);
+  font-size: 1.1875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  color: var(--text-muted);
+  font-size: 0.84375rem;
+}
+
+.phone svg,
+.source svg {
+  flex: none;
+}
+
+.credits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 14px var(--space-4);
+}
+
+.credits p {
+  margin: 0;
+}
+
+/* ---------- Confidentialité ---------- */
+
+.privacyList {
+  margin: 0;
+  padding: 14px var(--space-4) 14px calc(var(--space-4) + var(--space-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  line-height: 1.5;
+}
+
+/* ---------- Page introuvable (A06) ---------- */
+
+.notFound {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+  min-height: 60vh;
+}
+
+.emblem {
+  position: relative;
+  align-self: center;
+  width: 150px;
+  height: 150px;
+}
+
+.emblem svg {
+  display: block;
+}
+
+.stopStart {
+  stop-color: var(--accent);
+}
+
+.stopEnd {
+  stop-color: var(--accent-2);
+}
+
+.emblemFill {
+  fill: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+/* Lueur du cadre : sombre et Salle de nuit seulement, comme le logo. */
+.emblemGlow {
+  display: none;
+  stroke: var(--accent);
+  opacity: 0.7;
+}
+
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"])) .emblemGlow {
+  display: inline;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .emblemGlow {
+    display: inline;
+  }
+}
+
+.emblemCode {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 2.375rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+/* La fenêtre du Système au centre, titre d'écran en 28. */
+.notFoundPanel {
+  text-align: center;
+}
+
+.notFoundPanel h1 {
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+
+.notFoundPanel p {
+  line-height: 1.5;
+}
+
+/* Retour à l'accueil : un lien qui a l'allure du bouton principal (52 px, pleine largeur). */
+.homeLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 52px;
+  margin-top: 18px;
+  padding: var(--space-2) 20px;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+@media (hover: hover) {
+  .homeLink:hover {
+    background: color-mix(in srgb, var(--accent) 88%, var(--text));
+  }
+}
+
+/* Encadré « Hors ligne » : carte discrète, pictogramme et point au gris du texte secondaire. */
+.offline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 14px var(--space-4);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.offline > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.offlineText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.offlineText p {
+  margin: 0;
   font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.offlineText .offlineTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.offlineDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+@media (forced-colors: active) {
+  .homeLink {
+    border: 1px solid ButtonText;
+  }
 }

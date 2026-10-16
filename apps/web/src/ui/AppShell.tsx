@@ -75,21 +75,19 @@ function HomeHeader(p: { brand: boolean }) {
 
 /**
  * Cadre des pages publiques, lisibles sans session, et de l'onboarding : pas de navigation de
- * compte ni de bandeau de mise à jour (R-PWA-3). `homeLink` faux (onboarding) : la marque est un simple texte, l'accueil ramènerait à
+ * compte ni de bandeau de mise à jour (R-PWA-3). Les pages publiques portent leur propre haut d'écran
+ * (maquettes A01 à A05 : la marque de la connexion, ou Retour et titre) : pas d'en-tête de cadre.
+ * `homeLink` faux (onboarding) : l'en-tête garde la marque en simple texte, l'accueil ramènerait à
  * l'onboarding en perdant l'écran en cours.
  */
 export function PublicShell(p: { children: ReactNode; homeLink?: boolean }) {
   return (
     <div className={styles.shell}>
-      <header className={styles.header}>
-        {p.homeLink === false ? (
+      {p.homeLink === false ? (
+        <header className={styles.header}>
           <span className={styles.brand}>Rune</span>
-        ) : (
-          <Link href="/" className={styles.brand}>
-            Rune
-          </Link>
-        )}
-      </header>
+        </header>
+      ) : null}
       <main className={styles.main}>{p.children}</main>
       <PublicLinks />
     </div>

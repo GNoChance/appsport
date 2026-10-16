@@ -221,6 +221,20 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
     return { ...view, api, historyLength };
   }
   const alertText = async () => (await screen.findByRole('alert')).textContent;
+  /** Textes qui décrivent un champ (aide, erreur), via aria-describedby. */
+  const description = (el: Element) =>
+    (el.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+  /** Refus local lié au champ `label` (aria-invalid, description), focus sur le champ, pas d'alerte. */
+  async function expectFieldError(label: string, message: string) {
+    const field = screen.getByLabelText(label);
+    await until(() => field.getAttribute('aria-invalid') === 'true');
+    expect(description(field)).toContain(message);
+    expect(document.activeElement).toBe(field);
+    expect(screen.queryByRole('alert')).toBeNull();
+  }
 
   it('lien : vérification du fragment, fragment effacé, nouveau mot de passe pour le pseudo', async () => {
     const { api, location, historyLength } = await renderReset();
@@ -258,7 +272,7 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
     fill('Nouveau mot de passe pour boss', 'abcdefghijklm');
     fill('Confirmation', 'abcdefghijklm');
     click('Changer le mot de passe');
-    expect(await alertText()).toBe('14 caractères au moins.');
+    await expectFieldError('Nouveau mot de passe pour boss', '14 caractères au moins.');
     expect(callsTo(api, RESET)).toHaveLength(0);
     fill('Nouveau mot de passe pour boss', 'abcdefghijklmn');
     fill('Confirmation', 'abcdefghijklmn');
@@ -267,26 +281,37 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
     expect(callsTo(api, RESET)[0]?.body).toEqual({ code: CODE, newPassword: 'abcdefghijklmn' });
   });
 
-  it('contrôles locaux : 11 caractères, confirmation, pseudo contenu', async () => {
+  it('contrôles locaux : 11 caractères, confirmation, pseudo contenu, chacun sous son champ', async () => {
     const { api } = await renderReset();
-    await screen.findByLabelText('Nouveau mot de passe pour lea');
-    fill('Nouveau mot de passe pour lea', 'a1b2c3d4e5f');
+    const password = 'Nouveau mot de passe pour lea';
+    await screen.findByLabelText(password);
+    fill(password, 'a1b2c3d4e5f');
     fill('Confirmation', 'a1b2c3d4e5f');
     click('Changer le mot de passe');
-    expect(await alertText()).toBe('12 caractères au moins.');
-    fill('Nouveau mot de passe pour lea', PHRASE);
+    await expectFieldError(password, '12 caractères au moins.');
+    expect(screen.getByLabelText('Confirmation').getAttribute('aria-invalid')).toBeNull();
+    fill(password, PHRASE);
     fill('Confirmation', 'autre chose entièrement');
     click('Changer le mot de passe');
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toBe('Les deux mots de passe ne correspondent pas.'),
-    );
-    fill('Nouveau mot de passe pour lea', 'bonjour lea 123456');
+    await expectFieldError('Confirmation', 'Les deux mots de passe ne correspondent pas.');
+    expect(screen.getByLabelText(password).getAttribute('aria-invalid')).toBeNull();
+    fill(password, 'bonjour lea 123456');
     fill('Confirmation', 'bonjour lea 123456');
     click('Changer le mot de passe');
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toBe(PASSWORD_MESSAGES.contains_username),
-    );
+    await expectFieldError(password, PASSWORD_MESSAGES.contains_username);
     expect(callsTo(api, RESET)).toHaveLength(0);
+  });
+
+  it('maquette A04 : Retour vers la connexion, à la saisie du code comme au nouveau mot de passe', async () => {
+    await renderReset({ url: '/reset' });
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/login');
+    expect(description(screen.getByLabelText('Lien ou code de réinitialisation'))).toBe(
+      'Colle le lien reçu, ou tape les 16 caractères du code. Les tirets sont facultatifs.',
+    );
+    fill('Lien ou code de réinitialisation', 'abcd-efgh-jkmn-pqrs');
+    click('Suivant');
+    await screen.findByRole('heading', { level: 1, name: 'Choisis ton nouveau mot de passe' });
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/login');
   });
 
   const INVALID = "Ce lien n'est plus valable. Demande un nouveau lien à l'administrateur.";

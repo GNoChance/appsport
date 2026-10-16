@@ -1,18 +1,232 @@
+/*
+ * Accès (maquettes A01 à A04) : connexion, invitation, création du compte, réinitialisation, et les consignes
+ * d'installation partagées avec Aide (A05). Couleurs : jetons de ui/theme/tokens.css seulement (justes dans
+ * les 5 thèmes) ; teintes par color-mix. Mouvement : classes communes de motion.css.
+ */
+
+/* Texte lu par les lecteurs d'écran, invisible à l'écran. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Formulaires : champs à 14 px d'écart ; dans la fenêtre du Système, libellés à l'encre et texte courant. */
 .form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 14px;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+/* Phrase d'introduction sous le titre (A03, réinitialisation). */
+.lead {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* Cartes : surface, bord fin, ombre douce en clair ; à plat en sombre, en Salle de nuit et en Carnet. */
+.about,
+.card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--text) 6%, transparent),
+    0 6px 18px color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"], [data-theme="carnet"])) :is(.about, .card) {
+  box-shadow: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) :is(.about, .card) {
+    box-shadow: none;
+  }
+}
+
+/* ---------- Connexion (A01) ---------- */
+
+.login {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-top: 40px;
+}
+
+/* Logo de 92 px, mot RUNE et slogan, centrés ; en clair, cadre du logo à l'accent et rune à l'encre. */
+.brand {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: var(--text);
+  --rune-mark-frame: var(--accent);
+}
+
+/* Halo bleu glacé → violet derrière le logo, borné à la largeur de l'écran (pas de défilement latéral). */
+.brand::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -64px;
+  left: 50%;
+  width: min(380px, 100%);
+  aspect-ratio: 1;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 12%, transparent) 0%,
+    color-mix(in srgb, var(--accent-2) 6%, transparent) 42%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.wordmark {
+  margin: 16px 0 0;
+  font-size: 2.125rem;
+  line-height: 1;
+  --rune-wordmark-tracking: 0.3em;
+}
+
+.slogan {
+  margin: 10px 0 0;
+  font-size: 1.03125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Dans la fenêtre « Connexion » : 16 px entre « Identification requise. » et le formulaire, comme l'en-tête. */
+.login p + .form {
+  margin-top: var(--space-4);
+}
+
+.submit {
+  margin-top: 4px;
+}
+
+/* Autres accès : l'invitation en avant (accent, demi-gras), la réinitialisation en retrait. */
+.links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mainLink,
+.quietLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  text-decoration: none;
+}
+
+.mainLink {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.quietLink {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.mainLink svg,
+.quietLink svg {
+  flex: none;
+}
+
+/* ---------- Invitation (A02) et création du compte (A03) ---------- */
+
+/* « À propos de Rune » : le logo de 40 px, le rappel, le lien vers Confidentialité. */
+.about {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: var(--space-4);
+  color: var(--text);
+  --rune-mark-frame: var(--accent);
+}
+
+.about > svg {
+  flex: none;
+}
+
+.aboutText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.aboutText p {
+  margin: 0;
+  font-size: 0.96875rem;
+  line-height: 1.5;
+}
+
+.externalLink {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.externalLink svg {
+  flex: none;
+}
+
+/*
+ * Le code, en Chakra Petch espacé (A02). Sélecteur plus précis que `.field input` de la boîte à outils, dont le
+ * raccourci `font` remettrait la police du texte.
+ */
+.form input.codeInput {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.noCode {
+  margin: 0;
+  text-align: center;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.inlineLink {
+  font-weight: 600;
 }
 
 .install {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: var(--space-3);
 }
 
-.install p {
-  margin: 0;
+.install > .card {
+  padding: 4px var(--space-4);
 }
 
 .codeRow {
@@ -24,31 +238,105 @@
 
 .code {
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  font-family: var(--font-display);
   font-size: 1.25rem;
-  letter-spacing: 0.05em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   overflow-wrap: anywhere;
 }
 
 .consent {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-3);
   min-height: 44px;
+  font-size: 0.9375rem;
+  line-height: 1.4;
 }
 
 .consent input {
   flex-shrink: 0;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 22px;
+  height: 22px;
   margin: 0;
 }
 
-.links {
+/* ---------- Consignes d'installation (A05, et l'invitation dans un navigateur) ---------- */
+
+.guides {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+}
+
+.guide {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0 14px;
+}
+
+.guide + .guide {
+  border-top: 1px solid var(--border);
+}
+
+.guideTitle {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.guideTitle svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.96875rem;
+  line-height: 1.45;
+}
+
+/* Numéro de l'étape dans un rond teinté d'accent ; le texte de l'accent y garde 4,5:1 (teinte à 12 %). */
+.stepNumber {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* Pastille du bouton à toucher, dans la ligne du texte. */
+.stepIcon {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 6px;
+  vertical-align: -4px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
 }

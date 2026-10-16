@@ -103,6 +103,40 @@ describe('connexion (R-AUTH-1, R-AUTH-5)', () => {
   });
 });
 
+describe('écran de connexion (maquette A01, spec refonte §3)', () => {
+  it('logo, « RUNE », slogan, fenêtre du Système « Connexion », Pseudo et Mot de passe, autres accès', async () => {
+    await renderLogin({ me: null });
+    const panel = await screen.findByRole('group', { name: 'Connexion' });
+    // Le logo nomme l'appli ; le mot RUNE dessiné à côté n'est pas relu une seconde fois.
+    const logo = screen.getByRole('img', { name: 'Rune' });
+    const word = screen.getByText('RUNE');
+    expect(word.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(screen.getByText('Grave ta progression.')).toBeTruthy();
+    expect(logo.compareDocumentPosition(panel)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // Seul titre de niveau 1 de l'écran, dans la fenêtre du Système, avec sa phrase.
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['Connexion']);
+    expect(within(panel).getByText('SYSTÈME')).toBeTruthy();
+    expect(within(panel).getByText('Identification requise.')).toBeTruthy();
+    expect(within(panel).getByLabelText('Pseudo')).toBeTruthy();
+    expect(within(panel).getByLabelText('Mot de passe')).toBeTruthy();
+    expect(within(panel).getByRole('button', { name: 'Se connecter' })).toBeTruthy();
+    const others = screen.getByRole('navigation', { name: 'Autres accès' });
+    expect(within(others).getByRole('link', { name: "J'ai un code d'invitation" }).getAttribute('href')).toBe(
+      '/invite',
+    );
+    expect(panel.compareDocumentPosition(others)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("sans l'ancien en-tête « Rune » : la marque de l'écran suffit, les pages publiques restent en bas", async () => {
+    await renderLogin({ me: null });
+    await screen.findByRole('group', { name: 'Connexion' });
+    expect(screen.queryByRole('banner')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Rune' })).toBeNull();
+    const footer = screen.getByRole('contentinfo');
+    expect(within(footer).getByRole('link', { name: 'Aide' }).getAttribute('href')).toBe('/help');
+  });
+});
+
 describe('autre pseudo sur un appareil qui a des données non envoyées (R-AUTH-8, P-AUT-6)', () => {
   /** Session de `owner` perdue, `n` éléments à lui en attente ; la connexion répond `max`. */
   async function renderWithPending(n = 2, owner = lea) {

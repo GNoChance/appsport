@@ -68,14 +68,50 @@ const submitWith = (username: string, password: string, confirm = password) => {
   click('Créer mon compte');
 };
 
+/** Textes qui décrivent un champ (aide, erreur), via aria-describedby. */
+const description = (el: Element) =>
+  (el.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ');
+
+/** Refus local lié au champ `label` (aria-invalid, description), focus sur le champ, pas d'alerte. */
+async function expectFieldError(label: string, message: string) {
+  const field = screen.getByLabelText(label);
+  await until(() => field.getAttribute('aria-invalid') === 'true');
+  expect(description(field)).toContain(message);
+  expect(document.activeElement).toBe(field);
+  expect(screen.queryByRole('alert')).toBeNull();
+}
+
 describe('accueil (03 §13.1, R-ARR-1)', () => {
   it('titre « Bienvenue sur Rune », porteur, rappel « pas un service médical », lien vers Confidentialité', async () => {
     await renderInvite();
     expect(screen.getByRole('heading', { level: 1, name: 'Bienvenue sur Rune' })).toBeTruthy();
     expect(document.body.textContent).toContain(WELCOME);
-    expect(screen.getByRole('link', { name: 'Confidentialité et règles' }).getAttribute('href')).toBe(
-      '/privacy',
+    // Maquette A02 : le rappel et le lien dans une carte « À propos de Rune » ; le lien annonce le nouvel onglet.
+    const about = screen.getByRole('region', { name: 'À propos de Rune' });
+    expect(about.textContent).toContain(WELCOME);
+    const privacy = within(about).getByRole('link', { name: 'Confidentialité et règles (nouvel onglet)' });
+    expect(privacy.getAttribute('href')).toBe('/privacy');
+    expect(privacy.getAttribute('target')).toBe('_blank');
+  });
+
+  it('maquette A02 : Retour vers la connexion, aide du champ du code, « Pas de code ? »', async () => {
+    await renderInvite();
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/login');
+    expect(description(screen.getByLabelText("Lien ou code d'invitation"))).toBe(
+      'Colle le lien reçu, ou tape les 16 caractères du code. Les tirets sont facultatifs.',
     );
+    expect(
+      screen.getByText("Pas de code ? Demande à l'administrateur le lien complet ou le code."),
+    ).toBeTruthy();
+  });
+
+  it('maquette A03 : « Crée ton compte » a aussi son Retour vers la connexion', async () => {
+    await renderInvite({ url: LINK });
+    await screen.findByRole('heading', { level: 1, name: 'Crée ton compte' });
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/login');
   });
 
   it("« Crée ton compte » ouvert d'emblée par un lien : le rappel reste affiché, avec un lien vers Confidentialité", async () => {
@@ -163,7 +199,7 @@ describe("lien d'invitation dans l'appli installée (R-ARR-1, R-INV-4)", () => {
     const { api, location } = await renderForm('admin');
     api.on('POST', ACCEPT, reply(makeMe({ id: 'u-9', role: 'admin', onboardingCompletedAt: null })));
     submitWith('boss', 'abcdefghijklm');
-    expect((await screen.findByRole('alert')).textContent).toBe('14 caractères au moins.');
+    await expectFieldError('Mot de passe', '14 caractères au moins.');
     expect(callsTo(api, ACCEPT)).toHaveLength(0);
     submitWith('boss', 'abcdefghijklmn');
     await waitFor(() => expect(location()).toBe('/onboarding'));
@@ -417,24 +453,28 @@ describe('création du compte sur un appareil qui garde des données non envoyé
 describe('création du compte : contrôles locaux et erreurs du serveur (R-CPT-1, R-MDP-1 à R-MDP-3)', () => {
   const alertText = async () => (await screen.findByRole('alert')).textContent;
 
-  it('11 caractères : « 12 caractères au moins. », aucune requête', async () => {
+  it('11 caractères : « 12 caractères au moins. » sous le mot de passe (maquette A03), aucune requête', async () => {
     const { api } = await renderForm();
     submitWith('lea', 'a1b2c3d4e5f');
-    expect(await alertText()).toBe('12 caractères au moins.');
+    await expectFieldError('Mot de passe', '12 caractères au moins.');
+    // L'erreur d'abord, puis l'astuce, comme dans la maquette ; la confirmation n'est pas en cause.
+    expect(description(screen.getByLabelText('Mot de passe'))).toMatch(/^12 caractères au moins\. Astuce/);
+    expect(screen.getByLabelText('Confirmation').getAttribute('aria-invalid')).toBeNull();
     expect(callsTo(api, ACCEPT)).toHaveLength(0);
   });
 
-  it('confirmation différente', async () => {
+  it('confirmation différente : erreur sous la confirmation', async () => {
     const { api } = await renderForm();
     submitWith('lea', PHRASE, 'cheval agrafe batterie');
-    expect(await alertText()).toBe('Les deux mots de passe ne correspondent pas.');
+    await expectFieldError('Confirmation', 'Les deux mots de passe ne correspondent pas.');
+    expect(screen.getByLabelText('Mot de passe').getAttribute('aria-invalid')).toBeNull();
     expect(callsTo(api, ACCEPT)).toHaveLength(0);
   });
 
   it('mot de passe contenant le pseudo', async () => {
     const { api } = await renderForm();
     submitWith('lea', 'bonjour lea 123456');
-    expect(await alertText()).toBe(PASSWORD_MESSAGES.contains_username);
+    await expectFieldError('Mot de passe', PASSWORD_MESSAGES.contains_username);
     expect(callsTo(api, ACCEPT)).toHaveLength(0);
   });
 
@@ -444,11 +484,22 @@ describe('création du compte : contrôles locaux et erreurs du serveur (R-CPT-1
     ['Admin', USERNAME_MESSAGES.reserved],
     ['le a', USERNAME_MESSAGES.characters],
     ['léa$', USERNAME_MESSAGES.characters],
-  ])('pseudo %j refusé sans requête', async (username, message) => {
+  ])('pseudo %j refusé sans requête, erreur sous le pseudo', async (username, message) => {
     const { api } = await renderForm();
     submitWith(username, PHRASE);
-    expect(await alertText()).toBe(message);
+    await expectFieldError('Pseudo', message);
+    expect(screen.getByLabelText('Mot de passe').getAttribute('aria-invalid')).toBeNull();
     expect(callsTo(api, ACCEPT)).toHaveLength(0);
+  });
+
+  it('erreur corrigée : le champ redevient valide, le compte est créé', async () => {
+    const { api, location } = await renderForm();
+    api.on('POST', ACCEPT, reply(makeMe({ id: 'u-9', username: 'lea', onboardingCompletedAt: null })));
+    submitWith('lea', 'a1b2c3d4e5f');
+    await expectFieldError('Mot de passe', '12 caractères au moins.');
+    submitWith('lea', PHRASE);
+    await waitFor(() => expect(location()).toBe('/onboarding'));
+    expect(callsTo(api, ACCEPT)).toHaveLength(1);
   });
 
   it('409 username_taken : message, formulaire gardé', async () => {

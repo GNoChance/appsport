@@ -13,13 +13,45 @@ export function detectPlatform(userAgent: string): InstallPlatform {
   return 'other';
 }
 
-const IOS_HELP =
-  "Sur iPhone : touche Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite Rune depuis l'écran d'accueil et colle le code.";
-const ANDROID_HELP = "Sur Android : ouvre le menu ⋮ puis « Installer l'application ».";
+/** Pictogramme du bouton à toucher : Partager, Sur l'écran d'accueil, menu ⋮, Installer. */
+export type InstallIcon = 'share' | 'add' | 'menu' | 'download';
 
-/** Consigne d'installation du système, les deux quand il n'est pas reconnu (R-ARR-2). */
-export function installHelp(platform: InstallPlatform): string[] {
-  if (platform === 'ios') return [IOS_HELP];
-  if (platform === 'android') return [ANDROID_HELP];
-  return [IOS_HELP, ANDROID_HELP];
+/**
+ * Une étape : le texte, puis le pictogramme du bouton dont elle parle. `iconLabel` : nom lu du pictogramme
+ * quand le texte ne le dit pas (le menu ⋮) ; sans lui, le pictogramme est décoratif.
+ */
+export interface InstallStep {
+  text: string;
+  icon?: InstallIcon;
+  iconLabel?: string;
+}
+
+export interface InstallGuide {
+  title: string;
+  steps: readonly InstallStep[];
+}
+
+/** Maquette A05 : les mêmes consignes, en étapes numérotées. */
+const IOS_GUIDE: InstallGuide = {
+  title: 'Sur iPhone',
+  steps: [
+    { text: 'Touche Partager', icon: 'share' },
+    { text: "Puis « Sur l'écran d'accueil »", icon: 'add' },
+    { text: "Ouvre ensuite Rune depuis l'écran d'accueil et colle le code." },
+  ],
+};
+
+const ANDROID_GUIDE: InstallGuide = {
+  title: 'Sur Android',
+  steps: [
+    { text: 'Ouvre le menu', icon: 'menu', iconLabel: '⋮' },
+    { text: "Puis « Installer l'application »", icon: 'download' },
+  ],
+};
+
+/** Consignes d'installation du système, les deux quand il n'est pas reconnu (R-ARR-2) ; Aide montre les deux. */
+export function installHelp(platform: InstallPlatform): InstallGuide[] {
+  if (platform === 'ios') return [IOS_GUIDE];
+  if (platform === 'android') return [ANDROID_GUIDE];
+  return [IOS_GUIDE, ANDROID_GUIDE];
 }

@@ -241,7 +241,8 @@ describe('cadres (AppShell, PublicShell)', () => {
     expect(banner()).toBeNull();
     fireEvent.click(screen.getByRole('link', { name: 'Aide' }));
     await screen.findByRole('heading', { level: 1, name: 'Aide' });
-    fireEvent.click(screen.getByRole('link', { name: 'Rune' }));
+    // Retour d'Aide, en session : le Profil, dans le cadre connecté.
+    fireEvent.click(screen.getByRole('link', { name: 'Retour' }));
     await screen.findByRole('navigation', { name: 'Navigation principale' });
     await settle();
     expect(banner()).toBeNull();
@@ -266,12 +267,12 @@ describe('cadres (AppShell, PublicShell)', () => {
     swControllerStore.set(fakeController({ available: true, forced: true }));
     const watch = watchBanner();
     const { db } = await renderApp({ path: '/privacy' });
-    // Le cadre est rendu (en-tête) : l'absence du bandeau n'est pas celle d'une page encore vide.
-    await screen.findAllByRole('banner');
+    // La page est rendue (titre) : l'absence du bandeau n'est pas celle d'une page encore vide.
+    await screen.findByRole('heading', { level: 1, name: 'Confidentialité et règles' });
     await liveReadsDone(db);
     expect(watch.seen()).toBe(0);
-    // Contrôle positif : même membre, même contrôleur, cadre connecté.
-    fireEvent.click(screen.getByRole('link', { name: 'Rune' }));
+    // Contrôle positif : même membre, même contrôleur, cadre connecté (Retour mène au Profil).
+    fireEvent.click(screen.getByRole('link', { name: 'Retour' }));
     await screen.findByTestId('update-banner');
   });
 
@@ -279,7 +280,7 @@ describe('cadres (AppShell, PublicShell)', () => {
     swControllerStore.set(fakeController({ available: true, forced: true }));
     const watch = watchBanner();
     const { db } = await renderApp({ path: '/privacy', me: null });
-    await screen.findAllByRole('banner');
+    await screen.findByRole('heading', { level: 1, name: 'Confidentialité et règles' });
     await liveReadsDone(db);
     expect(watch.seen()).toBe(0);
   });
