@@ -51,12 +51,22 @@
     0 6px 18px rgb(16 21 31 / 0.05);
   color: var(--text);
   text-decoration: none;
-  transition: transform var(--dur-fast) var(--ease);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
 
 .tile:active,
 .row:active {
   transform: scale(0.98);
+}
+
+/* Survol à la souris (bureau) : la teinte d'accent des lignes de liste du kit ; jamais collée au doigt. */
+@media (hover: hover) {
+  .tile:hover,
+  .row:hover {
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  }
 }
 
 .tile {
@@ -151,11 +161,11 @@
   border: 0;
 }
 
-/* Mouvement réduit : aucun déplacement au toucher. */
+/* Mouvement réduit : aucun déplacement au toucher ; la teinte du survol, qui ne bouge rien, garde son fondu. */
 @media (prefers-reduced-motion: reduce) {
   .tile,
   .row {
-    transition: none;
+    transition: background-color var(--dur-fast) var(--ease);
   }
 
   .tile:active,

@@ -112,9 +112,10 @@ describe('bulle du coach « Aujourd’hui »', () => {
     async (coach) => {
       await openHome({ coach });
       const line = coachLine(coach, 'daily', new Date(DEFAULT_NOW), 'lea', 3);
-      expect(line).not.toMatch(/[{}]/);
       const bubble = (await screen.findByText(line)).closest('[data-mode]');
       expect(bubble).not.toBeNull();
+      // Sur la page : aucune variable laissée telle quelle dans la bulle.
+      expect(bubble?.textContent).not.toMatch(/[{}]/);
       expect(bubble?.textContent).toContain(
         { ombre: "L'Ombre", skald: 'Le Skald', scribe: 'Le Scribe' }[coach],
       );
@@ -122,6 +123,17 @@ describe('bulle du coach « Aujourd’hui »', () => {
       expect(bubble?.getAttribute('data-mode')).toBe('training');
     },
   );
+
+  it('le pseudo du compte est écrit dans la bulle, le jour où le Skald le cite', async () => {
+    // DEFAULT_NOW tombe sur la 3e ligne du cycle, qui ne cite personne ; le lendemain, le Skald ouvre la saga.
+    await openHome({ coach: 'skald', now: DEFAULT_NOW + DAY, me: { username: 'Léa.M' } });
+    const text =
+      "Le premier chapitre de ta saga s'ouvre aujourd'hui, Léa.M. Les grands récits commencent toujours ainsi.";
+    const bubble = (await screen.findByText(text)).closest('[data-mode]');
+    expect(bubble).not.toBeNull();
+    expect(bubble?.textContent).toContain('Le Skald');
+    expect(bubble?.textContent).not.toMatch(/[{}]/);
+  });
 
   it('la ligne suit le jour de l’horloge injectée, et le rythme du profil y est écrit', async () => {
     const shown: string[] = [];
@@ -312,6 +324,31 @@ describe('feuille de l’accueil (home.module.css)', () => {
       expect(block, selector).toBeTruthy();
       const minHeight = block?.declarations.get('min-height') ?? '';
       expect(Number.parseFloat(minHeight), `${selector} min-height`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it('survol à la souris : tuiles et ligne se teintent d’accent, comme les lignes de liste du kit', () => {
+    const blocks = parseCssBlocks(css());
+    const rule = (selector: string, media: string | null, prop: string) =>
+      blocks
+        .find(
+          (b) => b.media === media && b.selector.split(', ').includes(selector) && b.declarations.has(prop),
+        )
+        ?.declarations.get(prop);
+    for (const selector of ['.tile', '.row']) {
+      // Seulement là où l'on survole vraiment (pas de survol collé au doigt sur téléphone).
+      expect(rule(`${selector}:hover`, '(hover: hover)', 'background'), `${selector}:hover`).toBe(
+        'color-mix(in srgb, var(--accent) 6%, var(--surface))',
+      );
+      // La teinte arrive en fondu, la pression reste.
+      const transition = rule(selector, null, 'transition') ?? '';
+      expect(transition, selector).toMatch(/\bbackground-color var\(--dur-fast\) var\(--ease\)/);
+      expect(transition, selector).toMatch(/\btransform var\(--dur-fast\) var\(--ease\)/);
+      // Mouvement réduit : plus de déplacement (ni transition de transform, ni pression), la teinte demeure.
+      const reduced = rule(selector, REDUCE, 'transition') ?? '';
+      expect(reduced, `${selector} réduit`).not.toMatch(/transform|\ball\b/);
+      expect(reduced, `${selector} réduit`).toMatch(/\bbackground-color\b/);
+      expect(rule(`${selector}:active`, REDUCE, 'transform'), `${selector}:active réduit`).toBe('none');
     }
   });
 });
