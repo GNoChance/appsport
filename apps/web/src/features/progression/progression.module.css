@@ -49,6 +49,25 @@
   display: none;
 }
 
+/*
+ * Coin HUD, décor de la Salle de nuit (spec refonte §4), à la géométrie de celui de la fenêtre du Système. Pas en
+ * sombre : la maquette ProgressionSombre n'en a pas sur cette carte.
+ */
+.hudCorner {
+  display: none;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 12px;
+  height: 12px;
+  border-top: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+:global(:root[data-theme="nuit"]) .hudCorner {
+  display: block;
+}
+
 /* En Carnet : carte de papier, cadre d'encre de 1,5 px et ombre franche, sans barre. */
 :global(:root[data-theme="carnet"]) .hero {
   border: 1.5px solid var(--text);

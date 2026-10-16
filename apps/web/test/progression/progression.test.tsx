@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MUSCLE_GROUPS_LABELS, ProgressionPage } from '../../src/features/progression/ProgressionPage';
+import styles from '../../src/features/progression/progression.module.css';
 import { type CssBlock, parseCssBlocks } from '../support/css-blocks';
 import { renderApp, renderWithServices } from '../support/render';
 
@@ -57,6 +58,16 @@ describe('Progression en avant-goût (spec refonte §9)', () => {
     expect(spoken(hero)).toContain('0 sur 100 XP');
   });
 
+  it('coin HUD décoratif sur la carte du rang global (décor de la Salle de nuit, spec refonte §4)', async () => {
+    await open();
+    const hero = screen.getByRole('region', { name: 'Rang global' });
+    expect(styles.hudCorner).toBeTruthy();
+    const corner = hero.querySelector(`.${styles.hudCorner}`);
+    expect(corner).not.toBeNull();
+    expect(corner?.getAttribute('aria-hidden')).toBe('true');
+    expect(corner?.textContent).toBe('');
+  });
+
   it('barre d’XP vide : aucun remplissage inventé, juste un reflet décoratif', async () => {
     const { container } = await open();
     const bar = container.querySelector('[data-xp]');
@@ -69,7 +80,8 @@ describe('Progression en avant-goût (spec refonte §9)', () => {
     await open();
     expect(spoken(statOf('séances'))).toBe('0 séances');
     expect(spoken(statOf('soulevés'))).toBe('0 kg soulevés');
-    expect(spoken(statOf("d'assiduité"))).toBe("0 semaine d'assiduité");
+    // « semaines d'assiduité » (spec refonte §9), au pluriel comme « séances » : les unités lues s'accordent.
+    expect(spoken(statOf("d'assiduité"))).toBe("0 semaines d'assiduité");
     // À l'écran, l'abréviation de la maquette.
     expect(statOf("d'assiduité").textContent).toContain('sem.');
     for (const label of ['séances', 'soulevés', "d'assiduité"]) {
@@ -159,6 +171,29 @@ describe('feuille de la Progression (progression.module.css)', () => {
       expect(block.declarations.get('opacity'), block.selector).not.toBe('0');
       expect(block.declarations.get('visibility'), block.selector).not.toBe('hidden');
     }
+  });
+
+  it('coin HUD : en Salle de nuit seulement, géométrie du coin de la fenêtre du Système', () => {
+    const base = new Map(at('.hudCorner', null).flatMap((b) => [...b.declarations]));
+    expect(base.get('display')).toBe('none');
+    expect(base.get('position')).toBe('absolute');
+    expect(base.get('top')).toBe('14px');
+    expect(base.get('right')).toBe('14px');
+    expect(base.get('width')).toBe('12px');
+    expect(base.get('height')).toBe('12px');
+    expect(base.get('border-top')).toBe('2px solid var(--accent)');
+    expect(base.get('border-right')).toBe('2px solid var(--accent)');
+    // Montré par une seule règle, celle de la Salle de nuit : ni en clair, ni en Carnet, ni en sombre (forcé ou
+    // Auto la nuit), dont la maquette ProgressionSombre n'a pas de coin.
+    const shown = blocks().filter(
+      (b) =>
+        b.selector.split(', ').some((s) => s.endsWith('.hudCorner')) &&
+        b.declarations.has('display') &&
+        b.declarations.get('display') !== 'none',
+    );
+    expect(shown.map((b) => [b.media, b.selector, b.declarations.get('display')])).toEqual([
+      [null, ':global(:root[data-theme="nuit"]) .hudCorner', 'block'],
+    ]);
   });
 
   it('reflet de la barre d’XP et cascade des groupes : durées de la spec, courbe unique', () => {

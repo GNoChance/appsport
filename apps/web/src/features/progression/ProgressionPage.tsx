@@ -29,6 +29,7 @@ export function ProgressionPage() {
     <Page title="Progression">
       <div className={`${styles.content} stagger`}>
         <section aria-labelledby={rankTitle} className={styles.hero}>
+          <span className={styles.hudCorner} aria-hidden="true" />
           <span className={styles.heroBadge}>
             <RankBadge rank="E" size={92} />
           </span>
@@ -67,7 +68,7 @@ export function ProgressionPage() {
             <span className={styles.statValue}>
               <CountUp to={0} />
               <small aria-hidden="true"> sem.</small>
-              <span className={styles.srOnly}> semaine</span>
+              <span className={styles.srOnly}> semaines</span>
             </span>{' '}
             <span className={styles.statLabel}>d'assiduité</span>
           </li>
