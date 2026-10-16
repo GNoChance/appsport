@@ -588,6 +588,34 @@ describe('création du compte : contrôles locaux et erreurs du serveur (R-CPT-1
     expect((screen.getByLabelText('Pseudo') as HTMLInputElement).value).toBe('lea');
   });
 
+  // Le formulaire reste affiché après un refus du serveur : une erreur locale corrigée ne doit pas y traîner.
+  // Corrigée dans son champ, ou depuis un autre (un autre pseudo, que le mot de passe ne contient plus).
+  it.each([
+    ['12 caractères au moins.', 'a1b2c3d4e5f', () => submitWith('lea', PHRASE)],
+    [
+      PASSWORD_MESSAGES.contains_username,
+      'bonjour lea 123456',
+      () => {
+        fill('Pseudo', 'max');
+        click('Créer mon compte');
+      },
+    ],
+  ] as const)(
+    'erreur « %s » corrigée puis refus du serveur : le mot de passe redevient valide, seule l’alerte reste',
+    async (message, refused, correct) => {
+      const { api } = await renderForm();
+      api.setOffline('reject');
+      submitWith('lea', refused);
+      await expectFieldError('Mot de passe', message);
+      correct();
+      expect(await alertText()).toBe('Nécessite le réseau');
+      const password = screen.getByLabelText('Mot de passe');
+      expect(password.getAttribute('aria-invalid')).toBeNull();
+      expect(description(password)).not.toContain(message);
+      expect(screen.queryByText(message)).toBeNull();
+    },
+  );
+
   it("champs nommés pour les lecteurs d'écran et les gestionnaires de mots de passe", async () => {
     await renderForm();
     const password = screen.getByLabelText('Mot de passe') as HTMLInputElement;

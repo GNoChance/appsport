@@ -291,75 +291,6 @@ describe('pages publiques : cadre (maquettes A02 à A05)', () => {
   });
 });
 
-describe('404 (maquette A06, spec refonte §10.7)', () => {
-  const OFFLINE_TEXT =
-    'Les pages Aide, Confidentialité et Crédits restent lisibles. La connexion nécessite le réseau.';
-
-  it("« Page introuvable » dans la fenêtre du Système, « Zone inconnue. », lien vers l'accueil", async () => {
-    await renderApp({ path: '/nulle-part' });
-    const panel = await screen.findByRole('group', { name: 'Page introuvable' });
-    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([
-      'Page introuvable',
-    ]);
-    expect(within(panel).getByText('SYSTÈME')).toBeTruthy();
-    expect(panel.textContent).toContain(
-      "Zone inconnue. Cette page n'existe pas ou n'est pas encore disponible.",
-    );
-    expect(within(panel).getByRole('link', { name: "Retour à l'accueil" }).getAttribute('href')).toBe('/');
-    expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
-  });
-
-  it('page admin pour un membre : la même 404', async () => {
-    await renderApp({ path: '/admin/members' });
-    expect(await screen.findByRole('group', { name: 'Page introuvable' })).toBeTruthy();
-  });
-
-  it("hors ligne (l'état de connexion unique) : encadré « Hors ligne », qui part au retour du réseau", async () => {
-    const sync = createFakeSyncEngine({ connection: 'offline' });
-    await renderApp({ path: '/nulle-part', sync });
-    const notice = (await screen.findByText(OFFLINE_TEXT)).closest('[role="status"]');
-    expect(notice?.textContent).toContain('Hors ligne');
-    const panel = screen.getByRole('group', { name: 'Page introuvable' });
-    expect(panel.compareDocumentPosition(notice as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    act(() => sync.set({ connection: 'online' }));
-    expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
-  });
-
-  // Les autres états où la 404 se voit (unauthenticated et account_deleted mènent à la connexion, par la garde).
-  it.each(['unknown', 'protocol_unsupported'] as const)(
-    "état de connexion « %s » : pas d'encadré « Hors ligne », que seul l'état offline montre",
-    async (connection) => {
-      await renderApp({ path: '/nulle-part', sync: createFakeSyncEngine({ connection }) });
-      await screen.findByRole('group', { name: 'Page introuvable' });
-      expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
-    },
-  );
-
-  // Une région live créée avec son texte n'est souvent pas lue (NVDA, JAWS, VoiceOver) : elle est là, vide,
-  // avant la coupure, et c'est son contenu qui change.
-  it('région « Hors ligne » déjà là, vide, avant la coupure : le texte qui s’y ajoute est annoncé', async () => {
-    const sync = createFakeSyncEngine({ connection: 'online' });
-    await renderApp({ path: '/nulle-part', sync });
-    await screen.findByRole('group', { name: 'Page introuvable' });
-    const region = within(screen.getByRole('main')).getByRole('status');
-    expect(region.textContent).toBe('');
-    act(() => sync.set({ connection: 'offline' }));
-    expect(within(screen.getByRole('main')).getByRole('status')).toBe(region);
-    expect(region.textContent).toContain('Hors ligne');
-    expect(region.textContent).toContain(OFFLINE_TEXT);
-    act(() => sync.set({ connection: 'online' }));
-    expect(region.isConnected).toBe(true);
-    expect(region.textContent).toBe('');
-  });
-
-  it('région vide : elle rend l’écart qui la précède, la 404 reste centrée comme sans elle', () => {
-    const css = publicCss();
-    const gap = declarationsOf(css, '.notFound')?.get('gap');
-    expect(gap).toMatch(/^\d+px$/);
-    expect(declarationsOf(css, '.offlineSlot:empty')?.get('margin-top')).toBe(`-${gap}`);
-  });
-});
-
 describe('404 : marque en tête (maquette A06, spec refonte §10)', () => {
   const DESKTOP = '(min-width: 900px)';
   const media = (...matching: string[]) =>
@@ -411,4 +342,73 @@ describe('404 : marque en tête (maquette A06, spec refonte §10)', () => {
     );
     expect(declarationsOf(publicCss(), '.brand')).toEqual(declarationsOf(shellCss, '.brand'));
   });
+});
+
+describe('404 (maquette A06, spec refonte §10.7)', () => {
+  const OFFLINE_TEXT =
+    'Les pages Aide, Confidentialité et Crédits restent lisibles. La connexion nécessite le réseau.';
+
+  it("« Page introuvable » dans la fenêtre du Système, « Zone inconnue. », lien vers l'accueil", async () => {
+    await renderApp({ path: '/nulle-part' });
+    const panel = await screen.findByRole('group', { name: 'Page introuvable' });
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([
+      'Page introuvable',
+    ]);
+    expect(within(panel).getByText('SYSTÈME')).toBeTruthy();
+    expect(panel.textContent).toContain(
+      "Zone inconnue. Cette page n'existe pas ou n'est pas encore disponible.",
+    );
+    expect(within(panel).getByRole('link', { name: "Retour à l'accueil" }).getAttribute('href')).toBe('/');
+    expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
+  });
+
+  it('page admin pour un membre : la même 404', async () => {
+    await renderApp({ path: '/admin/members' });
+    expect(await screen.findByRole('group', { name: 'Page introuvable' })).toBeTruthy();
+  });
+
+  // Une région live créée avec son texte n'est souvent pas lue (NVDA, JAWS, VoiceOver) : elle est là, vide,
+  // avant la coupure, et c'est son contenu qui change.
+  it('région « Hors ligne » déjà là, vide, avant la coupure : le texte qui s’y ajoute est annoncé', async () => {
+    const sync = createFakeSyncEngine({ connection: 'online' });
+    await renderApp({ path: '/nulle-part', sync });
+    await screen.findByRole('group', { name: 'Page introuvable' });
+    const region = within(screen.getByRole('main')).getByRole('status');
+    expect(region.textContent).toBe('');
+    act(() => sync.set({ connection: 'offline' }));
+    expect(within(screen.getByRole('main')).getByRole('status')).toBe(region);
+    expect(region.textContent).toContain('Hors ligne');
+    expect(region.textContent).toContain(OFFLINE_TEXT);
+    act(() => sync.set({ connection: 'online' }));
+    expect(region.isConnected).toBe(true);
+    expect(region.textContent).toBe('');
+  });
+
+  it('région vide : elle rend l’écart qui la précède, la 404 reste centrée comme sans elle', () => {
+    const css = publicCss();
+    const gap = declarationsOf(css, '.notFound')?.get('gap');
+    expect(gap).toMatch(/^\d+px$/);
+    expect(declarationsOf(css, '.offlineSlot:empty')?.get('margin-top')).toBe(`-${gap}`);
+  });
+
+  it("hors ligne (l'état de connexion unique) : encadré « Hors ligne », qui part au retour du réseau", async () => {
+    const sync = createFakeSyncEngine({ connection: 'offline' });
+    await renderApp({ path: '/nulle-part', sync });
+    const notice = (await screen.findByText(OFFLINE_TEXT)).closest('[role="status"]');
+    expect(notice?.textContent).toContain('Hors ligne');
+    const panel = screen.getByRole('group', { name: 'Page introuvable' });
+    expect(panel.compareDocumentPosition(notice as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    act(() => sync.set({ connection: 'online' }));
+    expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
+  });
+
+  // Les autres états où la 404 se voit (unauthenticated et account_deleted mènent à la connexion, par la garde).
+  it.each(['unknown', 'protocol_unsupported'] as const)(
+    "état de connexion « %s » : pas d'encadré « Hors ligne », que seul l'état offline montre",
+    async (connection) => {
+      await renderApp({ path: '/nulle-part', sync: createFakeSyncEngine({ connection }) });
+      await screen.findByRole('group', { name: 'Page introuvable' });
+      expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
+    },
+  );
 });
