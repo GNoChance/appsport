@@ -29,8 +29,12 @@
   font-size: 0.875rem;
 }
 
-/* Cartes : surface, bord fin, ombre douce en clair ; à plat en sombre, en Salle de nuit et en Carnet. */
-.card {
+/*
+ * Cartes : surface, bord fin, ombre douce en clair ; à plat en sombre, en Salle de nuit et en Carnet. L'encadré
+ * « Hors ligne » de la 404 (A06) est une carte.
+ */
+.card,
+.offline {
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -39,12 +43,12 @@
     0 6px 18px color-mix(in srgb, var(--text) 5%, transparent);
 }
 
-:global(:root:is([data-theme="sombre"], [data-theme="nuit"], [data-theme="carnet"])) .card {
+:global(:root:is([data-theme="sombre"], [data-theme="nuit"], [data-theme="carnet"])) :is(.card, .offline) {
   box-shadow: none;
 }
 
 @media (prefers-color-scheme: dark) {
-  :global(:root:not([data-theme])) .card {
+  :global(:root:not([data-theme])) :is(.card, .offline) {
     box-shadow: none;
   }
 }
@@ -68,6 +72,11 @@
   font-weight: 700;
 }
 
+/* Newsreader n'est embarqué qu'en 600 : pas de gras synthétisé dans le Carnet. */
+:global(:root[data-theme="carnet"]) .section h2 {
+  font-weight: 600;
+}
+
 .sectionHead {
   display: flex;
   flex-direction: column;
@@ -76,14 +85,17 @@
 
 /* ---------- Aide (A05) ---------- */
 
-/* Encadré d'urgence : teinte et liseré du danger, deux boutons d'appel côte à côte. */
+/*
+ * Encadré d'urgence : teinte et liseré du danger, deux boutons d'appel côte à côte. Il se pose sur la page : sa
+ * teinte est mêlée à la surface, pas au fond, pour garder le texte du danger à 4,5:1 en Clair (maquette A05).
+ */
 .emergency {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
   border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--danger) 7%, transparent);
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
 }
 
@@ -134,9 +146,13 @@
   font-weight: 600;
 }
 
+/*
+ * Survol : le liseré s'épaissit, le fond ne fonce pas. Une teinte de plus ferait passer « SAMU » et « Numéro
+ * européen » sous 4,5:1 en Clair.
+ */
 @media (hover: hover) {
   .emergencyCall:hover {
-    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    box-shadow: inset 0 0 0 1px var(--danger);
   }
 }
 
@@ -306,7 +322,10 @@
   line-height: 1.5;
 }
 
-/* Retour à l'accueil : un lien qui a l'allure du bouton principal (52 px, pleine largeur). */
+/*
+ * Retour à l'accueil : un lien qui a l'allure du bouton principal (52 px, pleine largeur) et son retour du
+ * geste : pressé, il se tasse à 0,98 ; sous mouvement réduit, le fond seul change.
+ */
 .homeLink {
   display: flex;
   align-items: center;
@@ -321,7 +340,13 @@
   font-size: 1.0625rem;
   font-weight: 600;
   text-decoration: none;
-  transition: background-color var(--dur-fast) var(--ease);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.homeLink:active {
+  transform: scale(0.98);
 }
 
 @media (hover: hover) {
@@ -330,15 +355,22 @@
   }
 }
 
-/* Encadré « Hors ligne » : carte discrète, pictogramme et point au gris du texte secondaire. */
+@media (prefers-reduced-motion: reduce) {
+  .homeLink {
+    transition-property: background-color;
+  }
+
+  .homeLink:active {
+    transform: none;
+  }
+}
+
+/* Encadré « Hors ligne » : une carte (voir .card), pictogramme et point au gris du texte secondaire. */
 .offline {
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
   padding: 14px var(--space-4);
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: var(--surface);
   color: var(--text-muted);
 }
 
