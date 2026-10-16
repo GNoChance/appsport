@@ -43,7 +43,7 @@ describe('connexion (R-AUTH-1, R-AUTH-5)', () => {
     expect((screen.getByLabelText('Pseudo') as HTMLInputElement).autocomplete).toBe('username');
     const mark = visits().length;
     signIn('lea', 'cheval agrafe batterie correcte');
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     expect(location()).toBe('/');
     expect(visits().slice(mark)).toEqual(['/']);
     expect(loginCalls(api)[0]?.body).toEqual({
@@ -132,7 +132,7 @@ describe('autre pseudo sur un appareil qui a des données non envoyées (R-AUTH-
     signIn('max');
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Continuer' }));
-    await screen.findByText('Bonjour max');
+    await screen.findByText('Bonjour, max');
     expect(location()).toBe('/');
     expect(await db.outbox.count()).toBe(0);
     expect(loginCalls(api)).toHaveLength(1);
@@ -163,7 +163,7 @@ describe('autre pseudo sur un appareil qui a des données non envoyées (R-AUTH-
     api.on('POST', LOGIN, reply(owner));
     // Majuscules et accent décomposé (E + U+0301) : même clé NFKC puis minuscules que « Léa ».
     signIn('LÉA');
-    await screen.findByText('Bonjour Léa');
+    await screen.findByText('Bonjour, Léa');
     expect(location()).toBe('/');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(await db.outbox.count()).toBe(2);
@@ -174,7 +174,7 @@ describe('autre pseudo sur un appareil qui a des données non envoyées (R-AUTH-
     const api = createFakeApi().on('POST', LOGIN, reply(max));
     const { location } = await renderLogin({ me: lea, api, sync: lostSession() });
     signIn('max');
-    await screen.findByText('Bonjour max');
+    await screen.findByText('Bonjour, max');
     expect(location()).toBe('/');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -232,7 +232,7 @@ describe("session perdue, garde de l'appli et moteur réel (R-SYN-12, R-AUTH-8, 
     });
     const mark = visits().length;
     signIn('lea');
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     const real = engine as SyncEngine;
     await until(() => real.getState().connection === 'online' && !real.getState().syncing);
     expect(visits().slice(mark)).toEqual(['/']);
@@ -249,7 +249,7 @@ describe("session perdue, garde de l'appli et moteur réel (R-SYN-12, R-AUTH-8, 
     });
     const mark = visits().length;
     signIn('max');
-    await screen.findByText('Bonjour max');
+    await screen.findByText('Bonjour, max');
     const real = engine as SyncEngine;
     await until(() => real.getState().connection === 'online' && !real.getState().syncing);
     expect(visits().slice(mark)).toEqual(['/']);

@@ -379,7 +379,7 @@ describe('coquille', () => {
     media();
     await renderApp({ path: '/' });
     const header = await homeHeader();
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     expect(header.textContent).not.toContain('en attente');
     expect(screen.queryByTestId('pending-counter')).toBeNull();
     expect(screen.queryByTestId('rejected-counter')).toBeNull();
@@ -418,7 +418,7 @@ describe('coquille', () => {
   ] as const)('admin, %s : les 4 onglets de TAB_ITEMS, aucun lien vers /admin', async (_, queries, nav) => {
     media(...queries);
     const view = await renderApp({ path: '/', me: makeMe({ role: 'admin' }) });
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     expect(screen.getByTestId(nav)).toBeTruthy();
     const hrefs = within(mainNav())
       .getAllByRole('link')
@@ -442,14 +442,14 @@ describe('coquille', () => {
   it('téléphone : barre d’onglets ; ≥ 900 px : navigation latérale, jamais les deux', async () => {
     media();
     const phone = await renderApp({ path: '/' });
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     expect(screen.getAllByRole('navigation', { name: 'Navigation principale' })).toHaveLength(1);
     expect(screen.getByTestId('tab-bar')).toBeTruthy();
     expect(screen.queryByTestId('side-nav')).toBeNull();
     phone.unmount();
     media(DESKTOP);
     await renderApp({ path: '/' });
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     expect(screen.getAllByRole('navigation', { name: 'Navigation principale' })).toHaveLength(1);
     expect(screen.getByTestId('side-nav')).toBeTruthy();
     expect(screen.queryByTestId('tab-bar')).toBeNull();
@@ -476,7 +476,7 @@ describe('coquille', () => {
     expect(screen.queryByTestId('connection-status')).toBeNull();
   });
 
-  it('/progression : page provisoire, titre « Progression », onglet actif', async () => {
+  it('/progression : l’avant-goût, titre « Progression », onglet actif', async () => {
     media();
     await renderApp({ path: '/progression' });
     expect(await screen.findByRole('heading', { level: 1, name: 'Progression' })).toBeTruthy();
@@ -520,7 +520,7 @@ describe('coquille', () => {
     media();
     const entrance = spyEntrances();
     const view = await renderApp({ path: '/' });
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     const screenEl = () => view.container.querySelector('[data-screen-transition]');
     fireEvent.click(tab('Profil'));
     await screen.findByRole('heading', { level: 1, name: 'Profil' });
@@ -546,7 +546,7 @@ describe('coquille', () => {
     media(REDUCED);
     const entrance = spyEntrances();
     await renderApp({ path: '/' });
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     const fade = { keyframes: { opacity: [0, 1] }, options: { duration: 200, easing: EASE } };
     fireEvent.click(tab('Profil'));
     await screen.findByRole('heading', { level: 1, name: 'Profil' });
@@ -566,7 +566,7 @@ describe('coquille', () => {
   it("changement d'écran : onglet et écran suivant repartent du haut, le retour retrouve la position quittée", async () => {
     media();
     await renderApp({ path: '/' });
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     scrollPage(900);
     fireEvent.click(tab('Profil'));
     await screen.findByRole('heading', { level: 1, name: 'Profil' });
@@ -582,7 +582,7 @@ describe('coquille', () => {
     // Revenu en haut par l'onglet, puis de nouveau en avant et en arrière : la position retrouvée est la
     // dernière quittée, pas une ancienne.
     fireEvent.click(tab('Accueil'));
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     expect(window.scrollY).toBe(0);
     fireEvent.click(tab('Profil'));
     await screen.findByRole('heading', { level: 1, name: 'Profil' });

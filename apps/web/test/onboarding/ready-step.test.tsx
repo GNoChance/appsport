@@ -64,7 +64,7 @@ describe('ReadyStep (E8, R-SYN-33)', () => {
     fireEvent.click(button('Commencer'));
     await until(() => location() === '/');
     expect(api.calls.filter((c) => c.path === COMPLETE).map((c) => c.method)).toEqual(['POST']);
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     expect(events).toBe(1);
   });
 

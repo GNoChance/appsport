@@ -12,8 +12,15 @@ const SCRIBE = {
   intro:
     "Je suis le Scribe. Je prépare un plan clair et je note chaque série pour faire le point avec toi. Nos échanges viendront plus tard : pour l'instant, je consigne.",
   ready: 'Profil complet, lieu noté. Le plan arrivera ici.',
+  /** Lignes du jour de l'accueil, une par jour de Paris à tour de rôle ; `{jours}` = 2 (rythme choisi ici). */
+  daily: [
+    'Profil complet, lieu noté, rythme de 2 séances par semaine. Le plan arrivera ici.',
+    'Point du jour : ton profil est à jour.',
+    'Je consigne. Les premières séances arriveront bientôt.',
+  ],
 };
 const QUESTS = ['Profil complété', 'Lieu principal choisi', 'Prêt hors ligne'];
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Le voyant « Prêt hors ligne » attend le service worker et le premier pull. */
 const READY_TIMEOUT_MS = 30_000;
 
@@ -86,10 +93,18 @@ test('onboarding : choix du coach, présentation, les 8 autres écrans, « Évei
     await expect(button('Commencer')).toBeEnabled();
     await button('Commencer').click();
     await page.waitForURL((url) => url.pathname === '/');
-    // L'accueil : son onglet actif, et le titre qui salue le pseudo (sa formule change avec l'accueil Rune).
+    // L'accueil : son onglet actif, et le titre qui salue le pseudo (« Bonjour, » ou « Bonsoir, » selon l'heure).
     await expect(
       page.getByTestId('tab-bar').getByRole('link', { name: 'Accueil', exact: true }),
     ).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByRole('heading', { level: 1, name: /\bnoa$/ })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: /^Bon(jour|soir), noa$/ })).toBeVisible();
+    // La bulle du Scribe choisi, étiquetée « Aujourd'hui », avec sa ligne du jour (laquelle dépend du jour).
+    const bubble = page.getByRole('main').locator('[data-mode="training"]');
+    await expect(bubble).toBeVisible();
+    await expect(bubble).toContainText(SCRIBE.name);
+    await expect(bubble.getByText("Aujourd'hui", { exact: true })).toBeVisible();
+    await expect(
+      bubble.getByText(new RegExp(`^(${SCRIBE.daily.map(escapeRegExp).join('|')})$`)),
+    ).toBeVisible();
   });
 });

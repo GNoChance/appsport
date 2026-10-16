@@ -1,0 +1,354 @@
+/*
+ * Progression en avant-goût (maquettes ProgressionSombre / ProgressionClair, prototype « Progression ») : carte
+ * forte du rang global, compteurs, grille des 9 groupes, note du Système. Couleurs : jetons seulement, donc
+ * justes dans les 5 thèmes ; les ombres, presque noires, ne se voient qu'en clair et en Carnet.
+ */
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---------- Rang global : carte forte, comme la fenêtre du Système (GUIDE, carte forte) ---------- */
+
+/* En clair : carte blanche, ombre douce, barre dégradée de 3 px en haut, rognée par la carte. */
+.hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 18px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgb(16 21 31 / 0.06),
+    0 10px 28px rgb(16 21 31 / 0.07);
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+/* En sombre (forcé ou Auto la nuit) et en Salle de nuit : dégradé de la carte forte, liseré glacé, sans barre. */
+:global(:root[data-theme="sombre"]) .hero,
+:global(:root[data-theme="nuit"]) .hero {
+  background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: none;
+}
+
+:global(:root[data-theme="sombre"]) .hero::before,
+:global(:root[data-theme="nuit"]) .hero::before {
+  display: none;
+}
+
+/* En Carnet : carte de papier, cadre d'encre de 1,5 px et ombre franche, sans barre. */
+:global(:root[data-theme="carnet"]) .hero {
+  border: 1.5px solid var(--text);
+  box-shadow: 4px 4px 0 var(--text);
+}
+
+:global(:root[data-theme="carnet"]) .hero::before {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .hero {
+    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    box-shadow: none;
+  }
+
+  :global(:root:not([data-theme])) .hero::before {
+    display: none;
+  }
+}
+
+/* Le rang E grandit en s'allumant, puis garde un halo d'accent. */
+.heroBadge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 40%, transparent));
+  animation: grow-in var(--dur-screen) var(--ease) 200ms backwards;
+}
+
+.heroInfo {
+  flex: 1 1 10rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* « RANG GLOBAL » : une étiquette en Chakra Petch (pas la police des titres du Carnet), à l'accent. */
+.kicker {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.rankName {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* Barre d'XP vide : la piste seule, qu'un reflet traverse une fois (spec refonte §9 : « juste un reflet »). */
+.xpBar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-muted) 18%, var(--surface));
+}
+
+/* Au repos, le reflet attend hors de la piste (rogné) : rien n'est caché par une opacité nulle. */
+.xpSweep {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 45%, transparent),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: xp-sweep 800ms var(--ease) 600ms;
+}
+
+.xpMeta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* ---------- Compteurs ---------- */
+
+/*
+ * Trois compteurs côte à côte (maquette) ; moins par ligne quand le texte grandit (200 %) : chaque colonne
+ * garde au moins 5,25 rem, jamais plus d'un tiers de la largeur.
+ */
+.stats {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(
+      auto-fill,
+      minmax(min(100%, max(5.25rem, calc((100% - 20px) / 3 - 1px))), 1fr)
+    );
+  gap: 10px;
+}
+
+.stat,
+.muscle {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(16 21 31 / 0.06);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+}
+
+.statValue {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.statValue small {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.statLabel {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Rangs par muscle ---------- */
+
+.muscles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px var(--space-2);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* Newsreader n'est embarqué qu'en 600 : pas de gras synthétisé. */
+:global(:root[data-theme="carnet"]) .sectionTitle {
+  font-weight: 600;
+}
+
+.sectionCount {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* Grille de 3 sur téléphone (maquette), moins par ligne quand le texte grandit, jamais plus de 3. */
+.muscleGrid {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(
+      auto-fill,
+      minmax(min(100%, max(5.5rem, calc((100% - 16px) / 3 - 1px))), 1fr)
+    );
+  gap: var(--space-2);
+}
+
+/* Chaque groupe surgit à son tour (--i : son rang dans la grille), après l'entrée de sa section. */
+.muscle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 10px 6px;
+  border-radius: var(--radius-control);
+  text-align: center;
+  animation: muscle-pop 250ms var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms + 360ms);
+}
+
+.muscle svg {
+  display: block;
+}
+
+.muscleLabel {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Note du Système ---------- */
+
+.systemNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-card);
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+}
+
+.systemLabel {
+  flex: none;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.noteText {
+  flex: 1 1 12rem;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes grow-in {
+  from {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+}
+
+@keyframes xp-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(270%);
+  }
+}
+
+@keyframes muscle-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Mouvement réduit (spec refonte §7) : des fondus courts, sans retard ni cascade, et pas de balayage. */
+@media (prefers-reduced-motion: reduce) {
+  .heroBadge,
+  .muscle {
+    animation-name: fade;
+    animation-duration: var(--dur-fast);
+    animation-delay: 0ms;
+  }
+
+  .xpSweep {
+    animation: none;
+  }
+}

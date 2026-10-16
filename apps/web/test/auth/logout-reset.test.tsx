@@ -355,7 +355,7 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
     fill('Nouveau mot de passe pour lea', PHRASE);
     fill('Confirmation', PHRASE);
     click('Changer le mot de passe');
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     await until(() => real.getState().connection === 'online' && !real.getState().syncing);
     expect(view.visits().slice(mark)).toEqual(['/']);
     expect(screen.queryByText('Ta session a expiré. Reconnecte-toi.')).toBeNull();

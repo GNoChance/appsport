@@ -90,7 +90,7 @@ describe('App', () => {
 
   it("plus d'onglet 'Administration' (l'admin passe par Profil) ; /admin/members reste servi à un admin", async () => {
     const first = await renderApp({ path: '/', me: admin() });
-    await screen.findByText('Bonjour lea');
+    await screen.findByText('Bonjour, lea');
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull();
     first.unmount();
     await renderApp({ path: '/admin/members', me: admin() });
