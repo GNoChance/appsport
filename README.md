@@ -10,12 +10,20 @@ Rune est une application web installable (PWA) de suivi de musculation, auto-hé
 
 > Rune portait un autre nom de code pendant le cadrage. Tout s'appelle désormais Rune : le dépôt, les paquets (`@rune/…`), le serveur et les scripts. Seuls `docs/superpowers/` et `docs/research/` gardent l'ancien nom, par historique : y lire « rune » partout où un identifiant porte l'ancien nom.
 
-> **Statut au 15 octobre 2026 : brique 1 (socle) codée, refonte visuelle en cours sur les écrans, brique 2 prête à démarrer.** Le socle est fait et relu : comptes sur invitation, onboarding, PWA hors ligne, synchronisation, administration, déploiement, sauvegardes et procédures.
+> **Statut au 16 octobre 2026 : brique 1 (socle) codée, écrans de la refonte presque tous faits, brique 2 prête à démarrer.** Le socle est fait et relu : comptes sur invitation, onboarding, PWA hors ligne, synchronisation, administration, déploiement, sauvegardes et procédures.
 >
 > - **Refonte aux couleurs de Rune** : renommage complet, thèmes et polices, logo et icônes, boîte à outils, feuilles du bas, avatars des coachs, rangs en pierre, coquille avec la barre d'onglets, coach côté serveur, décisions de confidentialité et commande `pnpm dev` sont codés, relus et fusionnés.
->   - Écrans codés et relus : le choix du coach avec sa présentation, puis Salles et lieux.
->   - Codés, en cours de relecture : l'onboarding rhabillé avec l'écran « Éveil terminé », l'espace Profil (Mon coach, apparence, santé, confidentialité, déconnexion) et l'administration en cartes.
->   - Restent : l'accueil et Progression, les pages d'accès, la seconde fusion, les points reportés, la vérification avec captures et la relecture finale.
+>   - Écrans codés, relus et corrigés :
+>     - le choix du coach avec sa présentation ;
+>     - l'onboarding rhabillé avec l'écran « Éveil terminé » ;
+>     - l'espace Profil (Mon coach, apparence, santé, confidentialité, déconnexion) ;
+>     - Salles et lieux ;
+>     - l'administration en cartes ;
+>     - les pages d'accès (connexion, invitation, aide, 404, hors ligne).
+>
+>     L'espace Profil, d'une part, et Salles, l'administration et les pages d'accès, d'autre part, attendent la seconde fusion sur leurs branches (`socle-profil`, `socle-ecrans`).
+>   - En cours : l'accueil et Progression, relus, dont les corrections sont presque finies.
+>   - Restent : la seconde fusion, les points reportés, la vérification avec captures et la relecture finale.
 > - **Brique 2 (exercices)** : la [spec](docs/superpowers/specs/2026-10-14-brique-2-exercices-design.md) et le [plan d'implémentation](docs/superpowers/plans/2026-10-14-brique-2-exercices.md) sont validés, puis vérifiés par quatre relecteurs. 27 règles complètent le plan, par exemple :
 >   - une fiche sensible n'est jamais publiée sans feu vert santé à jour ;
 >   - le catalogue exporté ne contient aucun identifiant de compte ;
@@ -72,7 +80,7 @@ Les fichiers du logo sont dans [`docs/brand/`](docs/brand/).
 | # | Brique | Contenu | État |
 |---|--------|---------|------|
 | 0 | Vision et architecture | Choix techniques, hébergement, modèle de données | Fait |
-| 1 | Socle | Comptes sur invitation, onboarding, PWA, déploiement, puis la refonte Rune : thèmes, navigation, choix du coach, Progression en avant-goût | Socle fait ; refonte : écrans en cours |
+| 1 | Socle | Comptes sur invitation, onboarding, PWA, déploiement, puis la refonte Rune : thèmes, navigation, choix du coach, Progression en avant-goût | Socle fait ; refonte : écrans presque finis |
 | 2 | Exercices | Un cœur d'environ 120 fiches débutant puis des lots jusqu'à 300, rédigées en français (brouillon IA, relecture à plusieurs avec feu vert santé sur les exercices sensibles), illustrations, onglet Exercices par groupe musculaire | Spec et plan validés et vérifiés, démarre après la refonte |
 | 3 | Programmes et séances | Modèles de programmes, séance en cours, historique, records, progression RPG | À venir |
 | 4 | Coach IA | Conversation avec le coach choisi, conseils personnalisés, ajustement des programmes | À venir |
