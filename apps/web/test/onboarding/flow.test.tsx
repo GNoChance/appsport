@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { firstIncompleteStep } from '@rune/domain';
-import { fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { shownStep } from '../../src/features/onboarding/OnboardingFlow';
 import { createRepos } from '../../src/repos';
@@ -25,6 +25,9 @@ import { createTestServices, renderApp } from '../support/render';
 import { until } from '../support/wait';
 
 const ONBOARDING_CSS = resolve(import.meta.dirname, '../../src/features/onboarding/onboarding.module.css');
+const SHORT_SCREEN = '(max-height: 30rem)';
+const PAGE_PADDING = ':global(html):has(.flow)';
+const CARNET_BAR = ':global(:root[data-theme="carnet"]) .flow .bar';
 
 /** Onboarding dans l'appli (garde comprise), base et faux serveur fournis par le test. */
 async function openFlow(me = newcomer()) {
@@ -34,8 +37,55 @@ async function openFlow(me = newcomer()) {
   return { db, api, me, server, render: () => renderApp({ path: '/onboarding', me, db, api }) };
 }
 
+/**
+ * ResizeObserver de test (happy-dom ne mesure rien) : la fonction rendue prévient les observateurs de cet
+ * élément, comme le ferait un changement de taille.
+ */
+function fakeResizeObserver() {
+  const watched = new Map<object, { callback: ResizeObserverCallback; targets: Set<Element> }>();
+  class FakeResizeObserver {
+    constructor(callback: ResizeObserverCallback) {
+      watched.set(this, { callback, targets: new Set() });
+    }
+    observe(target: Element) {
+      watched.get(this)?.targets.add(target);
+    }
+    unobserve(target: Element) {
+      watched.get(this)?.targets.delete(target);
+    }
+    disconnect() {
+      watched.delete(this);
+    }
+  }
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+  return (target: Element) => {
+    for (const [observer, { callback, targets }] of [...watched]) {
+      if (targets.has(target)) {
+        act(() => callback([{ target } as ResizeObserverEntry], observer as ResizeObserver));
+      }
+    }
+  };
+}
+
+/** Objectif repris, « Continuer » hors ligne : l'erreur de l'écran s'affiche ; rend la barre qui la porte. */
+async function goalWithError() {
+  const t = await openFlow();
+  await seedProfile(t.db);
+  await t.render();
+  await until(() => currentStep() === 'goal');
+  await screen.findByRole('radio', { name: 'Gagner en force' });
+  t.api.setOffline('reject');
+  choose('Gagner en force');
+  fireEvent.click(button('Continuer'));
+  const alert = await screen.findByRole('alert');
+  const bar = [...screen.getByTestId('onboarding-step').children].find((c) => c.contains(alert));
+  if (!bar) throw new Error("pas de barre qui porte l'erreur");
+  return { bar, alert };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const progress = () => screen.getByText(/^Étape \d sur 9$/).textContent;
@@ -274,5 +324,61 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     const reserved = /^calc\((\d+(?:\.\d+)?)rem \+ env\(safe-area-inset-bottom, 0px\)\)$/.exec(padding);
     expect(reserved, `scroll-padding-bottom: ${padding}`).not.toBeNull();
     expect(Number(reserved?.[1])).toBeGreaterThanOrEqual(5.25);
+  });
+
+  it('la barre grandit avec son erreur : la marge de défilement du focus suit sa hauteur réelle (2.4.11)', async () => {
+    const resize = fakeResizeObserver();
+    const { bar } = await goalWithError();
+    // Erreur de deux lignes à 390 px : la barre passe d'environ 84 à 172 px, au-delà des 6,5 rem d'avant.
+    vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 672, 390, 171.6));
+    resize(bar);
+    expect(document.documentElement.style.getPropertyValue('--onb-bar')).toBe('172px');
+    const css = parseCssBlocks(readFileSync(ONBOARDING_CSS, 'utf8'));
+    expect(declarationsOf(css, PAGE_PADDING)?.get('scroll-padding-bottom')).toMatch(/var\(--onb-bar\b/);
+    // Onboarding quitté : plus de hauteur mesurée sur la page.
+    cleanup();
+    expect(document.documentElement.style.getPropertyValue('--onb-bar')).toBe('');
+  });
+
+  it('focus() d’un contrôle que la barre recouvre (WebKit ignore la marge) : il défile au plus près', async () => {
+    const { alert } = await goalWithError();
+    const field = radio('Prendre du muscle');
+    const scroll = vi.fn();
+    field.scrollIntoView = scroll;
+    const pointHits = vi.spyOn(document, 'elementFromPoint');
+    // Le centre du contrôle est à découvert : rien ne bouge.
+    pointHits.mockReturnValue(field);
+    act(() => field.focus());
+    expect(scroll).not.toHaveBeenCalled();
+    act(() => field.blur());
+    // La barre (son erreur) recouvre son centre : il remonte au-dessus d'elle.
+    pointHits.mockReturnValue(alert);
+    act(() => field.focus());
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' });
+  });
+
+  it('écran bas (téléphone couché, zoom à 400 %) : la barre n’est plus collée, ni marge de focus (1.4.10)', () => {
+    const css = parseCssBlocks(readFileSync(ONBOARDING_CSS, 'utf8'));
+    const bar = declarationsOf(css, '.flow .bar', SHORT_SCREEN);
+    expect(bar?.get('position')).toBe('static');
+    expect(bar?.get('background')).toBe('none');
+    expect(declarationsOf(css, PAGE_PADDING, SHORT_SCREEN)?.get('scroll-padding-bottom')).toBe('0');
+    // La bande du Carnet, plus forte que la règle générale, part avec elle.
+    const carnet = declarationsOf(css, CARNET_BAR, SHORT_SCREEN);
+    expect(carnet?.get('background')).toBe('none');
+    expect(carnet?.get('border-top')).toBe('0');
+    expect(carnet?.get('border-image')).toBe('none');
+  });
+
+  it('Carnet : la barre est une bande de papier pleine largeur sous un filet d’encre, sans fondu', () => {
+    const css = parseCssBlocks(readFileSync(ONBOARDING_CSS, 'utf8'));
+    const carnet = declarationsOf(css, CARNET_BAR);
+    // Papier opaque et filet d'encre de 1,5 px : plus de fondu qui effaçait les lignes dans un rectangle.
+    expect(carnet?.get('background')).toBe('var(--bg)');
+    expect(carnet?.get('border-top')).toBe('1.5px solid var(--text)');
+    // La même bande peinte jusqu'aux bords de l'écran par un débord d'image de bordure, qui ne fait pas défiler.
+    expect(carnet?.get('border-image')).toBe(
+      'linear-gradient(var(--text) 0 1.5px, var(--bg) 0) fill 0 / 0 / 0 100vw',
+    );
   });
 });

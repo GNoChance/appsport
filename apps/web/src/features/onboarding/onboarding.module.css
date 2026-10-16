@@ -153,9 +153,45 @@
   background: linear-gradient(180deg, transparent 0, var(--bg) var(--space-4));
 }
 
-/* Un champ qui prend le focus défile au-dessus de la barre (sa hauteur et la zone de geste), jamais dessous. */
+/*
+ * Carnet : une bande de papier opaque sous un filet d'encre, au lieu du fondu qui effaçait les lignes du cahier
+ * dans le seul rectangle de la colonne. L'image de bordure la peint jusqu'aux bords de l'écran (son débord ne
+ * fait pas défiler la page) ; le fond et le filet restent si elle n'est pas peinte.
+ */
+:global(:root[data-theme="carnet"]) .flow .bar {
+  background: var(--bg);
+  border-top: 1.5px solid var(--text);
+  border-image: linear-gradient(var(--text) 0 1.5px, var(--bg) 0) fill 0 / 0 / 0 100vw;
+}
+
+/*
+ * Un champ qui prend le focus défile au-dessus de la barre, jamais dessous (WCAG 2.2, 2.4.11) : --onb-bar est sa
+ * hauteur réelle, erreur et zone de geste comprises, mesurée par StepActions ; avant la mesure, celle d'une barre
+ * sans erreur. 8 px de plus pour l'anneau de focus.
+ */
 :global(html):has(.flow) {
-  scroll-padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: calc(var(--onb-bar, 6.5rem + env(safe-area-inset-bottom, 0px)) + var(--space-2));
+}
+
+/*
+ * Écran bas (téléphone couché, zoom à 400 %) : collée, la barre et son erreur prendraient du tiers aux deux
+ * tiers de la hauteur pendant tout l'onboarding (WCAG 1.4.10, 2.4.11) ; elle reprend sa place à la fin de l'écran.
+ */
+@media (max-height: 30rem) {
+  .flow .bar {
+    position: static;
+    background: none;
+  }
+
+  :global(:root[data-theme="carnet"]) .flow .bar {
+    background: none;
+    border-top: 0;
+    border-image: none;
+  }
+
+  :global(html):has(.flow) {
+    scroll-padding-bottom: 0;
+  }
 }
 
 /* Boutons (maquettes) : « Retour » de 118 px à gauche, le bouton principal prend le reste ; seul, tout. */
@@ -648,18 +684,18 @@
   border-color: transparent;
 }
 
-/* Les quêtes se cochent une à une. */
+/* Les quêtes se cochent une à une, après le rang et avant le mot du coach (prototype). */
 .questCheck {
   display: grid;
-  animation: quest-check 600ms var(--ease) 300ms backwards;
+  animation: quest-check 600ms var(--ease) 250ms backwards;
 }
 
 .questList > :nth-child(2) .questCheck {
-  animation-delay: 450ms;
+  animation-delay: 350ms;
 }
 
 .questList > :nth-child(3) .questCheck {
-  animation-delay: 600ms;
+  animation-delay: 450ms;
 }
 
 /* Le coach dit son mot, puis « Commencer » apparaît. */
@@ -684,10 +720,6 @@
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--surface);
-}
-
-.notReady > button {
-  align-self: flex-start;
 }
 
 /* Récapitulatif (maquette B08) : une carte, une ligne par réponse. */
@@ -760,6 +792,10 @@
   }
 }
 
+/*
+ * Le découpage passe autour de l'ombre du panneau du Système (0 6px 18px en clair : 12 px au-dessus, 18 px sur
+ * les côtés, 24 px dessous ; 4px 4px 0 en Carnet) : elle s'ouvre avec la fenêtre, au lieu de surgir à la fin.
+ */
 @keyframes window-open {
   0% {
     opacity: 0;
@@ -768,12 +804,12 @@
 
   35% {
     opacity: 1;
-    clip-path: inset(46% 0 round var(--radius-card));
+    clip-path: inset(46% -18px round var(--radius-card));
   }
 
   100% {
     opacity: 1;
-    clip-path: inset(0 round var(--radius-card));
+    clip-path: inset(-12px -18px -24px round var(--radius-card));
   }
 }
 

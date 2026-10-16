@@ -1,7 +1,8 @@
 import type { OnboardingStep, TrainingProfilePatch } from '@rune/contracts';
-import type { Ref } from 'react';
+import { type Ref, type RefObject, useEffect, useRef } from 'react';
 import { type Repos, useRepos } from '../../repos';
 import { Banner, Button, useAction } from '../../ui';
+import { useFocusAboveBar } from '../../ui/TabBar';
 import styles from './onboarding.module.css';
 
 /** Écran partagé par l'onboarding et le Profil (R-ONB-3). */
@@ -40,9 +41,34 @@ export function useSaveStep(p: StepProps, step: OnboardingStep) {
 }
 
 /**
+ * Hauteur réelle de la barre collée de l'onboarding, erreur et zone de geste comprises (84 px environ sans
+ * erreur, le double avec une erreur de deux lignes), en `--onb-bar` sur la page : scroll-padding-bottom la lit
+ * (onboarding.module.css), et un champ qui prend le focus s'arrête au-dessus de la barre (WCAG 2.2, 2.4.11).
+ * Écrite par le CSSOM, que la CSP laisse passer, et retirée au démontage. Hors de l'onboarding (Profil), la
+ * barre n'est pas collée : rien n'est mesuré.
+ */
+function useStickyBarHeight(bar: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = bar.current;
+    if (!el?.closest(`.${styles.flow}`) || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => {
+      root.style.setProperty('--onb-bar', `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--onb-bar');
+    };
+  }, [bar]);
+}
+
+/**
  * Barre d'actions des maquettes B01–B08 : l'erreur de l'écran, puis « Retour » (118 px, contour) à gauche du
  * bouton principal, qui prend le reste de la largeur ; seul, le principal prend toute la largeur. Dans
- * l'onboarding, la barre reste collée en bas de l'écran, erreur comprise (onboarding.module.css).
+ * l'onboarding, la barre reste collée en bas de l'écran, erreur comprise (onboarding.module.css), et le focus ne
+ * finit jamais dessous : marge de défilement à sa hauteur réelle, et défilement au plus près quand WebKit ignore
+ * cette marge pour focus() (`useFocusAboveBar`, comme la barre d'onglets).
  * `className` : décor de la barre (apparition de « Commencer » sur « Éveil terminé »), `primary.className` :
  * celui du bouton principal, `primary.ref` : le bouton principal lui-même (pour y rendre le focus).
  */
@@ -59,8 +85,11 @@ export function StepActions(p: {
   error?: string | null;
   className?: string;
 }) {
+  const bar = useRef<HTMLDivElement>(null);
+  useStickyBarHeight(bar);
+  useFocusAboveBar(bar);
   return (
-    <div className={[styles.bar, p.className].filter(Boolean).join(' ')}>
+    <div ref={bar} className={[styles.bar, p.className].filter(Boolean).join(' ')}>
       {p.error ? <Banner tone="error">{p.error}</Banner> : null}
       <div className={styles.actions}>
         {p.onBack ? (

@@ -116,8 +116,9 @@ export function TabBar() {
  * grâce à scroll-padding-bottom (shell.module.css), mais WebKit l'ignore pour focus() (retour au bouton
  * d'origine, champ en erreur) : quand la barre recouvre le centre du contrôle qui prend le focus, il défile au
  * plus près, ce qui respecte la marge. Une feuille du bas posée par-dessus prend le point : rien ne bouge.
+ * Aussi pour la barre collée de l'onboarding (StepActions).
  */
-function useFocusAboveBar(bar: RefObject<HTMLElement | null>) {
+export function useFocusAboveBar(bar: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const onFocus = (event: FocusEvent) => {
       const nav = bar.current;

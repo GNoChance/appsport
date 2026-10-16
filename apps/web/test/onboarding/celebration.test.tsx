@@ -9,6 +9,7 @@ import { ReadyStep } from '../../src/features/onboarding/ReadyStep';
 import type { AppDb } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
 import type { TrainingProfileView } from '../../src/repos';
+import ui from '../../src/ui/ui.module.css';
 import { settle } from '../support/auth';
 import { type CssBlock, normalizeSelector, parseCssBlocks } from '../support/css-blocks';
 import { createFakeApi } from '../support/fake-api';
@@ -30,6 +31,7 @@ const HOUR = 3_600_000;
 const REDUCE = '(prefers-reduced-motion: reduce)';
 const QUESTS = ['Profil complété', 'Lieu principal choisi', 'Prêt hors ligne'] as const;
 const ONBOARDING_CSS = resolve(import.meta.dirname, '../../src/features/onboarding/onboarding.module.css');
+const VOICE_CSS = resolve(import.meta.dirname, '../../src/ui/voice.module.css');
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -143,6 +145,14 @@ describe('« Éveil terminé » (spec refonte §7, §10.1)', () => {
       expect(bubble?.textContent).toContain("Message d'accueil");
     },
   );
+
+  it('pas encore prêt hors ligne : « Réessayer » prend toute la largeur de la carte sur téléphone', async () => {
+    await openReady({ pullAgoMs: 25 * HOUR });
+    const retry = await screen.findByRole('button', { name: 'Réessayer' });
+    // Bouton pleine largeur de la boîte à outils sur téléphone (contraintes globales), borné au-delà de 600 px.
+    expect(ui.block).toBeTruthy();
+    expect(retry.classList.contains(ui.block as string)).toBe(true);
+  });
 
   /** Écran « C'est prêt » seul, profil `fields`, prêt hors ligne, sans lieu principal. */
   async function openReadyAlone(fields: Parameters<typeof seedProfile>[1]) {
@@ -313,7 +323,95 @@ const animatedRules = (all: readonly CssBlock[]) =>
     .flatMap((b) => selectorList(b.selector).map((selector) => ({ selector, d: b.declarations })))
     .filter((r) => CELEBRATION.some((c) => r.selector.endsWith(c)));
 
+/** Longueur en px (`-12px`, `0`) ; autre chose (pourcentage, mot) → NaN. */
+const px = (token: string) => (/^-?\d*\.?\d+(px)?$/.test(token) ? Number.parseFloat(token) : Number.NaN);
+
+/** Débord en px d'une ombre `x y [flou [étalement]] couleur, …`, de chaque côté : [haut, droite, bas, gauche]. */
+function shadowReach(shadow: string): number[] {
+  const reach = [0, 0, 0, 0];
+  for (const layer of selectorList(shadow)) {
+    const lengths: number[] = [];
+    for (const token of layer.split(/\s+/)) {
+      if (Number.isNaN(px(token))) break;
+      lengths.push(px(token));
+    }
+    const [x = 0, y = 0, blur = 0, spread = 0] = lengths;
+    const out = [blur + spread - y, blur + spread + x, blur + spread + y, blur + spread - x];
+    out.forEach((v, i) => {
+      reach[i] = Math.max(reach[i] ?? 0, v);
+    });
+  }
+  return reach;
+}
+
+/** `inset(-12px -18px -24px round …)` → [haut, droite, bas, gauche] en px (NaN pour un pourcentage). */
+function insets(clip: string): number[] {
+  const inner = /^inset\((.*)\)$/.exec(clip.trim())?.[1] ?? '';
+  const [top = Number.NaN, right = top, bottom = top, left = right] = (inner.split(/\s+round\s+/)[0] ?? '')
+    .trim()
+    .split(/\s+/)
+    .map(px);
+  return [top, right, bottom, left];
+}
+
+/** Étapes (`0%`, `35%`, `100%`) d'un `@keyframes` de la feuille de l'onboarding, avec leurs déclarations. */
+function keyframes(name: string): Map<string, Map<string, string>> {
+  const css = readFileSync(ONBOARDING_CSS, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = css.indexOf(`@keyframes ${name} {`);
+  if (at < 0) throw new Error(`@keyframes ${name} absent`);
+  const open = css.indexOf('{', at);
+  let close = open;
+  for (let depth = 0; close < css.length; close++) {
+    if (css[close] === '{') depth++;
+    else if (css[close] === '}' && --depth === 0) break;
+  }
+  return new Map(parseCssBlocks(css.slice(open + 1, close)).map((b) => [b.selector, b.declarations]));
+}
+
 describe('mouvement de la célébration (onboarding.module.css)', () => {
+  it('ordre du prototype : la fenêtre, le rang, les 3 quêtes une à une, le mot du coach, puis « Commencer »', () => {
+    const all = blocks();
+    /** Départ d'une animation : son `animation-delay`, sinon le second temps de son `animation`. */
+    const start = (selector: string) => {
+      const d = declarations(all, selector);
+      const delay = d.get('animation-delay');
+      return delay ? (times(delay)[0] ?? 0) : (times(d.get('animation') ?? '')[1] ?? 0);
+    };
+    const order = [
+      '.celebration',
+      '.rank',
+      '.questCheck',
+      '.questList > :nth-child(2) .questCheck',
+      '.questList > :nth-child(3) .questCheck',
+      '.coachLine',
+      '.revealActions',
+    ];
+    const starts = order.map(start);
+    for (let i = 1; i < order.length; i++) {
+      expect(starts[i], `${order[i]} part après ${order[i - 1]}`).toBeGreaterThan(starts[i - 1] ?? 0);
+    }
+  });
+
+  it('la fenêtre s’ouvre sans rogner l’ombre du panneau (clair, Carnet) : rien ne surgit à la fin', () => {
+    const shadows = parseCssBlocks(readFileSync(VOICE_CSS, 'utf8'))
+      .filter((b) => selectorList(b.selector).some((s) => s.endsWith('.panel')))
+      .map((b) => b.declarations.get('box-shadow'))
+      .filter((s): s is string => s !== undefined && s !== 'none');
+    // L'ombre douce du clair et l'ombre d'encre du Carnet.
+    expect(shadows).toHaveLength(2);
+    const reach = shadows.map(shadowReach).reduce((a, b) => a.map((v, i) => Math.max(v, b[i] ?? 0)));
+    const steps = keyframes('window-open');
+    // Fenêtre ouverte : le découpage passe autour de l'ombre, de chaque côté.
+    const open = insets(steps.get('100%')?.get('clip-path') ?? '');
+    ['haut', 'droite', 'bas', 'gauche'].forEach((side, i) => {
+      expect(-(open[i] ?? Number.NaN), `ouverte, ${side}`).toBeGreaterThanOrEqual(reach[i] ?? 0);
+    });
+    // Ligne déjà pleine largeur (35 %) : les côtés de l'ombre y sont aussi.
+    const line = insets(steps.get('35%')?.get('clip-path') ?? '');
+    expect(-(line[1] ?? Number.NaN), 'ligne, droite').toBeGreaterThanOrEqual(reach[1] ?? 0);
+    expect(-(line[3] ?? Number.NaN), 'ligne, gauche').toBeGreaterThanOrEqual(reach[3] ?? 0);
+  });
+
   it('600 à 1 200 ms sur la courbe unique, finie à 1 200 ms', () => {
     const all = blocks();
     const durations = new Map<string, number>();
