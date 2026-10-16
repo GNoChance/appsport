@@ -1,31 +1,45 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MUSCLE_GROUPS_LABELS, ProgressionPage } from '../../src/features/progression/ProgressionPage';
-import { type CssBlock, parseCssBlocks } from '../support/css-blocks';
+import { type CssBlock, declarationsOf, parseCssBlocks } from '../support/css-blocks';
 import { renderApp, renderWithServices } from '../support/render';
 
 // Onglet Progression en avant-goût (spec refonte §9, maquettes ProgressionSombre / ProgressionClair) : rang
 // global E et barre d'XP à 0, compteurs à 0, les 9 groupes musculaires au rang E, la fenêtre du Système.
 // Aucune fausse donnée : le calcul réel arrive avec la brique 3.
+// CountUp sous mouvement réduit n'est pas testé ici : tous ces compteurs valent 0, le test ne pourrait pas
+// échouer. La vraie vérification est celle du rythme de l'accueil (à 3), dans test/home/home.test.tsx.
 
 const REDUCE = '(prefers-reduced-motion: reduce)';
 const PROGRESSION_CSS = resolve(import.meta.dirname, '../../src/features/progression/progression.module.css');
+const MOTION_CSS = resolve(import.meta.dirname, '../../src/ui/motion.css');
 const SYSTEM_TEXT = 'Aucune séance gravée. Ta première séance débloque tes rangs.';
+/** Fourchettes de durée de la spec refonte §7, en ms : retour d'un geste, changement d'écran, célébration. */
+const GESTURE_MS = [150, 250] as const;
+const SCREEN_MS = [300, 450] as const;
+const CELEBRATION_MS = [600, 1200] as const;
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+/**
+ * Durée d'une animation en raccourci, en ms : son premier temps (`800ms`, `.25s`, ou un jeton `var(--dur-…)`
+ * lu dans motion.css) ; NaN s'il n'y en a pas.
+ */
+function durationMs(animation: string): number {
+  const root = declarationsOf(parseCssBlocks(readFileSync(MOTION_CSS, 'utf8')), ':root');
+  const time = animation
+    .split(/\s+/)
+    .map((part) => root?.get(/^var\((--[\w-]+)\)$/.exec(part)?.[1] ?? '') ?? part)
+    .find((part) => /^\d*\.?\d+m?s$/.test(part));
+  if (time === undefined) return Number.NaN;
+  return time.endsWith('ms') ? Number.parseFloat(time) : Number.parseFloat(time) * 1000;
+}
 
-/** Téléphone réglé en mouvement réduit : seule cette media query répond vrai. */
-function reducedMotion() {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query === REDUCE,
-    media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  }));
+/** La durée tombe dans la fourchette `[min, max]` de la spec. */
+function expectWithin(animation: string, [min, max]: readonly [number, number], label: string) {
+  const ms = durationMs(animation);
+  expect(ms, `${label} : ${animation}`).toBeGreaterThanOrEqual(min);
+  expect(ms, `${label} : ${animation}`).toBeLessThanOrEqual(max);
 }
 
 /** Texte lu par un lecteur d'écran : ce qui est caché (`aria-hidden`) en moins, espaces resserrés. */
@@ -59,10 +73,18 @@ describe('Progression en avant-goût (spec refonte §9)', () => {
 
   it('barre d’XP vide : aucun remplissage inventé, juste un reflet décoratif', async () => {
     const { container } = await open();
-    const bar = container.querySelector('[data-xp]');
+    const bar = container.querySelector('[data-xp]') as HTMLElement | null;
     expect(bar).not.toBeNull();
     expect(bar?.getAttribute('aria-hidden')).toBe('true');
     expect(bar?.getAttribute('data-xp')).toBe('0');
+    // Rien d'autre dans la piste que le reflet : ni enfant de remplissage, ni largeur posée en ligne.
+    expect(bar?.getAttribute('style')).toBeNull();
+    expect(bar?.children).toHaveLength(1);
+    const sweep = bar?.firstElementChild as HTMLElement;
+    expect(sweep.tagName).toBe('SPAN');
+    expect(sweep.getAttribute('style')).toBeNull();
+    expect(sweep.childNodes).toHaveLength(0);
+    expect(bar?.textContent).toBe('');
   });
 
   it('compteurs à 0 : séances, kg soulevés, semaines d’assiduité', async () => {
@@ -117,16 +139,6 @@ describe('Progression en avant-goût (spec refonte §9)', () => {
     expect(screen.getAllByRole('img').every((img) => img.getAttribute('aria-label') === 'Rang E')).toBe(true);
   });
 
-  it('mouvement réduit : les compteurs sont à leur valeur finale dès le premier rendu', async () => {
-    reducedMotion();
-    vi.stubGlobal('requestAnimationFrame', () => 1);
-    vi.stubGlobal('cancelAnimationFrame', () => {});
-    await open();
-    for (const label of ['séances', 'soulevés', "d'assiduité"]) {
-      expect(shownDigits(statOf(label)), label).toEqual(['0']);
-    }
-  });
-
   it('/progression dans l’appli : onglet « Progression » actif, contenu de l’avant-goût', async () => {
     await renderApp({ path: '/progression' });
     expect(await screen.findByRole('heading', { level: 1, name: 'Progression' })).toBeTruthy();
@@ -161,18 +173,50 @@ describe('feuille de la Progression (progression.module.css)', () => {
     }
   });
 
-  it('reflet de la barre d’XP et cascade des groupes : durées de la spec, courbe unique', () => {
-    const sweep = at('.xpSweep', null).find((b) => b.declarations.has('animation'));
-    expect(sweep?.declarations.get('animation')).toMatch(/var\(--ease\)/);
-    const muscle = at('.muscle', null).find((b) => b.declarations.has('animation'));
-    expect(muscle?.declarations.get('animation')).toMatch(/var\(--ease\)/);
+  it('barre d’XP : la feuille ne dessine aucun remplissage, le reflet repart hors de la piste', () => {
+    // Ni ::before ni ::after sur la piste : une largeur y dessinerait une progression jamais faite.
+    for (const block of blocks()) {
+      expect(block.selector).not.toMatch(/\.xpBar\b[^,]*::?(before|after)\b/i);
+    }
+    // Au repos, le reflet attend hors de la piste rognée…
+    expect(declarationsOf(blocks(), '.xpSweep')?.get('transform')).toBe('translateX(-100%)');
+    // … et il y retourne après son passage : aucun remplissage d'animation (forwards, both) ne le garde en place.
+    const sweepBlocks = blocks().filter((b) => /\.xpSweep\b/.test(b.selector));
+    expect(sweepBlocks.length).toBeGreaterThan(0);
+    for (const block of sweepBlocks) {
+      const animation = (block.declarations.get('animation') ?? '').split(/[\s,]+/);
+      const fillMode = (block.declarations.get('animation-fill-mode') ?? '').split(/[\s,]+/);
+      for (const fill of ['forwards', 'both']) {
+        expect(animation, `${block.selector} { animation }`).not.toContain(fill);
+        expect(fillMode, `${block.selector} { animation-fill-mode }`).not.toContain(fill);
+      }
+    }
   });
 
-  it('mouvement réduit : ni balayage, ni cascade des groupes (un fondu court, sans retard)', () => {
+  it('rang global, reflet de la barre d’XP et cascade des groupes : durées de la spec, courbe unique', () => {
+    const animationOf = (selector: string) =>
+      at(selector, null)
+        .find((b) => b.declarations.has('animation'))
+        ?.declarations.get('animation') ?? '';
+    for (const selector of ['.heroBadge', '.xpSweep', '.muscle']) {
+      expect(animationOf(selector), selector).toMatch(/var\(--ease\)/);
+    }
+    // Le rang E grandit avec l'entrée de l'écran : durée d'un changement d'écran.
+    expectWithin(animationOf('.heroBadge'), SCREEN_MS, '.heroBadge');
+    // Le reflet traverse la barre une fois (800 ms au prototype) : durée d'une célébration.
+    expectWithin(animationOf('.xpSweep'), CELEBRATION_MS, '.xpSweep');
+    // Chaque groupe surgit d'un petit ressort (250 ms au prototype) : durée d'un retour de geste.
+    expectWithin(animationOf('.muscle'), GESTURE_MS, '.muscle');
+  });
+
+  it('mouvement réduit : ni balayage, ni croissance du rang, ni cascade des groupes (un fondu court, sans retard)', () => {
     const sweep = new Map(at('.xpSweep', REDUCE).flatMap((b) => [...b.declarations]));
     expect(sweep.get('animation')).toBe('none');
-    const muscle = new Map(at('.muscle', REDUCE).flatMap((b) => [...b.declarations]));
-    expect(muscle.get('animation-name')).toBe('fade');
-    expect(muscle.get('animation-delay')).toBe('0ms');
+    for (const selector of ['.heroBadge', '.muscle']) {
+      const reduced = new Map(at(selector, REDUCE).flatMap((b) => [...b.declarations]));
+      expect(reduced.get('animation-name'), selector).toBe('fade');
+      expect(reduced.get('animation-duration'), selector).toBe('var(--dur-fast)');
+      expect(reduced.get('animation-delay'), selector).toBe('0ms');
+    }
   });
 });

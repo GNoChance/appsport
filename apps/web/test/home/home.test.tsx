@@ -314,4 +314,21 @@ describe('feuille de l’accueil (home.module.css)', () => {
       expect(Number.parseFloat(minHeight), `${selector} min-height`).toBeGreaterThanOrEqual(44);
     }
   });
+
+  it('mouvement réduit : tuile et ligne pressées ne bougent pas (ni échelle, ni transition)', () => {
+    const blocks = parseCssBlocks(css());
+    /** Déclarations sous mouvement réduit des règles qui listent ce sélecteur, fusionnées dans l'ordre. */
+    const reduced = (selector: string) =>
+      blocks
+        .filter((b) => b.media === REDUCE && b.selector.split(', ').includes(selector))
+        .flatMap((b) => [...b.declarations]);
+    for (const selector of ['.tile', '.row']) {
+      // L'échelle est annulée par la règle :active elle-même : sans :active, elle ne l'emporte pas sur scale(.98).
+      const active = new Map(reduced(`${selector}:active`));
+      expect(active.get('transform'), `${selector}:active { transform }`).toBe('none');
+      // Ce qui s'applique à la carte pressée : sa règle, puis celle de :active ; aucune transition.
+      const pressed = new Map([...reduced(selector), ...active]);
+      expect(pressed.get('transition'), `${selector}:active { transition }`).toBe('none');
+    }
+  });
 });
