@@ -5,35 +5,45 @@ import { createAccountViaUi } from './support/flows';
 import { emulateStandalone } from './support/pwa';
 import { bootstrapAdmin } from './support/server';
 
-// WCAG 2.2 2.4.11 (focus jamais caché), spec refonte §12 : la barre « Retour » / « Continuer » de l'onboarding
-// reste collée en bas de l'écran (maquettes B01–B08) ; un champ atteint au clavier défile au-dessus d'elle
-// (scroll-padding-bottom, onboarding.module.css), jamais dessous. La tabulation de WebKit ne passe que par les
-// champs de saisie : la création d'une salle (nom, puis ville) s'y prête.
+// WCAG 2.2 2.4.11 (focus jamais caché) et 1.4.10, spec refonte §12 : la barre « Retour » / « Continuer » de
+// l'onboarding reste collée en bas de l'écran (maquettes B01–B08), sauf sur un écran bas (téléphone couché,
+// clavier ouvert, zoom à 400 %) : là elle reprend sa place à la fin de l'écran (onboarding.module.css,
+// max-height: 30rem) et ne peut plus rien recouvrir. Un champ atteint au clavier finit alors à l'écran, à
+// découvert (WebKit ne défile que jusqu'à la ligne de saisie : le bas du cadre peut rester sous le bord).
+// La tabulation de WebKit ne passe que par les champs de saisie : la création d'une salle (nom, puis ville) s'y
+// prête. Barre collée (écran haut) : e2e/onboarding-bar.spec.ts, par Tab et par focus() ; sur cet écran, la
+// ville est trop haut dans la page pour passer sous une barre collée.
 
-/** Écran bas (téléphone couché, clavier ouvert) : la ville peut passer sous la barre sans sortir de l'écran. */
+/** Écran bas (téléphone couché, clavier ouvert), sous les 30 rem où la barre se décolle. */
 const SHORT_HEIGHT = 320;
 
 /** Fin des animations (entrée d'écran, cascade) : les boîtes sont à leur place. */
 const settle = (page: Page) =>
   page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
 
-/** Boîte du champ `fieldId` et haut de la barre collée (l'ancêtre sticky de « Retour »), en px de la fenêtre. */
+/**
+ * Boîte du champ `fieldId` en px de la fenêtre, si un ancêtre de « Retour » est collé ou fixé (la barre), et si
+ * le centre du champ est à découvert (rien posé dessus).
+ */
 const boxes = (page: Page, fieldId: string) =>
   page.evaluate((id) => {
     const back = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Retour');
-    let bar = back?.parentElement ?? null;
-    while (bar && getComputedStyle(bar).position !== 'sticky') bar = bar.parentElement;
-    const field = document.getElementById(id)?.getBoundingClientRect();
-    const barBox = bar?.getBoundingClientRect();
+    let pinned = false;
+    for (let el = back?.parentElement ?? null; el; el = el.parentElement) {
+      if (['sticky', 'fixed'].includes(getComputedStyle(el).position)) pinned = true;
+    }
+    const field = document.getElementById(id);
+    const box = field?.getBoundingClientRect();
+    const hit = box ? document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) : null;
     return {
-      sticky: bar !== null,
-      top: Math.round(field?.top ?? Number.NaN),
-      bottom: Math.round(field?.bottom ?? Number.NaN),
-      barTop: Math.round(barBox?.top ?? Number.NaN),
+      pinned,
+      uncovered: hit !== null && field?.contains(hit) === true,
+      top: Math.round(box?.top ?? Number.NaN),
+      centre: Math.round(box ? box.top + box.height / 2 : Number.NaN),
     };
   }, fieldId);
 
-test('onboarding : le champ atteint par Tab finit au-dessus de la barre collée en bas (WCAG 2.4.11)', async ({
+test('onboarding, écran bas : la barre ne colle plus, le champ atteint par Tab finit à l’écran, à découvert (WCAG 2.4.11)', async ({
   server,
   context,
   page,
@@ -67,38 +77,20 @@ test('onboarding : le champ atteint par Tab finit au-dessus de la barre collée 
     await expect(page.getByLabel('Ville', { exact: true })).toBeVisible();
   });
 
-  await test.step('Tab du nom vers la ville posée sous la barre : la ville finit au-dessus', async () => {
+  await test.step('Tab du nom vers la ville, sous le bas de l’écran : la ville finit à l’écran, à découvert', async () => {
     const width = page.viewportSize()?.width ?? 390;
     await page.setViewportSize({ width, height: SHORT_HEIGHT });
     await settle(page);
     const nameId = await page.getByLabel('Nom de la salle', { exact: true }).evaluate((el) => el.id);
     const cityId = await page.getByLabel('Ville', { exact: true }).evaluate((el) => el.id);
-    // Centre de la ville sur le centre de la barre : entièrement dessous, mais dans la fenêtre ; focus sur le
-    // nom sans défiler.
-    const placed = await page.evaluate(
-      ({ fromId, toId }) => {
-        const back = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Retour');
-        let bar = back?.parentElement ?? null;
-        while (bar && getComputedStyle(bar).position !== 'sticky') bar = bar.parentElement;
-        const from = document.getElementById(fromId);
-        const to = document.getElementById(toId);
-        if (!bar || !from || !to) return false;
-        const b = bar.getBoundingClientRect();
-        const r = to.getBoundingClientRect();
-        const scroll = window.scrollY + r.top + r.height / 2 - (b.top + b.height / 2);
-        const max = document.documentElement.scrollHeight - window.innerHeight;
-        if (scroll < 0 || scroll > max) return false;
-        window.scrollTo(0, scroll);
-        from.focus({ preventScroll: true });
-        return true;
-      },
-      { fromId: nameId, toId: cityId },
-    );
-    expect(placed, 'la ville peut passer sous la barre').toBe(true);
+    // Haut de la page, focus sur le nom sans défiler : la ville est sous le bas de la fenêtre.
+    await page.evaluate((id) => {
+      window.scrollTo(0, 0);
+      document.getElementById(id)?.focus({ preventScroll: true });
+    }, nameId);
     const before = await boxes(page, cityId);
-    expect(before.sticky, 'barre collée trouvée').toBe(true);
-    expect(before.bottom, 'avant : la ville est sous la barre').toBeGreaterThan(before.barTop);
-    expect(before.top, 'avant : la ville est dans la fenêtre').toBeLessThan(SHORT_HEIGHT);
+    expect(before.pinned, 'écran bas : la barre n’est plus collée').toBe(false);
+    expect(before.top, 'avant : la ville est sous le bas de la fenêtre').toBeGreaterThanOrEqual(SHORT_HEIGHT);
 
     await page.keyboard.press('Tab');
     await expect(page.getByLabel('Ville', { exact: true })).toBeFocused();
@@ -106,10 +98,11 @@ test('onboarding : le champ atteint par Tab finit au-dessus de la barre collée 
       .poll(
         async () => {
           const after = await boxes(page, cityId);
-          return after.bottom <= after.barTop;
+          return after.top >= 0 && after.centre < SHORT_HEIGHT && after.uncovered;
         },
-        { message: 'bas de la ville ≤ haut de la barre' },
+        { message: 'la ville est dans la fenêtre (haut et centre) et rien ne recouvre son centre' },
       )
       .toBe(true);
+    expect((await boxes(page, cityId)).pinned, 'la barre reste décollée').toBe(false);
   });
 });

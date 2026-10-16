@@ -318,10 +318,15 @@ describe('OnboardingFlow (R-ONB-1, R-ONB-2)', () => {
     expect(sticky?.get('position')).toBe('sticky');
     expect(sticky?.get('bottom')).toBe('0');
     // Un champ qui prend le focus défile au-dessus de la barre, jamais dessous (WCAG 2.4.11) : la marge de
-    // défilement couvre au moins la barre (16 px, bouton de 52 px, 16 px : 5,25rem) et la zone de geste.
-    // Dans le navigateur : e2e/onboarding-focus.spec.ts.
-    const padding = declarationsOf(css, ':global(html):has(.flow)')?.get('scroll-padding-bottom') ?? '';
-    const reserved = /^calc\((\d+(?:\.\d+)?)rem \+ env\(safe-area-inset-bottom, 0px\)\)$/.exec(padding);
+    // défilement est la hauteur mesurée de la barre (--onb-bar, test suivant) plus l'anneau de focus ; avant la
+    // mesure, sa valeur de repli couvre au moins la barre (16 px, bouton de 52 px, 16 px : 5,25rem) et la zone
+    // de geste. Dans le navigateur : e2e/onboarding-bar.spec.ts (barre collée) et e2e/onboarding-focus.spec.ts
+    // (écran bas, barre décollée).
+    const padding = declarationsOf(css, PAGE_PADDING)?.get('scroll-padding-bottom') ?? '';
+    const reserved =
+      /^calc\(var\(--onb-bar, (\d+(?:\.\d+)?)rem \+ env\(safe-area-inset-bottom, 0px\)\) \+ var\(--space-2\)\)$/.exec(
+        padding,
+      );
     expect(reserved, `scroll-padding-bottom: ${padding}`).not.toBeNull();
     expect(Number(reserved?.[1])).toBeGreaterThanOrEqual(5.25);
   });
