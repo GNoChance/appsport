@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { coachLine } from '../../src/features/coach/coach-lines';
 import type { AppDb } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
+import { reposFor } from '../../src/repos';
 import { settle } from '../support/auth';
 import { parseCssBlocks } from '../support/css-blocks';
 import { createTestLocalDb } from '../support/local-db';
@@ -69,7 +70,20 @@ async function openHome(o: HomeOptions = {}) {
   await seedHome(db, o, now);
   const rendered = await renderApp({ db, now, me: makeMe(o.me) });
   await screen.findByRole('heading', { level: 1 });
+  // La pile des cartes n'entre qu'une fois les lectures locales faites (profil, lieux, voyant).
+  await until(() => cardStack() !== null);
   return rendered;
+}
+
+/** Pile des cartes de l'accueil, en cascade (classe globale `.stagger`). */
+const cardStack = () => document.querySelector('.stagger');
+
+/** Lecture retenue jusqu'à `gate`, puis faite pour de bon. */
+function heldUntil<T>(gate: Promise<void>, read: () => Promise<T>): () => Promise<T> {
+  return async () => {
+    await gate;
+    return read();
+  };
 }
 
 const heading = () => screen.getByRole('heading', { level: 1 }).textContent;
@@ -264,6 +278,62 @@ describe('tuiles et ligne objectif · niveau', () => {
       expect(previous.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
   });
+});
+
+describe('entrée des cartes en cascade, une fois les lectures locales faites', () => {
+  // Spec refonte §7 (« les cartes entrent en cascade ») et §10.2 (vrais états) : tant que le profil, les lieux
+  // ou le voyant n'ont pas répondu, la pile n'est pas rendue ; elle entre ensuite d'un bloc, dans l'ordre de la
+  // cascade, quêtes déjà à leurs vrais états. Sinon la fenêtre entrerait seule à 0/3, la bulle s'insérerait
+  // devant elle (et décalerait son retard de cascade), et le voyant surgirait hors de la cascade.
+  it.each(['profil', 'lieux', 'voyant'] as const)(
+    '%s pas encore lu : ni bulle, ni fenêtre, ni tuile, ni voyant ; puis tout entre ensemble',
+    async (pending) => {
+      const db = createTestLocalDb();
+      await seedHome(db, {}, DEFAULT_NOW);
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const { services } = await renderApp({ db, me: makeMe() });
+      // L'accueil n'est pas encore monté (la garde attend sa lecture de `meta.me`) : la lecture retenue est la
+      // sienne. Si elle lui échappait, la pile paraîtrait avant `release` et le test échouerait.
+      const repos = reposFor(services);
+      const readProfile = repos.profile.get;
+      const readPlaces = repos.places.list;
+      const readSw = services.swStatus;
+      const held = {
+        profil: () => vi.spyOn(repos.profile, 'get').mockImplementation(heldUntil(gate, readProfile)),
+        lieux: () => vi.spyOn(repos.places, 'list').mockImplementation(heldUntil(gate, readPlaces)),
+        voyant: () => vi.spyOn(services, 'swStatus').mockImplementation(heldUntil(gate, readSw)),
+      }[pending]();
+      await screen.findByRole('heading', { level: 1, name: 'Bonjour, lea' });
+      await until(() => held.mock.calls.length > 0);
+      await settle();
+
+      expect(cardStack()).toBeNull();
+      expect(document.querySelector('[data-mode]')).toBeNull();
+      expect(screen.queryByText('SYSTÈME')).toBeNull();
+      expect(screen.queryByText("Quêtes d'éveil")).toBeNull();
+      expect(screen.queryByRole('link', { name: /^Lieu principal/ })).toBeNull();
+      expect(screen.queryByTestId('offline-ready')).toBeNull();
+
+      release();
+      await until(() => cardStack() !== null);
+      // Même rendu : la bulle d'abord, puis la fenêtre déjà à 3/3, les tuiles, la ligne, et le voyant en dernier,
+      // tous enfants de la cascade (chacun son retard, 60 ms après le précédent).
+      const stack = cardStack() as Element;
+      const children = [...stack.children];
+      expect(children).toHaveLength(5);
+      expect(children[0]?.getAttribute('data-mode')).toBe('training');
+      expect(children[0]?.textContent).toContain("Aujourd'hui");
+      expect(children[1]).toBe(questsWindow());
+      expect(within(questsWindow()).getByText('3/3')).toBeTruthy();
+      expect(QUESTS.every(isDone)).toBe(true);
+      expect(children[2]?.querySelector('a[href="/places/p-1"]')).not.toBeNull();
+      expect(children[3]?.getAttribute('href')).toBe('/profile');
+      expect(children[4]?.querySelector('[data-testid="offline-ready"]')).not.toBeNull();
+    },
+  );
 });
 
 describe('bandeaux existants, mêmes conditions et mêmes textes', () => {

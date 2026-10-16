@@ -88,7 +88,8 @@ function Chevron() {
  * Accueil (spec refonte §10.2, maquettes MixSombre / MixClair, prototype « Accueil ») : salutation selon l'heure
  * de Paris, bandeaux du compte, bulle du coach « Aujourd'hui » avec sa ligne du jour, fenêtre du Système
  * « Éveil terminé. » et ses quêtes d'éveil aux vrais états, tuiles lieu principal et rythme, ligne objectif et
- * niveau, puis le voyant « Prêt hors ligne » (R-SYN-33). Les cartes entrent en cascade.
+ * niveau, puis le voyant « Prêt hors ligne » (R-SYN-33). Les cartes, voyant compris, entrent en cascade, d'un
+ * bloc, une fois le profil, les lieux et le voyant lus : jamais une fenêtre à 0/3 qu'une bulle viendrait pousser.
  *
  * Aucune fausse donnée : une valeur pas encore connue (profil pas encore reçu sur ce nouvel appareil) n'affiche
  * ni bulle, ni tuile, ni ligne ; une quête n'est cochée que quand son état réel l'est. Le voyant et la quête
@@ -121,6 +122,8 @@ export function HomePage() {
   const days = profile?.daysPerWeek ?? null;
   const goal = profile?.goal ?? null;
   const experience = profile?.experience ?? null;
+  // Lectures locales faites (profil, même absent, lieux, voyant) : la pile entre alors d'un bloc, en cascade.
+  const readsDone = profile !== undefined && places !== undefined && loaded;
 
   return (
     <Page title={greeting(now, me.username)}>
@@ -135,60 +138,62 @@ export function HomePage() {
           </Button>
         </Banner>
       ) : null}
-      <div className={`${styles.cards} stagger`}>
-        {coach ? (
-          <CoachBubble coach={coach} label="Aujourd'hui">
-            <p>{coachLine(coach, 'daily', new Date(now), me.username, days)}</p>
-          </CoachBubble>
-        ) : null}
-        <SystemPanel title="Éveil terminé.">
-          <div className={styles.awakening}>
-            <p>Tes programmes et tes séances arriveront ici.</p>
-            <AwakeningQuests quests={quests} />
+      {readsDone ? (
+        <div className={`${styles.cards} stagger`}>
+          {coach ? (
+            <CoachBubble coach={coach} label="Aujourd'hui">
+              <p>{coachLine(coach, 'daily', new Date(now), me.username, days)}</p>
+            </CoachBubble>
+          ) : null}
+          <SystemPanel title="Éveil terminé.">
+            <div className={styles.awakening}>
+              <p>Tes programmes et tes séances arriveront ici.</p>
+              <AwakeningQuests quests={quests} />
+            </div>
+          </SystemPanel>
+          {primary || days !== null ? (
+            <div className={styles.tiles}>
+              {primary ? (
+                <Link href={`/places/${primary.id}`} className={styles.tile}>
+                  <PlaceIcon />
+                  <span className={styles.tileKey}>Lieu principal</span>{' '}
+                  <span className={styles.tileValue}>{primary.name}</span>
+                </Link>
+              ) : null}
+              {days !== null ? (
+                <Link href="/profile" className={styles.tile}>
+                  <CalendarIcon />
+                  <span className={styles.tileKey}>Rythme</span>{' '}
+                  <span className={styles.tileNumber}>
+                    <CountUp to={days} />
+                    <small aria-hidden="true">{` ${plural(days, 'séance', 'séances')} / sem.`}</small>
+                    <span
+                      className={styles.srOnly}
+                    >{` ${plural(days, 'séance', 'séances')} par semaine`}</span>
+                  </span>
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+          {goal && experience ? (
+            <Link href="/profile" className={styles.row}>
+              <span className={styles.rowText}>
+                <span className={styles.tileKey}>Objectif · niveau</span>{' '}
+                <span
+                  className={styles.rowValue}
+                >{`${GOAL_LABELS[goal]} · ${EXPERIENCE_LABELS[experience]}`}</span>
+              </span>
+              <Chevron />
+            </Link>
+          ) : null}
+          <div className={styles.readiness}>
+            <OfflineReadyIndicator readiness={readiness} />
+            {readiness.ready ? null : (
+              <Button variant="secondary" block onClick={onRetry} disabled={retrying}>
+                Réessayer
+              </Button>
+            )}
           </div>
-        </SystemPanel>
-        {primary || days !== null ? (
-          <div className={styles.tiles}>
-            {primary ? (
-              <Link href={`/places/${primary.id}`} className={styles.tile}>
-                <PlaceIcon />
-                <span className={styles.tileKey}>Lieu principal</span>{' '}
-                <span className={styles.tileValue}>{primary.name}</span>
-              </Link>
-            ) : null}
-            {days !== null ? (
-              <Link href="/profile" className={styles.tile}>
-                <CalendarIcon />
-                <span className={styles.tileKey}>Rythme</span>{' '}
-                <span className={styles.tileNumber}>
-                  <CountUp to={days} />
-                  <small aria-hidden="true">{` ${plural(days, 'séance', 'séances')} / sem.`}</small>
-                  <span className={styles.srOnly}>{` ${plural(days, 'séance', 'séances')} par semaine`}</span>
-                </span>
-              </Link>
-            ) : null}
-          </div>
-        ) : null}
-        {goal && experience ? (
-          <Link href="/profile" className={styles.row}>
-            <span className={styles.rowText}>
-              <span className={styles.tileKey}>Objectif · niveau</span>{' '}
-              <span
-                className={styles.rowValue}
-              >{`${GOAL_LABELS[goal]} · ${EXPERIENCE_LABELS[experience]}`}</span>
-            </span>
-            <Chevron />
-          </Link>
-        ) : null}
-      </div>
-      {loaded ? (
-        <div className={styles.readiness}>
-          <OfflineReadyIndicator readiness={readiness} />
-          {readiness.ready ? null : (
-            <Button variant="secondary" block onClick={onRetry} disabled={retrying}>
-              Réessayer
-            </Button>
-          )}
         </div>
       ) : null}
     </Page>
