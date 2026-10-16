@@ -80,7 +80,8 @@ export function InstallSteps(p: { guides: readonly InstallGuide[]; headingLevel:
             </Glyph>
             {guide.title}
           </Heading>
-          <ol className={styles.steps}>
+          {/* biome-ignore lint/a11y/noRedundantRoles: sans puces, Safari ôte la sémantique de liste (VoiceOver ne dirait ni le nombre d'étapes ni la position) ; le rôle explicite la garde */}
+          <ol role="list" className={styles.steps}>
             {guide.steps.map((step, index) => (
               <li key={step.text} className={styles.step}>
                 <span aria-hidden="true" className={styles.stepNumber}>

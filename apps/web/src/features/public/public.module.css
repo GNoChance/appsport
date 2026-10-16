@@ -248,12 +248,41 @@
 
 /* ---------- Page introuvable (A06) ---------- */
 
+/* Marque en tête, comme l'en-tête de l'accueil : en clair, cadre du logo à l'accent et rune à l'encre (GUIDE). */
+.notFoundHeader {
+  display: flex;
+  align-items: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  color: var(--text);
+  font-size: 1.0625rem;
+  text-decoration: none;
+  --rune-mark-frame: var(--accent);
+}
+
 .notFound {
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 20px;
   min-height: 60vh;
+}
+
+/*
+ * Région « Hors ligne », toujours dans la page (voir NotFound) : hors de la cascade, c'est l'encadré qui entre
+ * quand il y paraît. Vide, elle rend l'écart de 20 px (gap de .notFound) qui la précède : la 404 ne bouge pas.
+ */
+:global(.stagger) > .offlineSlot {
+  animation: none;
+}
+
+.offlineSlot:empty {
+  margin-top: -20px;
 }
 
 .emblem {

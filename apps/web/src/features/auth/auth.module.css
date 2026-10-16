@@ -314,7 +314,10 @@
   line-height: 1.45;
 }
 
-/* Numéro de l'étape dans un rond teinté d'accent ; le texte de l'accent y garde 4,5:1 (teinte à 12 %). */
+/*
+ * Numéro de l'étape dans un rond teinté d'accent (13 px gras : texte courant). Teinte à 10 %, opaque, celle de la
+ * maquette A05 : l'accent y garde 4,5:1 dans les 5 thèmes (4,6:1 en clair ; à 12 %, 4,48:1).
+ */
 .stepNumber {
   flex: none;
   display: grid;
@@ -322,14 +325,14 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   color: var(--accent);
   font-family: var(--font-display);
   font-size: 0.8125rem;
   font-weight: 700;
 }
 
-/* Pastille du bouton à toucher, dans la ligne du texte. */
+/* Pastille du bouton à toucher, dans la ligne du texte : la teinte du numéro de l'étape. */
 .stepIcon {
   display: inline-flex;
   align-items: center;
@@ -337,6 +340,6 @@
   padding: 0 6px;
   vertical-align: -4px;
   border-radius: 7px;
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   color: var(--accent);
 }

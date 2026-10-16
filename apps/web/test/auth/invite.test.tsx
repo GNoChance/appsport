@@ -498,7 +498,7 @@ describe('création du compte : contrôles locaux et erreurs du serveur (R-CPT-1
     expect(callsTo(api, ACCEPT)).toHaveLength(0);
   });
 
-  it('erreur corrigée : le champ redevient valide, le compte est créé', async () => {
+  it('erreur corrigée : le compte est créé', async () => {
     const { api, location } = await renderForm();
     api.on('POST', ACCEPT, reply(makeMe({ id: 'u-9', username: 'lea', onboardingCompletedAt: null })));
     submitWith('lea', 'a1b2c3d4e5f');

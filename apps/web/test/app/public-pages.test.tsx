@@ -1,8 +1,17 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildPrivacySections } from '../../src/features/public/privacy-content';
+import { declarationsOf, parseCssBlocks } from '../support/css-blocks';
 import { createFakeApi, createFakeSyncEngine } from '../support/fake-api';
 import { makeMe, renderApp } from '../support/render';
+
+/** Feuille des pages publiques, lue à plat. */
+const publicCss = () =>
+  parseCssBlocks(
+    readFileSync(resolve(import.meta.dirname, '../../src/features/public/public.module.css'), 'utf8'),
+  );
 
 const privacyText = (owner: string | undefined) =>
   buildPrivacySections(owner)
@@ -186,6 +195,20 @@ describe('Aide (maquette A05, spec refonte §10.6)', () => {
     ]);
   });
 
+  // Safari ôte la sémantique de liste d'une liste sans puces (list-style: none) : VoiceOver lirait des lignes
+  // sans « liste, 3 éléments » ni position. Le rôle explicite la rend.
+  it('étapes et numéros utiles : rôle « list » explicite, gardé par VoiceOver malgré les puces ôtées', async () => {
+    await renderApp({ path: '/help', me: null });
+    const install = await screen.findByRole('region', { name: 'Installer Rune' });
+    const useful = screen.getByRole('region', { name: 'Numéros utiles' });
+    const lists = [...within(install).getAllByRole('list'), ...within(useful).getAllByRole('list')];
+    expect(lists.map((l) => [l.tagName, l.getAttribute('role')])).toEqual([
+      ['OL', 'list'],
+      ['OL', 'list'],
+      ['UL', 'list'],
+    ]);
+  });
+
   it('numéros utiles : sans le 15 / 112 déjà en tête, un appel et une source (nouvel onglet) par numéro', async () => {
     await renderApp({ path: '/help', me: null });
     const useful = await screen.findByRole('region', { name: 'Numéros utiles' });
@@ -311,4 +334,81 @@ describe('404 (maquette A06, spec refonte §10.7)', () => {
       expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
     },
   );
+
+  // Une région live créée avec son texte n'est souvent pas lue (NVDA, JAWS, VoiceOver) : elle est là, vide,
+  // avant la coupure, et c'est son contenu qui change.
+  it('région « Hors ligne » déjà là, vide, avant la coupure : le texte qui s’y ajoute est annoncé', async () => {
+    const sync = createFakeSyncEngine({ connection: 'online' });
+    await renderApp({ path: '/nulle-part', sync });
+    await screen.findByRole('group', { name: 'Page introuvable' });
+    const region = within(screen.getByRole('main')).getByRole('status');
+    expect(region.textContent).toBe('');
+    act(() => sync.set({ connection: 'offline' }));
+    expect(within(screen.getByRole('main')).getByRole('status')).toBe(region);
+    expect(region.textContent).toContain('Hors ligne');
+    expect(region.textContent).toContain(OFFLINE_TEXT);
+    act(() => sync.set({ connection: 'online' }));
+    expect(region.isConnected).toBe(true);
+    expect(region.textContent).toBe('');
+  });
+
+  it('région vide : elle rend l’écart qui la précède, la 404 reste centrée comme sans elle', () => {
+    const css = publicCss();
+    const gap = declarationsOf(css, '.notFound')?.get('gap');
+    expect(gap).toMatch(/^\d+px$/);
+    expect(declarationsOf(css, '.offlineSlot:empty')?.get('margin-top')).toBe(`-${gap}`);
+  });
+});
+
+describe('404 : marque en tête (maquette A06, spec refonte §10)', () => {
+  const DESKTOP = '(min-width: 900px)';
+  const media = (...matching: string[]) =>
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: matching.includes(query),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('téléphone : logo et RUNE vers l’accueil, nommés « Rune », avant l’emblème et la fenêtre du Système', async () => {
+    media();
+    await renderApp({ path: '/nulle-part' });
+    const panel = await screen.findByRole('group', { name: 'Page introuvable' });
+    const brand = screen.getByRole('link', { name: 'Rune' });
+    expect(brand.getAttribute('href')).toBe('/');
+    // Le logo est décoratif : le nom du lien suffit, lu une fois.
+    expect(brand.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(brand.textContent).toBe('RUNE');
+    expect(brand.compareDocumentPosition(panel)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // En clair, le logo mono (cadre à l'accent) : sans dégradé ni lueur.
+    expect(brand.querySelector('linearGradient')).toBeNull();
+  });
+
+  it('téléphone en sombre : le logo prend son dégradé et sa lueur, comme dans l’en-tête de l’accueil', async () => {
+    media('(prefers-color-scheme: dark)');
+    await renderApp({ path: '/nulle-part' });
+    await screen.findByRole('group', { name: 'Page introuvable' });
+    const brand = screen.getByRole('link', { name: 'Rune' });
+    expect(brand.querySelector('linearGradient')).not.toBeNull();
+    expect(brand.querySelector('filter')).not.toBeNull();
+  });
+
+  it('≥ 900 px : la marque une seule fois, dans la navigation latérale (un arrêt de tabulation)', async () => {
+    media(DESKTOP);
+    await renderApp({ path: '/nulle-part' });
+    await screen.findByRole('group', { name: 'Page introuvable' });
+    expect(screen.getAllByRole('link', { name: 'Rune' })).toHaveLength(1);
+    expect(within(screen.getByTestId('side-nav')).getByRole('link', { name: 'Rune' })).toBeTruthy();
+  });
+
+  it('même allure que la marque de l’en-tête de l’accueil (taille, écart, encre, cadre à l’accent, 44 px)', () => {
+    const shellCss = parseCssBlocks(
+      readFileSync(resolve(import.meta.dirname, '../../src/ui/shell.module.css'), 'utf8'),
+    );
+    expect(declarationsOf(publicCss(), '.brand')).toEqual(declarationsOf(shellCss, '.brand'));
+  });
 });

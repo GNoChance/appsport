@@ -96,7 +96,8 @@ function UsefulNumbers(p: { resources: readonly HelpResource[]; verifiedOn: stri
         <h2 id={id}>Numéros utiles</h2>
         {p.verifiedOn ? <p className={styles.muted}>Numéros vérifiés le {formatDate(p.verifiedOn)}</p> : null}
       </div>
-      <ul className={`${styles.card} ${styles.resources}`}>
+      {/* biome-ignore lint/a11y/noRedundantRoles: sans puces, Safari ôte la sémantique de liste (VoiceOver) ; le rôle explicite la garde */}
+      <ul role="list" className={`${styles.card} ${styles.resources}`}>
         {p.resources.map((r) => (
           <li key={r.id} className={styles.resource}>
             <span>{r.label}</span>

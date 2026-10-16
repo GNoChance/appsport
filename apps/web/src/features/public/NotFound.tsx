@@ -1,7 +1,10 @@
 import { useId } from 'react';
 import { Link } from 'wouter';
 import { useSyncState } from '../../app-services';
-import { SystemPanel } from '../../ui';
+import { SystemPanel, WIDE_QUERY } from '../../ui';
+import { RuneMark, RuneWordmark } from '../../ui/Logo';
+import { useColorScheme } from '../../ui/use-color-scheme';
+import { useMediaQuery } from '../../ui/use-media-query';
 import styles from './public.module.css';
 
 /** Cadre brisé du logo (docs/brand), sans la rune : le 404 s'y inscrit. */
@@ -89,42 +92,73 @@ function OfflineIcon() {
   );
 }
 
-/** Encadré « Hors ligne » (A06) : ce qui reste lisible, et ce qui demande le réseau. */
-function OfflineNotice() {
+/**
+ * Encadré « Hors ligne » (A06) : ce qui reste lisible, et ce qui demande le réseau. La région live est toujours
+ * là, vide en ligne : un lecteur d'écran annonce l'encadré qui y entre, ce qu'il tait souvent d'une région créée
+ * avec son texte.
+ */
+function OfflineNotice(p: { offline: boolean }) {
   return (
-    <div role="status" className={styles.offline}>
-      <OfflineIcon />
-      <div className={styles.offlineText}>
-        <p className={styles.offlineTitle}>
-          <span aria-hidden="true" className={styles.offlineDot} />
-          Hors ligne
-        </p>
-        <p>Les pages Aide, Confidentialité et Crédits restent lisibles. La connexion nécessite le réseau.</p>
-      </div>
+    <div role="status" className={styles.offlineSlot}>
+      {p.offline ? (
+        <div className={`enter-up ${styles.offline}`}>
+          <OfflineIcon />
+          <div className={styles.offlineText}>
+            <p className={styles.offlineTitle}>
+              <span aria-hidden="true" className={styles.offlineDot} />
+              Hors ligne
+            </p>
+            <p>
+              Les pages Aide, Confidentialité et Crédits restent lisibles. La connexion nécessite le réseau.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 /**
- * Page introuvable (spec refonte §10.7, maquette A06) : l'emblème 404, la voix du Système « Zone inconnue. »
- * et le retour à l'accueil. Hors ligne, d'après l'état de connexion unique de la synchro (jamais
- * `navigator.onLine`), l'encadré « Hors ligne » le dit.
+ * Marque en tête (A06) : logo et RUNE vers l'accueil, comme l'en-tête de l'accueil (lueur en sombre). Le cadre
+ * n'affiche cet en-tête que sur l'accueil : sans elle, la 404 perdrait l'identité de l'appli.
+ */
+function Brand() {
+  const dark = useColorScheme() === 'dark';
+  return (
+    <div className={styles.notFoundHeader}>
+      <Link href="/" className={styles.brand} aria-label="Rune">
+        <RuneMark glow={dark} />
+        <RuneWordmark />
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * Page introuvable (spec refonte §10.7, maquette A06) : la marque, l'emblème 404, la voix du Système « Zone
+ * inconnue. » et le retour à l'accueil. Hors ligne, d'après l'état de connexion unique de la synchro (jamais
+ * `navigator.onLine`), l'encadré « Hors ligne » le dit. Sur PC, la navigation latérale porte déjà la marque
+ * (une seule annonce, un seul arrêt de tabulation).
  */
 export function NotFound() {
   const { connection } = useSyncState();
+  const wide = useMediaQuery(WIDE_QUERY);
   return (
-    <div className={`stagger ${styles.notFound}`}>
-      <Emblem />
-      <div className={styles.notFoundPanel}>
-        <SystemPanel title="Page introuvable" headingLevel={1}>
-          <p>Zone inconnue. Cette page n'existe pas ou n'est pas encore disponible.</p>
-          <Link href="/" className={styles.homeLink}>
-            <HomeIcon />
-            Retour à l'accueil
-          </Link>
-        </SystemPanel>
+    <>
+      {wide ? null : <Brand />}
+      <div className={`stagger ${styles.notFound}`}>
+        <Emblem />
+        <div className={styles.notFoundPanel}>
+          <SystemPanel title="Page introuvable" headingLevel={1}>
+            <p>Zone inconnue. Cette page n'existe pas ou n'est pas encore disponible.</p>
+            <Link href="/" className={styles.homeLink}>
+              <HomeIcon />
+              Retour à l'accueil
+            </Link>
+          </SystemPanel>
+        </div>
+        <OfflineNotice offline={connection === 'offline'} />
       </div>
-      {connection === 'offline' ? <OfflineNotice /> : null}
-    </div>
+    </>
   );
 }
