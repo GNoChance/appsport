@@ -9,6 +9,30 @@ const privacyText = (owner: string | undefined) =>
     .flatMap((s) => s.items)
     .join('\n');
 
+/**
+ * Texte écrit dans `el`, morceau par morceau : pictogrammes (aria-hidden) retirés, et un aria-label n'y
+ * compte pas (le nom d'un lien d'appel vient de son aria-label, pas de ce qui est affiché).
+ */
+const shownText = (el: Element) => {
+  const parts: string[] = [];
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.parentElement?.closest('[aria-hidden="true"]')) parts.push(node.textContent ?? '');
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+};
+
+/** Texte écrit après le titre `heading`, dans sa section (la page, ou la région d'Aide). */
+const shownAfter = (heading: HTMLElement) => {
+  const section = heading.closest('section');
+  let block: Element | null = heading;
+  while (block && block.parentElement !== section) block = block.parentElement;
+  const parts: string[] = [];
+  for (let next = block?.nextElementSibling; next; next = next.nextElementSibling)
+    parts.push(shownText(next));
+  return parts.join(' ');
+};
+
 describe('responsable des données (03 §1, §10.8)', () => {
   it.each([undefined, '', '   '])(
     'sans prénom (%j) : administrateur hébergeur, porteur du projet',
@@ -127,6 +151,8 @@ describe('Aide (maquette A05, spec refonte §10.6)', () => {
     expect(
       within(emergency).getByRole('link', { name: 'Appeler le 112, numéro européen' }).getAttribute('href'),
     ).toBe('tel:112');
+    // À l'écran, chaque bouton montre son numéro puis son nom (le nom lu, lui, vient de l'aria-label).
+    expect(within(emergency).getAllByRole('link').map(shownText)).toEqual(['15 SAMU', '112 Numéro européen']);
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Installer Rune',
       'Numéros utiles',
@@ -165,6 +191,15 @@ describe('Aide (maquette A05, spec refonte §10.6)', () => {
     const useful = await screen.findByRole('region', { name: 'Numéros utiles' });
     expect(useful.textContent).toContain('Numéros vérifiés le 06/10/2026');
     expect(useful.textContent).not.toContain('Urgence vitale');
+    // Ce qui est écrit, dans l'ordre (03 §13.7) : chaque libellé, son numéro, sa source, ses horaires ; les
+    // deux consignes de santé sans numéro restent dans la liste.
+    expect(within(useful).getAllByRole('listitem').map(shownText)).toEqual([
+      'Douleur : consulte un médecin ou un kinésithérapeute',
+      'Anorexie Boulimie Info Écoute (FFAB), appel non surtaxé 09 69 325 900 Source (nouvel onglet)',
+      'Écoute Dopage 0 800 15 2000 Source (nouvel onglet)',
+      'Grossesse ou allaitement : demande conseil à ton médecin ou à une sage-femme',
+      'Prévention du suicide 3114 Source (nouvel onglet) Horaires : 24 h/24, gratuit',
+    ]);
     expect(
       within(useful)
         .getAllByRole('link', { name: /^Appeler le / })
@@ -180,9 +215,16 @@ describe('Aide (maquette A05, spec refonte §10.6)', () => {
   });
 
   it('Crédits dans Aide (P10), /credits reste servi avec le même contenu', async () => {
-    await renderApp({ path: '/help', me: null });
+    const help = await renderApp({ path: '/help', me: null });
     const credits = await screen.findByRole('region', { name: 'Crédits' });
-    expect(within(credits).getByText('Aucune illustration pour le moment.')).toBeTruthy();
+    const inHelp = shownAfter(within(credits).getByRole('heading', { level: 2, name: 'Crédits' }));
+    expect(inHelp).toBe(
+      'Aucune illustration pour le moment. Chaque illustration ajoutée portera ici son auteur, sa licence, sa source et la mention « modifié » le cas échéant.',
+    );
+    help.unmount();
+    await renderApp({ path: '/credits', me: null });
+    const title = await screen.findByRole('heading', { level: 1, name: 'Crédits' });
+    expect(shownAfter(title)).toBe(inHelp);
   });
 });
 
@@ -259,4 +301,14 @@ describe('404 (maquette A06, spec refonte §10.7)', () => {
     act(() => sync.set({ connection: 'online' }));
     expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
   });
+
+  // Les autres états où la 404 se voit (unauthenticated et account_deleted mènent à la connexion, par la garde).
+  it.each(['unknown', 'protocol_unsupported'] as const)(
+    "état de connexion « %s » : pas d'encadré « Hors ligne », que seul l'état offline montre",
+    async (connection) => {
+      await renderApp({ path: '/nulle-part', sync: createFakeSyncEngine({ connection }) });
+      await screen.findByRole('group', { name: 'Page introuvable' });
+      expect(screen.queryByText(OFFLINE_TEXT)).toBeNull();
+    },
+  );
 });
