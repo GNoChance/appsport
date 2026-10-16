@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { COACH_IDS, type CoachId, type MeResponse } from '@rune/contracts';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { coachLine } from '../../src/features/coach/coach-lines';
+import { READINESS_REFRESH_MS } from '../../src/features/status/use-readiness';
 import type { AppDb } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
 import { reposFor } from '../../src/repos';
@@ -118,6 +119,57 @@ describe('salutation selon l’heure de Paris (bascule à 18 h)', () => {
     await openHome({ me: { username: 'Léa.M' } });
     expect(heading()).toBe('Bonjour, Léa.M');
   });
+
+  // Accueil resté ouvert : la salutation et la ligne du coach suivent l'horloge d'elles-mêmes, sans compter sur
+  // le recalcul du voyant (5 s) pour provoquer un rendu.
+  it.each([
+    ['17:59:58 → 18:00:00', '2026-10-06T15:59:58Z', 'Bonjour, lea', 'Bonsoir, lea'],
+    ['23:59:58 → 00:00:00', '2026-10-06T21:59:58Z', 'Bonsoir, lea', 'Bonsoir, lea'],
+  ])(
+    'ouvert à %s (Paris) : salutation et ligne du jour suivent l’horloge injectée',
+    async (_, iso, hi, bye) => {
+      // Minuteurs simulés dès avant le montage de l'accueil ; setImmediate reste réel (fake-indexeddb).
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+      try {
+        let clock = Date.parse(iso);
+        const db = createTestLocalDb();
+        await seedHome(db, {}, clock);
+        const { services } = await renderApp({ db, now: clock, me: makeMe() });
+        vi.spyOn(services, 'now').mockImplementation(() => clock);
+        // Les requêtes observées de Dexie partent d'un setTimeout(0) : l'horloge simulée avance d'1 ms par tour,
+        // juste ce qu'il faut pour elles, jusqu'à l'entrée des cartes.
+        let elapsed = 0;
+        await until(() => {
+          vi.advanceTimersByTime(1);
+          elapsed += 1;
+          return cardStack() !== null;
+        });
+        await settle();
+        // Bien moins que les 2 s jusqu'à 18 h : aucun minuteur de l'accueil n'est encore échu.
+        expect(elapsed).toBeLessThan(1000);
+        const shown = () => ({
+          heading: heading(),
+          line: document.querySelector('[data-mode] p')?.textContent,
+        });
+        const before = { heading: hi, line: coachLine('skald', 'daily', new Date(clock), 'lea', 3) };
+        expect(shown()).toEqual(before);
+
+        // 2 s : moins que le recalcul du voyant, qui ne peut donc pas être ce qui rafraîchit l'accueil.
+        const step = 2000;
+        expect(step).toBeLessThan(READINESS_REFRESH_MS);
+        act(() => {
+          clock += step;
+          vi.advanceTimersByTime(step);
+        });
+        const after = { heading: bye, line: coachLine('skald', 'daily', new Date(clock), 'lea', 3) };
+        // La bascule a bien eu lieu : 18 h change la salutation, minuit la ligne du jour.
+        expect(after).not.toEqual(before);
+        expect(shown()).toEqual(after);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 });
 
 describe('bulle du coach « Aujourd’hui »', () => {

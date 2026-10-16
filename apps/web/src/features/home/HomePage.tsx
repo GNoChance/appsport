@@ -1,7 +1,7 @@
 import { EXPERIENCE_LABELS, GOAL_LABELS } from '@rune/contracts';
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { useLive, useMe, useServices } from '../../app-services';
+import { useLive, useMe } from '../../app-services';
 import { useRepos } from '../../repos';
 import { Banner, Button, CoachBubble, CountUp, Page, plural, SystemPanel } from '../../ui';
 import { coachLine } from '../coach/coach-lines';
@@ -9,6 +9,7 @@ import { AwakeningQuests, awakeningQuests } from '../onboarding/AwakeningQuests'
 import { OfflineReadyIndicator } from '../status/OfflineReadyIndicator';
 import { useReadiness } from '../status/use-readiness';
 import styles from './home.module.css';
+import { useNow } from './use-now';
 
 /** R-AGE-6 : affiché une fois par appareil, au passage de mineur à adulte. */
 export const ADULT_NOTICE_TEXT =
@@ -96,12 +97,13 @@ function Chevron() {
  * Aucune fausse donnée : une valeur pas encore connue (profil pas encore reçu sur ce nouvel appareil) n'affiche
  * ni bulle, ni tuile, ni ligne ; une quête n'est cochée que quand son état réel l'est. Le voyant et la quête
  * « Prêt hors ligne » lisent le même calcul. L'heure et le jour viennent de l'horloge des services (injectée
- * dans les tests) ; le recalcul du voyant, toutes les 5 s, rafraîchit aussi la salutation passé 18 h.
+ * dans les tests), relue à chaque minute pleine (`useNow`) : un accueil resté ouvert dit « Bonsoir » dès 18 h et
+ * passe à la ligne du lendemain dès minuit, sans dépendre d'un autre rendu.
  */
 export function HomePage() {
   const me = useMe();
   const repos = useRepos();
-  const services = useServices();
+  const now = useNow();
   const adultNotice = useLive(() => repos.me.adultNotice(), [repos]);
   const profile = useLive(() => repos.profile.get(), [repos]);
   const places = useLive(() => repos.places.list(), [repos]);
@@ -113,7 +115,6 @@ export function HomePage() {
     setRetrying(true);
     void retry().finally(() => setRetrying(false));
   };
-  const now = services.now();
   const primary = places?.find((place) => place.isPrimary);
   const quests = awakeningQuests({
     profile,
