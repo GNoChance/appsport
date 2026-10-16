@@ -1,12 +1,20 @@
 import type { Role } from '@rune/contracts';
 import { usernameKey } from '@rune/domain';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { type DeviceOwner, useRepos } from '../../repos';
 import { Banner, Button, Page } from '../../ui';
 import styles from './auth.module.css';
 import { CodeStep, useFragmentCode } from './CodeStep';
-import { accessErrorMessage, checkNewPassword, type NewPasswordErrors, newPasswordErrors } from './messages';
+import {
+  accessErrorMessage,
+  accessFieldError,
+  checkNewPassword,
+  editedPasswordFields,
+  type NewPasswordErrors,
+  newPasswordErrors,
+} from './messages';
 import { PasswordFields } from './PasswordFields';
+import { useFieldErrors } from './use-field-errors';
 import { useSessionRedirect } from './use-session-redirect';
 import { useWipeWarning } from './WipeWarning';
 
@@ -17,30 +25,24 @@ interface CheckedReset {
 }
 
 /**
- * Nouveau mot de passe (maquette A04) : un refus local est rattaché à son champ (mot de passe ou
- * confirmation), qui prend le focus ; un refus du serveur s'affiche en alerte et garde la saisie.
+ * Nouveau mot de passe (maquette A04) : un refus, local ou du serveur (mot de passe courant…), est
+ * rattaché à son champ (mot de passe ou confirmation), qui prend le focus ; l'erreur part dès que ce champ
+ * est repris. Les autres erreurs du serveur (réseau, lien) s'affichent en alerte. La saisie est gardée.
  */
 function NewPasswordForm(p: CheckedReset) {
   const repos = useRepos();
   const redirect = useSessionRedirect();
   const [passwords, setPasswords] = useState({ password: '', confirm: '' });
   const [busy, setBusy] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<NewPasswordErrors>({});
+  const fields = useFieldErrors<keyof NewPasswordErrors>();
   const [error, setError] = useState<string | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
   const wipe = useWipeWarning(() => void send(true));
-
-  // Refus local : le champ en cause (marqué aria-invalid au rendu) prend le focus.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: chaque refus local relance la recherche
-  useEffect(() => {
-    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
-  }, [fieldErrors]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
     const errors = newPasswordErrors(checkNewPassword({ ...passwords, username: p.username, role: p.role }));
-    setFieldErrors(errors);
+    fields.show(errors);
     if (errors.password || errors.confirm) {
       setError(null);
       return;
@@ -59,7 +61,10 @@ function NewPasswordForm(p: CheckedReset) {
       const me = await repos.me.resetPassword({ code: p.code, newPassword: passwords.password });
       redirect(me.id, '/');
     } catch (err) {
-      setError(accessErrorMessage(err, p.role));
+      // Ce formulaire n'a pas de champ pseudo : seul un refus du mot de passe y est rattaché.
+      const password = accessFieldError(err, p.role)?.password;
+      if (password) fields.show({ password });
+      else setError(accessErrorMessage(err, p.role));
     } finally {
       setBusy(false);
     }
@@ -67,7 +72,7 @@ function NewPasswordForm(p: CheckedReset) {
 
   return (
     <>
-      <form ref={formRef} className={styles.form} noValidate onSubmit={submit}>
+      <form ref={fields.formRef} className={styles.form} noValidate onSubmit={submit}>
         {/* Pseudo pour les gestionnaires de mots de passe : le nouveau est enregistré sous ce nom. */}
         <input type="text" autoComplete="username" value={p.username} readOnly hidden />
         <PasswordFields
@@ -75,8 +80,11 @@ function NewPasswordForm(p: CheckedReset) {
           role={p.role}
           label={`Nouveau mot de passe pour ${p.username}`}
           {...passwords}
-          onChange={setPasswords}
-          errors={fieldErrors}
+          onChange={(next) => {
+            fields.clear(...editedPasswordFields(passwords, next));
+            setPasswords(next);
+          }}
+          errors={fields.errors}
         />
         {error ? <Banner tone="error">{error}</Banner> : null}
         <Button type="submit" disabled={busy}>

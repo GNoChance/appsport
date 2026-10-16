@@ -75,12 +75,15 @@ const description = (el: Element) =>
     .map((id) => document.getElementById(id)?.textContent ?? '')
     .join(' ');
 
-/** Refus local lié au champ `label` (aria-invalid, description), focus sur le champ, pas d'alerte. */
+/**
+ * Refus (local ou du serveur) lié au champ `label` (aria-invalid, description), focus sur le champ, pas
+ * d'alerte. Le focus suit le rendu de l'erreur (effet) : après une réponse du serveur, il est attendu.
+ */
 async function expectFieldError(label: string, message: string) {
   const field = screen.getByLabelText(label);
   await until(() => field.getAttribute('aria-invalid') === 'true');
   expect(description(field)).toContain(message);
-  expect(document.activeElement).toBe(field);
+  await waitFor(() => expect(document.activeElement).toBe(field));
   expect(screen.queryByRole('alert')).toBeNull();
 }
 
@@ -118,9 +121,12 @@ describe('accueil (03 §13.1, R-ARR-1)', () => {
     await renderInvite({ url: LINK });
     await screen.findByLabelText('Date de naissance');
     expect(document.body.textContent).toContain(WELCOME);
-    const links = screen.getAllByRole('link', { name: 'Confidentialité et règles' });
-    expect(links.length).toBeGreaterThan(0);
-    for (const link of links) expect(link.getAttribute('href')).toBe('/privacy');
+    // Le lien de la case « J'ai lu la page… » annonce son nouvel onglet, comme celui de l'accueil (A02).
+    const link = screen.getByRole('link', { name: 'Confidentialité et règles (nouvel onglet)' });
+    expect(link.getAttribute('href')).toBe('/privacy');
+    expect(link.getAttribute('target')).toBe('_blank');
+    // La case garde son nom : c'est le lien, pas elle, qui ouvre un onglet.
+    expect(screen.getByRole('checkbox', { name: "J'ai lu la page Confidentialité et règles" })).toBeTruthy();
   });
 
   it("route /invite de l'appli, sans session", async () => {
@@ -502,11 +508,46 @@ describe('création du compte : contrôles locaux et erreurs du serveur (R-CPT-1
     expect(callsTo(api, ACCEPT)).toHaveLength(1);
   });
 
-  it('409 username_taken : message, formulaire gardé', async () => {
+  it("saisie après un refus : seule l'erreur du champ repris part, sans déplacer le focus", async () => {
+    await renderForm();
+    submitWith('ab', PHRASE);
+    await expectFieldError('Pseudo', USERNAME_MESSAGES.length);
+    // Saisie dans un autre champ : l'erreur du pseudo reste, et le focus reste là où l'on tape.
+    const password = screen.getByLabelText('Mot de passe');
+    password.focus();
+    fill('Mot de passe', `${PHRASE} solide`);
+    await settle();
+    expect(screen.getByLabelText('Pseudo').getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(password);
+    // Le pseudo repris : son erreur part dès la saisie, avant tout nouvel envoi.
+    fill('Pseudo', 'abc');
+    expect(screen.getByLabelText('Pseudo').getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByText(USERNAME_MESSAGES.length)).toBeNull();
+    expect(document.activeElement).toBe(password);
+  });
+
+  it('mot de passe ou confirmation repris après un refus : leur erreur part dès la saisie', async () => {
+    await renderForm();
+    submitWith('lea', PHRASE, 'cheval agrafe batterie');
+    await expectFieldError('Confirmation', 'Les deux mots de passe ne correspondent pas.');
+    fill('Confirmation', PHRASE);
+    expect(screen.getByLabelText('Confirmation').getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByText('Les deux mots de passe ne correspondent pas.')).toBeNull();
+    submitWith('lea', 'a1b2c3d4e5f');
+    await expectFieldError('Mot de passe', '12 caractères au moins.');
+    // La confirmation reprise ne corrige pas le mot de passe : son erreur reste.
+    fill('Confirmation', 'a1b2c3d4e5f6');
+    expect(screen.getByLabelText('Mot de passe').getAttribute('aria-invalid')).toBe('true');
+    fill('Mot de passe', 'a1b2c3d4e5f6');
+    expect(screen.getByLabelText('Mot de passe').getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByText('12 caractères au moins.')).toBeNull();
+  });
+
+  it('409 username_taken : erreur sous le pseudo (maquette A03), formulaire gardé', async () => {
     const { api } = await renderForm();
     api.on('POST', ACCEPT, reply({ error: 'username_taken' }, 409));
     submitWith('lea', PHRASE);
-    expect(await alertText()).toBe('Ce pseudo est déjà pris.');
+    await expectFieldError('Pseudo', 'Ce pseudo est déjà pris.');
     expect((screen.getByLabelText('Pseudo') as HTMLInputElement).value).toBe('lea');
     expect((screen.getByLabelText('Mot de passe') as HTMLInputElement).value).toBe(PHRASE);
     expect((screen.getByRole('button', { name: 'Créer mon compte' }) as HTMLButtonElement).disabled).toBe(
@@ -514,14 +555,22 @@ describe('création du compte : contrôles locaux et erreurs du serveur (R-CPT-1
     );
   });
 
-  it('password_rejected et username_invalid du serveur lisent le motif', async () => {
+  it('password_rejected et username_invalid du serveur : le motif sous le champ en cause', async () => {
     const { api } = await renderForm();
+    // « common » : la liste des mots de passe courants reste au serveur.
     api.on('POST', ACCEPT, reply({ error: 'password_rejected', reason: 'common' }, 400));
     submitWith('lea', PHRASE);
-    expect(await alertText()).toBe(PASSWORD_MESSAGES.common);
+    await expectFieldError('Mot de passe', PASSWORD_MESSAGES.common);
+    expect(screen.getByLabelText('Pseudo').getAttribute('aria-invalid')).toBeNull();
     api.on('POST', ACCEPT, reply({ error: 'username_invalid', reason: 'reserved' }, 400));
     click('Créer mon compte');
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(USERNAME_MESSAGES.reserved));
+    await expectFieldError('Pseudo', USERNAME_MESSAGES.reserved);
+    expect(screen.getByLabelText('Mot de passe').getAttribute('aria-invalid')).toBeNull();
+    // Motif inconnu : le message commun, toujours sous le mot de passe.
+    api.on('POST', ACCEPT, reply({ error: 'password_rejected' }, 400));
+    click('Créer mon compte');
+    await expectFieldError('Mot de passe', 'Ce mot de passe ne convient pas.');
+    expect(callsTo(api, ACCEPT)).toHaveLength(3);
   });
 
   it("invitation utilisée entre-temps : message d'invitation", async () => {

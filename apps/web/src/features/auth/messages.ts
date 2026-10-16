@@ -64,6 +64,17 @@ export function newPasswordErrors(problem: string | null): NewPasswordErrors {
   return problem === PASSWORD_MISMATCH_MESSAGE ? { confirm: problem } : { password: problem };
 }
 
+/**
+ * Champs dont l'erreur part à la saisie : le mot de passe repris peut lever les deux erreurs, la
+ * confirmation reprise seulement la sienne.
+ */
+export function editedPasswordFields(
+  before: { password: string },
+  after: { password: string },
+): (keyof NewPasswordErrors)[] {
+  return after.password !== before.password ? ['password', 'confirm'] : ['confirm'];
+}
+
 export const USERNAME_MESSAGES: Record<'length' | 'characters' | 'reserved', string> = {
   length: `${USERNAME_MIN} à ${USERNAME_MAX} caractères.`,
   characters: 'Lettres (accents admis), chiffres, « . », « _ » et « - » seulement.',
@@ -110,6 +121,22 @@ export function accessErrorMessage(e: unknown, role: Role): string {
   if (e.code === 'username_invalid' && isKey(USERNAME_MESSAGES, reason)) return USERNAME_MESSAGES[reason];
   if (e.code === 'reset_invalid') return RESET_INVALID_MESSAGE;
   return invitationErrorMessage(e.code);
+}
+
+/** Refus rattachés aux champs d'un compte : pseudo, mot de passe ou confirmation. */
+export type AccountFieldErrors = NewPasswordErrors & { username?: string };
+
+/**
+ * Refus du serveur propre à un champ, à rattacher à ce champ comme un refus local (spec refonte §6) :
+ * `password_rejected` sous le mot de passe, `username_taken` et `username_invalid` sous le pseudo, avec le
+ * message d'`accessErrorMessage`. Null pour les autres erreurs (réseau, invitation, lien), qui restent en alerte.
+ */
+export function accessFieldError(e: unknown, role: Role): AccountFieldErrors | null {
+  if (!(e instanceof ApiError)) return null;
+  if (e.code === 'password_rejected') return { password: accessErrorMessage(e, role) };
+  if (e.code === 'username_taken' || e.code === 'username_invalid')
+    return { username: accessErrorMessage(e, role) };
+  return null;
 }
 
 /** Connexion : `rate_limited` annonce l'attente en minutes, arrondie au supérieur (R-AUTH-2). */

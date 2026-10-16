@@ -1,26 +1,29 @@
 import { type MeResponse, PRIVACY_POLICY_VERSION, type Role } from '@rune/contracts';
 import { validateUsername } from '@rune/domain';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { useRepos } from '../../repos';
 import { Banner, Button, Field, formatDate } from '../../ui';
 import styles from './auth.module.css';
 import { isStandalone } from './install-help';
 import {
+  type AccountFieldErrors,
   accessErrorMessage,
+  accessFieldError,
   checkNewPassword,
-  type NewPasswordErrors,
+  editedPasswordFields,
   newPasswordErrors,
   USERNAME_MESSAGES,
 } from './messages';
 import { PasswordFields } from './PasswordFields';
+import { useFieldErrors } from './use-field-errors';
 import { useWipeWarning } from './WipeWarning';
 
-type FieldErrors = NewPasswordErrors & { username?: string };
-
 /**
- * Création du compte (02 §3.4). Tout est contrôlé ici avant l'envoi : un refus local est rattaché à son
- * champ (pseudo, mot de passe ou confirmation, maquette A03), qui prend le focus. Un refus du serveur
- * s'affiche en alerte et garde le formulaire (R-CPT-1 : l'invitation n'est pas consommée).
+ * Création du compte (02 §3.4). Tout est contrôlé ici avant l'envoi. Un refus, local ou du serveur (pseudo
+ * pris, mot de passe courant…), est rattaché à son champ (pseudo, mot de passe ou confirmation, maquette
+ * A03), qui prend le focus ; l'erreur part dès que ce champ est repris. Les autres erreurs du serveur
+ * (réseau, invitation) s'affichent en alerte. Le formulaire est gardé (R-CPT-1 : l'invitation n'est pas
+ * consommée).
  */
 export function CreateAccountForm(p: {
   code: string;
@@ -33,25 +36,18 @@ export function CreateAccountForm(p: {
   const [passwords, setPasswords] = useState({ password: '', confirm: '' });
   const [read, setRead] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const fields = useFieldErrors<keyof AccountFieldErrors>();
   const [error, setError] = useState<string | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
   const wipe = useWipeWarning(() => void send(true));
-
-  // Refus local : le champ en cause (marqué aria-invalid au rendu) prend le focus.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: chaque refus local relance la recherche
-  useEffect(() => {
-    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
-  }, [fieldErrors]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
     if (busy || !read) return;
     const name = validateUsername(username);
-    const errors: FieldErrors = name.ok
+    const errors: AccountFieldErrors = name.ok
       ? newPasswordErrors(checkNewPassword({ ...passwords, username, role: p.role }))
       : { username: USERNAME_MESSAGES[name.reason] };
-    setFieldErrors(errors);
+    fields.show(errors);
     if (Object.keys(errors).length > 0) {
       setError(null);
       return;
@@ -76,7 +72,9 @@ export function CreateAccountForm(p: {
       if (isStandalone()) void repos.status.requestPersistentStorage().catch(() => {});
       p.onCreated(me);
     } catch (err) {
-      setError(accessErrorMessage(err, p.role));
+      const onField = accessFieldError(err, p.role);
+      if (onField) fields.show(onField);
+      else setError(accessErrorMessage(err, p.role));
     } finally {
       setBusy(false);
     }
@@ -84,11 +82,11 @@ export function CreateAccountForm(p: {
 
   return (
     <>
-      <form ref={formRef} className={styles.form} noValidate onSubmit={submit}>
+      <form ref={fields.formRef} className={styles.form} noValidate onSubmit={submit}>
         <Field label="Date de naissance" hint="Renseignée par l'administrateur. Une erreur ? Préviens-le.">
           <input type="text" readOnly value={formatDate(p.birthDate)} />
         </Field>
-        <Field label="Pseudo" error={fieldErrors.username}>
+        <Field label="Pseudo" error={fields.errors.username}>
           <input
             type="text"
             value={username}
@@ -96,22 +94,34 @@ export function CreateAccountForm(p: {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => {
+              fields.clear('username');
+              setUsername(e.target.value);
+            }}
           />
         </Field>
         <PasswordFields
           username={username}
           role={p.role}
           {...passwords}
-          onChange={setPasswords}
-          errors={fieldErrors}
+          onChange={(next) => {
+            fields.clear(...editedPasswordFields(passwords, next));
+            setPasswords(next);
+          }}
+          errors={fields.errors}
         />
         <label className={styles.consent}>
-          <input type="checkbox" checked={read} onChange={(e) => setRead(e.target.checked)} />
+          {/* Nom de la case sans la mention du nouvel onglet, qui est celle du lien. */}
+          <input
+            type="checkbox"
+            checked={read}
+            aria-label="J'ai lu la page Confidentialité et règles"
+            onChange={(e) => setRead(e.target.checked)}
+          />
           <span>
             J'ai lu la page{' '}
             <a href="/privacy" target="_blank" rel="noopener noreferrer" className={styles.inlineLink}>
-              Confidentialité et règles
+              Confidentialité et règles<span className={styles.srOnly}> (nouvel onglet)</span>
             </a>
           </span>
         </label>

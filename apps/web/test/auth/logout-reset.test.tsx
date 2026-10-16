@@ -227,12 +227,15 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
       .split(' ')
       .map((id) => document.getElementById(id)?.textContent ?? '')
       .join(' ');
-  /** Refus local lié au champ `label` (aria-invalid, description), focus sur le champ, pas d'alerte. */
+  /**
+   * Refus (local ou du serveur) lié au champ `label` (aria-invalid, description), focus sur le champ, pas
+   * d'alerte. Le focus suit le rendu de l'erreur (effet) : après une réponse du serveur, il est attendu.
+   */
   async function expectFieldError(label: string, message: string) {
     const field = screen.getByLabelText(label);
     await until(() => field.getAttribute('aria-invalid') === 'true');
     expect(description(field)).toContain(message);
-    expect(document.activeElement).toBe(field);
+    await waitFor(() => expect(document.activeElement).toBe(field));
     expect(screen.queryByRole('alert')).toBeNull();
   }
 
@@ -334,14 +337,31 @@ describe('ResetPage (R-RST-1, R-RST-3)', () => {
     expect((screen.getByLabelText('Nouveau mot de passe pour lea') as HTMLInputElement).value).toBe(PHRASE);
   });
 
-  it('password_rejected du serveur : motif lu dans le corps', async () => {
+  it('password_rejected du serveur : motif lu dans le corps, sous le nouveau mot de passe (maquette A04)', async () => {
     const { api } = await renderReset();
     await screen.findByLabelText('Nouveau mot de passe pour lea');
     api.on('POST', RESET, reply({ error: 'password_rejected', reason: 'common' }, 400));
     fill('Nouveau mot de passe pour lea', PHRASE);
     fill('Confirmation', PHRASE);
     click('Changer le mot de passe');
-    expect(await alertText()).toBe(PASSWORD_MESSAGES.common);
+    await expectFieldError('Nouveau mot de passe pour lea', PASSWORD_MESSAGES.common);
+    expect(screen.getByLabelText('Confirmation').getAttribute('aria-invalid')).toBeNull();
+    expect((screen.getByLabelText('Nouveau mot de passe pour lea') as HTMLInputElement).value).toBe(PHRASE);
+  });
+
+  it('nouveau mot de passe repris après un refus : son erreur part dès la saisie, le focus reste', async () => {
+    const { api } = await renderReset();
+    const password = 'Nouveau mot de passe pour lea';
+    await screen.findByLabelText(password);
+    fill(password, 'a1b2c3d4e5f');
+    fill('Confirmation', 'a1b2c3d4e5f');
+    click('Changer le mot de passe');
+    await expectFieldError(password, '12 caractères au moins.');
+    fill(password, PHRASE);
+    expect(screen.getByLabelText(password).getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByText('12 caractères au moins.')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByLabelText(password));
+    expect(callsTo(api, RESET)).toHaveLength(0);
   });
 
   it("429 à la vérification : « Trop d'essais depuis cet appareil. »", async () => {
