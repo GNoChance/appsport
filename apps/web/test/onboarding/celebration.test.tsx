@@ -7,6 +7,7 @@ import { coachText } from '../../src/features/coach/coach-lines';
 import { ReadyStep } from '../../src/features/onboarding/ReadyStep';
 import type { AppDb } from '../../src/local-db/db';
 import { setMeta } from '../../src/local-db/meta';
+import ui from '../../src/ui/ui.module.css';
 import { type CssBlock, normalizeSelector, parseCssBlocks } from '../support/css-blocks';
 import { createFakeApi } from '../support/fake-api';
 import { createTestLocalDb } from '../support/local-db';
@@ -27,6 +28,7 @@ const HOUR = 3_600_000;
 const REDUCE = '(prefers-reduced-motion: reduce)';
 const QUESTS = ['Profil complété', 'Lieu principal choisi', 'Prêt hors ligne'] as const;
 const ONBOARDING_CSS = resolve(import.meta.dirname, '../../src/features/onboarding/onboarding.module.css');
+const VOICE_CSS = resolve(import.meta.dirname, '../../src/ui/voice.module.css');
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -110,6 +112,16 @@ describe('« Éveil terminé » (spec refonte §7, §10.1)', () => {
     expect(button('Commencer').disabled).toBe(true);
   });
 
+  it('pas encore prêt hors ligne : « Réessayer » prend toute la largeur sur téléphone (boutons des contraintes)', async () => {
+    await openReady({ pullAgoMs: 25 * HOUR });
+    const retry = await screen.findByRole('button', { name: 'Réessayer' });
+    expect(ui.block).toBeTruthy();
+    expect(retry.classList.contains(ui.block as string)).toBe(true);
+    // Aucune règle de l'onboarding ne le ramène à sa largeur propre.
+    const own = blocks().filter((b) => selectorList(b.selector).includes('.notReady > button'));
+    expect(own.flatMap((b) => [...b.declarations.keys()])).not.toContain('align-self');
+  });
+
   it('vrais états : sans lieu principal ni niveau, ces quêtes restent décochées', async () => {
     const db = createTestLocalDb();
     const me = newcomer({ onboardingStep: 'health' });
@@ -186,6 +198,52 @@ const CELEBRATION = [
 
 const NTH_CHILD = /:nth-child\(\d+\)/g;
 
+/** `-12px` → -12, `0` → 0 ; autre chose (pourcentage) → NaN. */
+const px = (token: string) => (/^-?\d*\.?\d+(px)?$/.test(token) ? Number.parseFloat(token) : Number.NaN);
+
+/** Débord d'une ombre `x y flou [étalement] couleur, …` de chaque côté : [haut, droite, bas, gauche] en px. */
+function shadowReach(shadow: string): number[] {
+  const reach = [0, 0, 0, 0];
+  for (const layer of selectorList(shadow)) {
+    const lengths: number[] = [];
+    for (const token of layer.trim().split(/\s+/)) {
+      if (Number.isNaN(px(token))) break;
+      lengths.push(px(token));
+    }
+    const [x = 0, y = 0, blur = 0, spread = 0] = lengths;
+    const out = [blur + spread - y, blur + spread + x, blur + spread + y, blur + spread - x];
+    out.forEach((v, i) => {
+      reach[i] = Math.max(reach[i] ?? 0, v);
+    });
+  }
+  return reach;
+}
+
+/** `inset(-12px -18px -24px round …)` → [haut, droite, bas, gauche] (px ; NaN pour un pourcentage). */
+function insets(clip: string): number[] {
+  const inner = /^inset\((.*)\)$/.exec(clip.trim())?.[1] ?? '';
+  const [t = Number.NaN, r = t, b = t, l = r] = (inner.split(/\s+round\s+/)[0] ?? '')
+    .trim()
+    .split(/\s+/)
+    .map(px);
+  return [t, r, b, l];
+}
+
+/** Étapes (`0%`, `35%`, `100%`) d'un `@keyframes` de la feuille, avec leurs déclarations. */
+function keyframes(css: string, name: string): Map<string, Map<string, string>> {
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = source.indexOf(`@keyframes ${name} `);
+  if (at < 0) throw new Error(`@keyframes ${name} absent`);
+  const open = source.indexOf('{', at);
+  let depth = 0;
+  let close = open;
+  for (; close < source.length; close++) {
+    if (source[close] === '{') depth++;
+    else if (source[close] === '}' && --depth === 0) break;
+  }
+  return new Map(parseCssBlocks(source.slice(open + 1, close)).map((b) => [b.selector, b.declarations]));
+}
+
 /**
  * Sélecteurs hors media query qui animent un élément de la célébration ou décalent son départ (une quête après
  * l'autre), avec leurs déclarations.
@@ -221,6 +279,53 @@ describe('mouvement de la célébration (onboarding.module.css)', () => {
       const duration = own ? (times(own)[0] ?? 0) : (durations.get(base) ?? 0);
       expect(delay + duration, `${selector} : fin`).toBeLessThanOrEqual(1200);
     }
+  });
+
+  it('ordre du prototype : la fenêtre, le rang, les 3 quêtes une à une, le mot du coach, puis « Commencer »', () => {
+    const all = blocks();
+    /** Départ de l'animation : son `animation-delay`, sinon le second temps de son `animation`. */
+    const start = (selector: string) => {
+      const d = declarations(all, selector);
+      const delay = d.get('animation-delay');
+      return delay ? (times(delay)[0] ?? 0) : (times(d.get('animation') ?? '')[1] ?? 0);
+    };
+    const order = [
+      '.celebration',
+      '.rank',
+      '.questCheck',
+      '.questList > :nth-child(2) .questCheck',
+      '.questList > :nth-child(3) .questCheck',
+      '.coachLine',
+      '.revealActions',
+    ];
+    const starts = order.map(start);
+    for (let i = 1; i < order.length; i++) {
+      expect(starts[i], `${order[i]} part après ${order[i - 1]}`).toBeGreaterThan(starts[i - 1] ?? 0);
+    }
+  });
+
+  it('la fenêtre s’ouvre sans rogner l’ombre du panneau du Système (clair, Carnet) : rien ne surgit à la fin', () => {
+    const voice = parseCssBlocks(readFileSync(VOICE_CSS, 'utf8'));
+    const shadows = voice
+      .filter((b) => selectorList(b.selector).some((s) => s.endsWith('.panel')))
+      .map((b) => b.declarations.get('box-shadow'))
+      .filter((s): s is string => s !== undefined && s !== 'none');
+    // L'ombre douce du clair et l'ombre d'encre du Carnet.
+    expect(shadows.length).toBeGreaterThanOrEqual(2);
+    const [top = 0, right = 0, bottom = 0, left = 0] = shadows
+      .map(shadowReach)
+      .reduce((a, b) => a.map((v, i) => Math.max(v, b[i] ?? 0)));
+    const steps = keyframes(readFileSync(ONBOARDING_CSS, 'utf8'), 'window-open');
+    // Fenêtre ouverte : le découpage passe autour de l'ombre, de chaque côté.
+    const open = insets(steps.get('100%')?.get('clip-path') ?? '');
+    expect(-(open[0] ?? 0), 'haut').toBeGreaterThanOrEqual(top);
+    expect(-(open[1] ?? 0), 'droite').toBeGreaterThanOrEqual(right);
+    expect(-(open[2] ?? 0), 'bas').toBeGreaterThanOrEqual(bottom);
+    expect(-(open[3] ?? 0), 'gauche').toBeGreaterThanOrEqual(left);
+    // Ligne déjà pleine largeur (35 %) : les côtés de l'ombre y sont aussi.
+    const line = insets(steps.get('35%')?.get('clip-path') ?? '');
+    expect(-(line[1] ?? 0), 'ligne, droite').toBeGreaterThanOrEqual(right);
+    expect(-(line[3] ?? 0), 'ligne, gauche').toBeGreaterThanOrEqual(left);
   });
 
   it('mouvement réduit : fondus courts sans retard (décalages compris), pas d’étincelles', () => {

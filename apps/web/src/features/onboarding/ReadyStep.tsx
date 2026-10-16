@@ -124,7 +124,7 @@ export function ReadyStep(p: { onBack(): void; onIncomplete(step: OnboardingStep
       {loaded && !readiness.ready ? (
         <div className={styles.notReady}>
           <OfflineReadyIndicator readiness={readiness} />
-          <Button variant="secondary" onClick={onRetry} disabled={retrying}>
+          <Button variant="secondary" block onClick={onRetry} disabled={retrying}>
             Réessayer
           </Button>
         </div>

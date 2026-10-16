@@ -117,7 +117,7 @@ export function TabBar() {
  * d'origine, champ en erreur) : quand la barre recouvre le centre du contrôle qui prend le focus, il défile au
  * plus près, ce qui respecte la marge. Une feuille du bas posée par-dessus prend le point : rien ne bouge.
  */
-function useFocusAboveBar(bar: RefObject<HTMLElement | null>) {
+export function useFocusAboveBar(bar: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const onFocus = (event: FocusEvent) => {
       const nav = bar.current;
